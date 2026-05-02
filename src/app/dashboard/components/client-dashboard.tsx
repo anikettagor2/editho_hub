@@ -310,7 +310,13 @@ export function ClientDashboard() {
     const totalCostBase = projects.reduce((acc, p) => acc + (p.totalCost || 0), 0);
     const totalWithGst = withGst(totalCostBase);
     const totalPaid = projects.reduce((acc, p) => acc + (p.amountPaid || 0), 0);
-    const pendingBase = projects.reduce((acc, p) => acc + Math.max(0, (p.totalCost || 0) * (1 + GST_RATE) - (p.amountPaid || 0)), 0);
+        const pendingBase = projects.reduce(
+            (acc, p) =>
+                withGst(p.amountPaid || 0) < withGst(p.totalCost || 0)
+                    ? acc + (withGst(p.totalCost || 0) - withGst(p.amountPaid || 0))
+                    : acc,
+            0
+        );
     const activeCount = projects.filter((p) => !["completed", "approved", "archived", "delivered", "completed_pending_payment"].includes(p.status)).length;
     const completedCount = projects.filter((p) => ["completed", "approved", "completed_pending_payment"].includes(p.status)).length;
     const pendingPaymentCount = projects.filter((p) => (p.amountPaid || 0) < (p.totalCost || 0) * (1 + GST_RATE) && ["completed", "completed_pending_payment", "approved"].includes(p.status)).length;

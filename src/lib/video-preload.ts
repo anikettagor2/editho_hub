@@ -22,7 +22,7 @@ function trimVideoCache() {
 }
 
 export function warmVideoInMemory(url?: string | null): boolean {
-  if (!url || !canUseVideoPreload()) return false;
+  if (!url || !canUseVideoPreload() || url.startsWith('mux://')) return false;
   if (videoElementCache.has(url)) return false;
 
   const video = document.createElement("video");

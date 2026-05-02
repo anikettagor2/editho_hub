@@ -180,7 +180,7 @@ export function EditorDashboardV2() {
                 id: revisionId,
                 projectId: projectId,
                 revisionId,
-                status: "pending",
+                status: "uploading", // Start in uploading state
                 createdAt: Date.now(),
                 updatedAt: Date.now(),
             };
@@ -395,8 +395,13 @@ export function EditorDashboardV2() {
 
     // Sub-component for asset grid items with transcoding status
     const AssetGridItem = ({ file, idx, onPreview }: { file: any, idx: number, onPreview: () => void }) => {
-        const transcodeState = useVideoTranscodeStatus(file.storagePath || "", file.name || "");
-        const effectiveUrl = (transcodeState.status === "ready" && transcodeState.videoUrl) 
+        const transcodeState = useVideoTranscodeStatus(file.storagePath || file.url || "", file.name || "");
+        
+        // Determine if we have a Mux playback ID
+        const isMux = file.storagePath?.startsWith("mux://") || file.url?.startsWith("mux://");
+        const muxPlaybackId = (transcodeState.status === "ready" && isMux) ? transcodeState.videoUrl : null;
+        
+        const effectiveUrl = (transcodeState.status === "ready" && !isMux && transcodeState.videoUrl) 
             ? transcodeState.videoUrl 
             : file.url;
         
@@ -411,11 +416,14 @@ export function EditorDashboardV2() {
                     {transcodeState.status === 'processing' && (
                         <div className="absolute inset-0 z-10 bg-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2">
                             <Loader2 className="h-6 w-6 text-white animate-spin" />
-                            <span className="text-[10px] text-white font-bold uppercase tracking-tighter">Optimizing...</span>
+                            <span className="text-[10px] text-white font-bold uppercase tracking-tighter">
+                                {isMux ? "Mux Processing..." : "Optimizing..."}
+                            </span>
                         </div>
                     )}
                     <VideoPlayer 
                         videoPath={effectiveUrl} 
+                        playbackId={muxPlaybackId || undefined}
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         title={file.name || "Video Preview"}
                     />
@@ -446,7 +454,7 @@ export function EditorDashboardV2() {
                         )}
                     >
                         <Eye className="h-3 w-3" />
-                        {transcodeState.status === 'ready' ? 'Play Optimized' : 'Play'}
+                        {transcodeState.status === 'ready' ? (isMux ? 'Play Stream' : 'Play Optimized') : 'Play'}
                     </button>
                 </div>
             </motion.div>
@@ -455,8 +463,12 @@ export function EditorDashboardV2() {
 
     // Video Player with Optimization Integration
     const OptimizedVideoModal = ({ file, onClose }: { file: any, onClose: () => void }) => {
-        const transcodeState = useVideoTranscodeStatus(file.storagePath, file.name);
-        const effectiveUrl = (transcodeState.status === "ready" && transcodeState.videoUrl) 
+        const transcodeState = useVideoTranscodeStatus(file.storagePath || file.url || "", file.name || "");
+        
+        const isMux = file.storagePath?.startsWith("mux://") || file.url?.startsWith("mux://");
+        const muxPlaybackId = (transcodeState.status === "ready" && isMux) ? transcodeState.videoUrl : null;
+
+        const effectiveUrl = (transcodeState.status === "ready" && !isMux && transcodeState.videoUrl) 
             ? transcodeState.videoUrl 
             : file.url;
         
@@ -488,21 +500,23 @@ export function EditorDashboardV2() {
                     {isOptimized && (
                         <div className="absolute top-6 left-6 z-[10000] flex items-center gap-2 px-4 py-2 bg-emerald-500/90 text-white text-xs font-bold rounded-full backdrop-blur-md shadow-lg border border-emerald-400/30">
                             <CheckCircle2 className="h-4 w-4" />
-                            Playing Optimized MP4
+                            {isMux ? "Playing Mux Adaptive Stream" : "Playing Optimized MP4"}
                         </div>
                     )}
 
-                    {!isOptimized && file.name?.toLowerCase().endsWith('.mov') && (
+                    {!isOptimized && (file.name?.toLowerCase().endsWith('.mov') || isMux) && (
                         <div className="absolute top-6 left-6 z-[10000] flex items-center gap-2 px-4 py-2 bg-amber-500/90 text-white text-xs font-bold rounded-full backdrop-blur-md shadow-lg border border-amber-400/30">
                             <Clock className="h-4 w-4" />
-                            Playing Raw .MOV (Optimizing...)
+                            {isMux ? "Mux Processing..." : "Playing Raw .MOV (Optimizing...)"}
                         </div>
                     )}
 
-                    <div className="flex flex-col items-center justify-center h-full w-full text-white/50 gap-3">
-                        <FileVideo className="h-10 w-10 opacity-20" />
-                        <span className="text-sm">Video Preview Removed</span>
-                    </div>
+                    <VideoPlayer 
+                        videoPath={effectiveUrl} 
+                        playbackId={muxPlaybackId || undefined}
+                        className="w-full h-full"
+                        title={file.name}
+                    />
                 </motion.div>
             </motion.div>
         );
@@ -1630,29 +1644,29 @@ export function EditorDashboardV2() {
                                                                 </div>
                                                             </td>
                                                             <td className="px-4 py-4">
-                                                                {['completed', 'approved', 'completed_pending_payment'].includes(project.status) ? (
-                                                                    <button
-                                                                        onClick={() => setSelectedProjectDetails(project)}
-                                                                        className="h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/30 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
-                                                                        title="View completed project details"
-                                                                    >
-                                                                        <CheckCircle2 className="h-4 w-4" />
-                                                                        Project Details
-                                                                    </button>
-                                                                ) : projectRevisions[project.id] ? (
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setReviewProject(project);
-                                                                            setIsReviewSystemOpen(true);
-                                                                        }}
-                                                                        className="h-9 px-4 inline-flex items-center justify-center gap-2 rounded-lg bg-blue-500/20 border border-blue-500/40 text-blue-500 hover:bg-blue-500/30 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
-                                                                        title="Review uploaded draft"
-                                                                    >
-                                                                        <Eye className="h-4 w-4" />
-                                                                        Review
-                                                                    </button>
-                                                                ) : (
-                                                                    <div className="flex items-center gap-2 flex-wrap">
+                                                                <div className="flex items-center gap-2 flex-wrap">
+                                                                    {['completed', 'approved', 'completed_pending_payment'].includes(project.status) ? (
+                                                                        <button
+                                                                            onClick={() => setSelectedProjectDetails(project)}
+                                                                            className="h-8 px-3 inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/30 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
+                                                                            title="View completed project details"
+                                                                        >
+                                                                            <CheckCircle2 className="h-3.5 w-3.5" />
+                                                                            Project Details
+                                                                        </button>
+                                                                    ) : projectRevisions[project.id] ? (
+                                                                        <button
+                                                                            onClick={() => {
+                                                                                setReviewProject(project);
+                                                                                setIsReviewSystemOpen(true);
+                                                                            }}
+                                                                            className="h-8 px-3 inline-flex items-center justify-center gap-1 rounded-lg bg-blue-500/20 border border-blue-500/40 text-blue-500 hover:bg-blue-500/30 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
+                                                                            title="Review uploaded draft"
+                                                                        >
+                                                                            <Eye className="h-3.5 w-3.5" />
+                                                                            Review
+                                                                        </button>
+                                                                    ) : (
                                                                         <button
                                                                             onClick={() => setSelectedProjectDetails(project)}
                                                                             className="h-8 px-3 inline-flex items-center justify-center gap-1 rounded-lg bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
@@ -1661,35 +1675,35 @@ export function EditorDashboardV2() {
                                                                             <Eye className="h-3.5 w-3.5" />
                                                                             Details
                                                                         </button>
+                                                                    )}
 
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                if (pmWhatsApp) {
-                                                                                    const link = buildWhatsAppLink(pmWhatsApp);
-                                                                                    if (link) window.open(link, '_blank');
-                                                                                }
-                                                                            }}
-                                                                            disabled={!pmWhatsApp}
-                                                                            className="h-8 px-3 inline-flex items-center justify-center gap-1 rounded-lg bg-green-500/10 border border-green-500/20 text-green-500 hover:bg-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
-                                                                            title="Chat with PM on WhatsApp"
-                                                                        >
-                                                                            <MessageCircle className="h-3.5 w-3.5" />
-                                                                            Chat PM
-                                                                        </button>
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            if (pmWhatsApp) {
+                                                                                const link = buildWhatsAppLink(pmWhatsApp);
+                                                                                if (link) window.open(link, '_blank');
+                                                                            }
+                                                                        }}
+                                                                        disabled={!pmWhatsApp}
+                                                                        className="h-8 px-3 inline-flex items-center justify-center gap-1 rounded-lg bg-green-500/10 border border-green-500/20 text-green-500 hover:bg-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
+                                                                        title="Chat with PM on WhatsApp"
+                                                                    >
+                                                                        <MessageCircle className="h-3.5 w-3.5" />
+                                                                        Chat PM
+                                                                    </button>
 
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                setUploadProject(project);
-                                                                                setIsUploadModalOpen(true);
-                                                                            }}
-                                                                            className="h-8 px-3 inline-flex items-center justify-center gap-1 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-500 hover:bg-orange-500/20 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
-                                                                            title="Upload new draft version"
-                                                                        >
-                                                                            <UploadCloud className="h-3.5 w-3.5" />
-                                                                            Upload Draft
-                                                                        </button>
-                                                                    </div>
-                                                                )}
+                                                                    <button
+                                                                        onClick={() => {
+                                                                            setUploadProject(project);
+                                                                            setIsUploadModalOpen(true);
+                                                                        }}
+                                                                        className="h-8 px-3 inline-flex items-center justify-center gap-1 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-500 hover:bg-orange-500/20 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
+                                                                        title="Upload new draft version"
+                                                                    >
+                                                                        <UploadCloud className="h-3.5 w-3.5" />
+                                                                        Upload Draft
+                                                                    </button>
+                                                                </div>
                                                             </td>
                                                         </tr>
                                                     );

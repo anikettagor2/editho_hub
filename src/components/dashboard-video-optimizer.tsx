@@ -230,7 +230,17 @@ export function DashboardVideo({
             }
           }
 
-          const blob      = new Blob(chunks as unknown as BlobPart[], { type: 'video/mp4' });
+          // Try to get the correct MIME type from the response or fallback
+          let mimeType = response.headers.get('Content-Type') || 'video/mp4';
+          // If the src has a file extension, try to infer type
+          if (mimeType === '' || mimeType === 'application/octet-stream') {
+            if (src.endsWith('.webm')) mimeType = 'video/webm';
+            else if (src.endsWith('.mov')) mimeType = 'video/quicktime';
+            else if (src.endsWith('.mkv')) mimeType = 'video/x-matroska';
+            else if (src.endsWith('.avi')) mimeType = 'video/x-msvideo';
+            else mimeType = 'video/mp4';
+          }
+          const blob      = new Blob(chunks as unknown as BlobPart[], { type: mimeType });
           const objectUrl = URL.createObjectURL(blob);
           globalBlobCache.set(src, objectUrl);
 

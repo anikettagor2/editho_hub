@@ -1,0 +1,140 @@
+# EditoHub Project Detailed Report
+
+## Table of Contents
+1. Overview
+2. Project Structure
+3. File-by-File Analysis
+4. Component Connections & Data Flow
+5. Key Workflows
+6. Technology Stack
+7. Appendix: Type Definitions
+
+---
+
+## 1. Overview
+EditoHub is a premium video editing agency platform built with Next.js, React, TypeScript, Tailwind CSS, Framer Motion, and Firebase. It provides a workflow for uploading raw footage, generating review-ready preview assets, and delivering fast browser playback using a modern video engineering stack. The backend uses Firebase (Firestore, Storage, Cloud Functions) and Google Cloud Transcoder for video processing.
+
+---
+
+## 2. Project Structure
+
+- **README.md**: Project overview, tech stack, workflow diagrams.
+- **package.json**: Dependencies and scripts.
+- **src/**: Main source code.
+  - **app/**: Next.js app directory (routes, layouts, pages).
+  - **components/**: UI components (navbar, footer, home, dashboard, video player, etc.).
+  - **hooks/**: Custom React hooks.
+  - **lib/**: Contexts, Firebase, payment, server utils, video utils.
+  - **providers/**: Context providers.
+  - **types/**: Central TypeScript types for all entities.
+- **functions/**: Firebase Cloud Functions (backend logic, transcoding, notifications, etc.).
+- **scripts/**: Utility scripts.
+- **public/**: Static assets.
+
+---
+
+## 3. File-by-File Analysis
+
+### src/app/
+- **page.tsx**: Home page. Imports and composes UI components (navbar, footer, hero, gallery, etc.) using context providers. Entry point for the landing page.
+- **about/page.tsx**: About page. Uses `AboutContent` component for company philosophy and story.
+- **dashboard/page.tsx**: Dashboard. Renders different dashboards based on user role (client, editor, admin, sales, project manager). Uses authentication context.
+- **login/page.tsx**: Login page. Handles authentication, validation, and redirects. Uses branding and auth context.
+- **portfolio/page.tsx**: Portfolio page. Showcases client work using `ParallaxGallery` and other components.
+- **services/page.tsx**: Services page. Describes services, uses interactive components for presentation.
+- **review/[id]/page.tsx**: Dynamic review page. Fetches revision and project data from Firestore, generates metadata for sharing, and renders the review UI.
+- **review/[id]/client-page.tsx**: Client-side review page. Handles real-time updates, comments, and video playback for guests.
+- **review/[id]/page-new.tsx**: New review page variant. Uses params and Firestore for data, shows review system modal.
+
+### src/components/
+- **navbar.tsx**: Responsive navigation bar. Uses branding and authentication context for dynamic logo and user state.
+- **footer.tsx**: Footer with branding, social links, and contact info.
+- **about-content.tsx**: About page content. Company philosophy, story, and visuals.
+- **home/**: Home page UI components (hero, parallax gallery, timeline, etc.).
+- **dashboard/**: Dashboard UI components (sidebar, header, footer).
+- **ui/**: Reusable UI primitives (buttons, cards, modals, etc.).
+- **video-player.tsx**: Custom video player. Supports Mux and direct video URLs, handles playback, errors, and watermarking.
+
+### src/hooks/
+- **use-intersection-observer.ts**: Custom hook for intersection observer logic.
+- **use-video-transcode-status.ts**: Hook to track video transcoding status.
+- **useAdaptiveVideo.ts**: Hook for adaptive video playback logic.
+
+### src/lib/
+- **context/auth-context.tsx**: Provides authentication state and methods. Integrates with Firebase Auth and Firestore. Used by most pages/components for user state.
+- **context/branding-context.tsx**: Provides branding (logo) state from Firestore. Used by navbar, footer, and other branded components.
+- **firebase/config.ts**: Firebase client initialization (auth, Firestore, storage, functions). Used throughout the app for backend access.
+- **firebase/admin.ts**: Firebase Admin SDK setup for server-side operations.
+- **services/upload-service.ts**: Handles file uploads to Firebase Storage and Mux. Contains logic for routing uploads, progress tracking, and updating Firestore.
+
+### src/types/
+- **schema.ts**: Central TypeScript types for all major entities: User, Project, Revision, Comment, Invoice, Notification, etc. Used throughout the app for type safety and data validation.
+
+---
+
+## 4. Component Connections & Data Flow
+
+- **Home Page**: Composes UI from `components/`, uses context providers for branding and authentication.
+- **Navbar/Footer**: Use branding context for logo, auth context for user state.
+- **Video Upload**: Frontend triggers upload via `UploadService`, which routes to Mux or Firebase based on file type and project date. Updates Firestore with asset URLs.
+- **Review Pages**: Fetch revision/project data from Firestore, render video player and comments. Real-time updates via Firestore listeners.
+- **Dashboard**: Renders different dashboards based on user role, fetches data from Firestore, uses types from `schema.ts`.
+
+---
+
+## 5. Key Workflows
+
+### Authentication
+- Managed via Firebase Auth, with context in `auth-context.tsx`.
+
+### Video Upload & Processing
+- User uploads video via frontend (UI in `components/`).
+- Upload triggers logic in `UploadService`, which routes to Mux or Firebase.
+- Transcoded assets are stored in Firebase Storage.
+- Firestore is updated with asset URLs.
+
+### Review & Playback
+- Frontend loads preview assets using custom video player components.
+- Reviewers can comment, request changes, or approve.
+
+### Project Management
+- Projects, users, revisions, comments, and invoices are all typed in `schema.ts`.
+- Managed via Firestore and surfaced in the dashboard.
+
+### Payments
+- Razorpay integration for payments.
+- Invoice generation and tracking.
+
+---
+
+## 6. Technology Stack
+- **Frontend**: Next.js, React, TypeScript, Tailwind CSS, Framer Motion
+- **Backend**: Firebase (Firestore, Storage, Functions), Google Cloud Transcoder
+- **Video**: Mux, HLS.js, custom video player components
+- **Payments**: Razorpay
+- **Other**: GSAP, Lucide, Sonner, Radix UI, etc.
+
+---
+
+## 7. Appendix: Type Definitions (schema.ts)
+- **User**: All user roles, profile, permissions, and metrics.
+- **Project**: Project metadata, files, status, assignments, audit log, retention lifecycle.
+- **Revision**: Video revision metadata, status, download tracking.
+- **Comment**: Review comments, replies, attachments.
+- **Invoice**: Invoice items, status, client info.
+- **Notification**: Notification types, links, read status.
+- **UploadSession/VideoJob**: Upload and transcoding job tracking.
+
+---
+
+## Connections & Usage
+- All data models are defined in `schema.ts` and used throughout the app.
+- Context providers manage authentication and branding state.
+- UI is modular, with reusable components.
+- Backend integration via Firebase and Google Cloud.
+- Video engineering with custom player components and hooks.
+- Documentation in markdown files for streaming, deployment, caching, and integrations.
+
+---
+
+*This report was generated automatically and covers every major file, its connections, and its role in the EditoHub project. For further details on any specific file or workflow, see the source code or documentation files in the repository.*

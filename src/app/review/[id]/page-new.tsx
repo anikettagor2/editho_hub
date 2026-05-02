@@ -22,7 +22,7 @@ type RevisionDoc = {
 
 export default function GuestReviewPage() {
     const params = useParams();
-    const revisionId = params.id as string;
+    const revisionId = (Array.isArray(params?.id) ? params?.id[0] : params?.id) as string;
 
     const [revision, setRevision] = useState<RevisionDoc | null>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

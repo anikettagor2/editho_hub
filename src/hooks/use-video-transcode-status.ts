@@ -55,8 +55,63 @@ export function useVideoTranscodeStatus(
   });
 
   useEffect(() => {
-    // Only monitor .mov files - other formats play natively
-    if (!storagePath || !isMovFile(fileName)) {
+    if (!storagePath) return;
+
+    // Detect if it's a Mux Asset (mux://uploadId)
+    const isMux = storagePath.startsWith("mux://");
+    
+    if (isMux) {
+      const uploadId = storagePath.replace("mux://", "");
+      
+      // Set initial pending state
+      setState({
+        status: "processing",
+        videoUrl: null,
+        storagePath: storagePath,
+        errorMessage: null,
+      });
+
+      // Listen to the video_jobs/{uploadId} document
+      const jobDocRef = doc(db, "video_jobs", uploadId);
+      const unsubscribe = onSnapshot(
+        jobDocRef,
+        (snapshot) => {
+          if (!snapshot.exists()) {
+            setState({
+              status: "pending",
+              videoUrl: null,
+              storagePath: storagePath,
+              errorMessage: null,
+            });
+            return;
+          }
+
+          const data = snapshot.data();
+          // Mux jobs use 'processing', 'ready', 'complete', 'errored'
+          // Map them to TranscodeStatus: 'pending' | 'processing' | 'ready' | 'error'
+          let status: TranscodeStatus = "processing";
+          if (data.status === "ready" || data.status === "complete") status = "ready";
+          if (data.status === "errored" || data.status === "error") status = "error";
+          if (data.status === "uploading") status = "processing";
+
+          setState({
+            status,
+            videoUrl: data.playbackId || null, // For Mux, we store playbackId
+            storagePath: storagePath,
+            errorMessage: data.error || null,
+          });
+        },
+        (error) => {
+          console.error("[useMuxStatus] Listener error:", error);
+          setState({ status: "error", videoUrl: null, storagePath, errorMessage: "Failed to load status" });
+        }
+      );
+
+      return () => unsubscribe();
+    }
+
+    // LEGACY: Only monitor .mov files - other formats play natively
+    if (!isMovFile(fileName)) {
       return;
     }
 
@@ -69,7 +124,7 @@ export function useVideoTranscodeStatus(
     setState({
       status: "pending",
       videoUrl: null,
-      storagePath: null,
+      storagePath: storagePath,
       errorMessage: null,
     });
 
@@ -83,7 +138,7 @@ export function useVideoTranscodeStatus(
           setState({
             status: "pending",
             videoUrl: null,
-            storagePath: null,
+            storagePath: storagePath,
             errorMessage: null,
           });
           return;
@@ -130,40 +185,80 @@ export function useVideoTranscodeStatuses(
     const unsubscribers: (() => void)[] = [];
 
     for (const file of files) {
-      if (!file.storagePath || !isMovFile(file.name)) continue;
+      if (!file.storagePath) continue;
 
-      const videoId = deriveVideoId(file.storagePath);
-      if (!videoId) continue;
+      const isMux = file.storagePath.startsWith("mux://");
 
-      const videoDocRef = doc(db, "videos", videoId);
-      const unsub = onSnapshot(
-        videoDocRef,
-        (snapshot) => {
-          setStates((prev) => {
-            const next = new Map(prev);
-            if (!snapshot.exists()) {
-              next.set(file.storagePath!, {
-                status: "pending",
-                videoUrl: null,
-                storagePath: null,
-                errorMessage: null,
-              });
-            } else {
-              const data = snapshot.data();
-              next.set(file.storagePath!, {
-                status: data.status as TranscodeStatus || "processing",
-                videoUrl: data.videoUrl || null,
-                storagePath: data.storagePath || null,
-                errorMessage: data.errorMessage || null,
-              });
-            }
-            return next;
-          });
-        },
-        (error) => {
-          console.error("[useVideoTranscodeStatuses] Listener error:", error);
-        }
-      );
+      if (isMux) {
+        const uploadId = file.storagePath.replace("mux://", "");
+        const jobDocRef = doc(db, "video_jobs", uploadId);
+        
+        const unsub = onSnapshot(
+          jobDocRef,
+          (snapshot) => {
+            setStates((prev) => {
+              const next = new Map(prev);
+              if (!snapshot.exists()) {
+                next.set(file.storagePath!, {
+                  status: "pending",
+                  videoUrl: null,
+                  storagePath: file.storagePath!,
+                  errorMessage: null,
+                });
+              } else {
+                const data = snapshot.data();
+                let status: TranscodeStatus = "processing";
+                if (data.status === "ready" || data.status === "complete") status = "ready";
+                if (data.status === "errored" || data.status === "error") status = "error";
+                if (data.status === "uploading") status = "processing";
+
+                next.set(file.storagePath!, {
+                  status,
+                  videoUrl: data.playbackId || null,
+                  storagePath: file.storagePath!,
+                  errorMessage: data.error || null,
+                });
+              }
+              return next;
+            });
+          }
+        );
+        unsubscribers.push(unsub);
+      } else if (isMovFile(file.name)) {
+        const videoId = deriveVideoId(file.storagePath);
+        if (!videoId) continue;
+
+        const videoDocRef = doc(db, "videos", videoId);
+        const unsub = onSnapshot(
+          videoDocRef,
+          (snapshot) => {
+            setStates((prev) => {
+              const next = new Map(prev);
+              if (!snapshot.exists()) {
+                next.set(file.storagePath!, {
+                  status: "pending",
+                  videoUrl: null,
+                  storagePath: file.storagePath!,
+                  errorMessage: null,
+                });
+              } else {
+                const data = snapshot.data();
+                next.set(file.storagePath!, {
+                  status: data.status as TranscodeStatus || "processing",
+                  videoUrl: data.videoUrl || null,
+                  storagePath: data.storagePath || null,
+                  errorMessage: data.errorMessage || null,
+                });
+              }
+              return next;
+            });
+          },
+          (error) => {
+            console.error("[useVideoTranscodeStatuses] Listener error:", error);
+          }
+        );
+        unsubscribers.push(unsub);
+      }
 
       // Set initial pending state
       setStates((prev) => {
@@ -171,13 +266,11 @@ export function useVideoTranscodeStatuses(
         next.set(file.storagePath!, {
           status: "pending",
           videoUrl: null,
-          storagePath: null,
+          storagePath: file.storagePath!,
           errorMessage: null,
         });
         return next;
       });
-
-      unsubscribers.push(unsub);
     }
 
     return () => {

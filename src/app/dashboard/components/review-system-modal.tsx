@@ -1,4 +1,6 @@
+
 "use client";
+import { UploadDraftModal } from "./upload-draft-modal";
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Modal } from "@/components/ui/modal";
@@ -107,13 +109,19 @@ function formatDate(timestamp: number): string {
     return date.toLocaleDateString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
 }
 
-function getMuxPlaybackSource(revision: RevisionDoc | null | undefined): string {
-    if (!revision) return "";
-    if (revision.playbackId) return `https://stream.mux.com/${revision.playbackId}.m3u8`;
-    return revision.hlsUrl || "";
+
+// Helper to extract playback source
+function getVideoSource(revision: RevisionDoc | null | undefined): { playbackId?: string; videoUrl?: string } {
+    if (!revision) return {};
+    return {
+        playbackId: revision.playbackId,
+        videoUrl: revision.videoUrl
+    };
 }
 
 export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = false, guestName, defaultRevisionId }: ReviewSystemModalProps) {
+    // Track multiple open upload modals
+    const [openDraftModals, setOpenDraftModals] = useState<Array<{ id: string }>>([]);
     const { user } = useAuth();
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const isClient = user?.role === "client";
@@ -173,10 +181,6 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
         () => revisions.find((r) => r.id === selectedRevisionId) || null,
         [revisions, selectedRevisionId]
     );
-    const selectedMuxSource = useMemo(
-        () => getMuxPlaybackSource(selectedRevision),
-        [selectedRevision]
-    );
 
     // Mux-First Architecture Detection
     const isModern = useMemo(() => {
@@ -184,18 +188,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
         return project.createdAt >= MUX_CUTOFF_DATE;
     }, [project?.createdAt]);
 
-    const videoSource = useMemo(() => {
-        if (!selectedRevision) return "";
-        const muxSrc = getMuxPlaybackSource(selectedRevision);
-        if (muxSrc) return muxSrc;
-        
-        // If it's a modern project and we have no muxSrc yet, it might be processing
-        if (isModern && !selectedRevision.playbackId) {
-            return "mux://processing";
-        }
-        
-        return selectedRevision.videoUrl || "";
-    }, [selectedRevision, isModern]);
+    const videoInfo = useMemo(() => getVideoSource(selectedRevision), [selectedRevision]);
 
     const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
@@ -259,41 +252,53 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
                 return;
             }
 
-            // Direct download from Firebase Storage URL with no popup/new tab
-            // Firebase Storage URLs support direct downloads via ?alt=media parameter
-            const firebaseUrl = res.downloadUrl;
-            if (!firebaseUrl.includes('firebasestorage.googleapis.com')) {
+            const rawUrl = res.downloadUrl;
+            const isMux = rawUrl.includes('stream.mux.com');
+            const isFirebase = rawUrl.includes('firebasestorage.googleapis.com');
+
+            if (!isMux && !isFirebase) {
                 toast.error("Invalid download URL. Please try again.");
                 setIsDownloading(false);
                 return;
             }
 
-            // Ensure the URL has the direct download parameter
-            const downloadUrl = firebaseUrl.includes('alt=media') 
-                ? firebaseUrl 
-                : `${firebaseUrl}${firebaseUrl.includes('?') ? '&' : '?'}alt=media`;
+            let finalDownloadUrl = rawUrl;
 
-            // Fetch the file as a blob and trigger download
-            const response = await fetch(downloadUrl);
-            if (!response.ok) throw new Error('Failed to fetch file for download.');
-            const blob = await response.blob();
-            const url = window.URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `${project.name || 'video'}_v${selectedRevision.version || 1}.mp4`;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            window.URL.revokeObjectURL(url);
-            // const downloadLink = document.createElement('a');
-            // downloadLink.href = url;
-            // downloadLink.setAttribute('download', `${project.name || 'video'}_v${selectedRevision.version || 1}.mp4`);
-            // document.body.appendChild(downloadLink);
-            // downloadLink.click();
-            // document.body.removeChild(downloadLink);
-            // window.URL.revokeObjectURL(url);
-            
-            toast.success("Download started in your browser.");
+            // Handle Firebase Storage specific download parameters
+            if (isFirebase && !finalDownloadUrl.includes('alt=media')) {
+                finalDownloadUrl = `${finalDownloadUrl}${finalDownloadUrl.includes('?') ? '&' : '?'}alt=media`;
+            }
+
+            // Trigger the download
+            try {
+                const response = await fetch(finalDownloadUrl);
+                if (!response.ok) throw new Error('Failed to fetch file for download.');
+                
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                
+                // Set descriptive filename
+                const extension = isMux ? 'mp4' : 'mp4'; // Default to mp4
+                link.download = `${project.name || 'video'}_v${selectedRevision.version || 1}.${extension}`;
+                
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+                
+                toast.success("Download started.");
+            } catch (fetchError) {
+                console.error("Fetch download error:", fetchError);
+                // Fallback for Mux if blob fetch fails (CORS etc)
+                if (isMux) {
+                    window.open(finalDownloadUrl, '_blank');
+                    toast.success("Opening download in new tab...");
+                } else {
+                    throw fetchError;
+                }
+            }
         } catch (error) {
             console.error("Download error:", error);
             toast.error("An error occurred while downloading.");
@@ -497,8 +502,8 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
             const next = snap.docs.map(d => ({ id: d.id, ...d.data() } as RevisionDoc)).sort((a,b) => (b.version || 0) - (a.version || 0));
             setRevisions(next);
             next.forEach(r => {
-                const src = getMuxPlaybackSource(r);
-                if (src) warmVideoInMemory(src);
+                // Preload video if videoUrl exists
+                if (r.videoUrl) warmVideoInMemory(r.videoUrl);
             });
             if (next.length > 0) {
                 setSelectedRevisionId(curr => {
@@ -511,38 +516,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
         return () => unsub();
     }, [isOpen, project?.id, defaultRevisionId]);
 
-    // Mux Sync Polling (Fall-through for localized builds)
-    useEffect(() => {
-        if (!isOpen || !selectedRevisionId || !user) return;
-        const rev = revisions.find(r => r.id === selectedRevisionId);
-        if (!rev || rev.playbackId || rev.hlsUrl) return;
 
-        let active = true;
-        const check = async () => {
-            if (!active) return;
-            try {
-                const q = query(collection(db, "video_jobs"), where("revisionId", "==", selectedRevisionId));
-                const snap = await getDocs(q);
-                if (snap.empty) {
-                    if (active) setTimeout(check, 10000);
-                    return;
-                }
-                const jobDoc = snap.docs.find(d => d.id !== selectedRevisionId && d.id.length !== 20) || snap.docs.find(d => d.id !== selectedRevisionId);
-                if (jobDoc?.id) {
-                    const res = await fetch("/api/syncMuxVideo", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ uploadId: jobDoc.id, revisionId: selectedRevisionId })
-                    });
-                    const data = await safeJsonParse(res);
-                    if (data.success && data.playbackId) active = false;
-                }
-            } catch (e) {}
-            if (active) setTimeout(check, 5000);
-        };
-        check();
-        return () => { active = false; };
-    }, [isOpen, selectedRevisionId, revisions, user]);
 
     // Firestore project sync
     useEffect(() => {
@@ -591,6 +565,21 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
                                 v{rev.version || "?"}
                             </button>
                         ))}
+                        {/* Upload Another Draft button for editors */}
+                        {isEditor && project?.id && (
+                            <button
+                                onClick={() =>
+                                    setOpenDraftModals((prev) => [
+                                        ...prev,
+                                        { id: `${Date.now()}-${Math.random()}` },
+                                    ])
+                                }
+                                className="ml-2 px-4 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white hover:bg-emerald-700 transition-all"
+                                title="Upload Another Draft"
+                            >
+                                + Upload Another Draft
+                            </button>
+                        )}
                     </div>
 
                     <div className="flex items-center gap-2">
@@ -612,8 +601,8 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
 
                 <div className="relative rounded-2xl border border-border/50 bg-black overflow-hidden shadow-2xl aspect-video">
                     <VideoPlayer
-                        videoPath={videoSource}
-                        playbackId={selectedRevision?.playbackId}
+                        playbackId={videoInfo.playbackId}
+                        videoPath={videoInfo.videoUrl}
                         title={`Revision v${selectedRevision?.version}`}
                         watermark={project?.clientName || project?.name}
                         onTimeUpdate={setCurrentTime}
@@ -754,7 +743,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
                                 value={newComment}
                                 onChange={(e) => setNewComment(e.target.value)}
                                 placeholder={activeTab === 'timeline' ? "Type a comment at this timestamp..." : "Message editor directly..."}
-                                className="w-full text-sm bg-transparent border-none resize-none focus:outline-none min-h-[60px]"
+                                className="w-full text-sm bg-transparent border-none resize-none focus:outline-none min-h-15"
                             />
                             {activeTab === 'timeline' && (
                                 <div className="absolute right-0 bottom-0 text-[10px] font-black text-primary bg-primary/10 px-2 py-1 rounded-md mb-2 mr-2">
@@ -814,7 +803,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
     if (guestPreview) {
         return (
             <div className="min-h-screen bg-background p-6 md:p-8">
-                <div className="max-w-[1600px] mx-auto space-y-8">
+                <div className="max-w-400 mx-auto space-y-8">
                     <div className="flex items-center justify-between">
                         <div className="space-y-1">
                             <h1 className="text-3xl font-black text-foreground flex items-center gap-3">
@@ -842,6 +831,22 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
                     {uiContent}
                 </div>
             </Modal>
+            {/* Multiple Upload Draft Modals */}
+            {project?.id && openDraftModals.map((modal, idx) => (
+                <UploadDraftModal
+                    key={modal.id}
+                    isOpen={true}
+                    projectId={project.id}
+                    projectName={project.name || ""}
+                    onClose={() =>
+                        setOpenDraftModals((prev) => prev.filter((m) => m.id !== modal.id))
+                    }
+                    onSuccess={() => {
+                        setOpenDraftModals((prev) => prev.filter((m) => m.id !== modal.id));
+                        // Optionally, refresh revisions here if needed
+                    }}
+                />
+            ))}
 
             {/* Payment Modal */}
             <Modal

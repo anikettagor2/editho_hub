@@ -355,7 +355,7 @@ export function AdminDashboard() {
   const { user: currentUser } = useAuth();
   const searchParams = useSearchParams();
   const initialTab =
-    (searchParams.get("tab") as
+    (searchParams?.get("tab") as
       | "overview"
       | "projects"
       | "users"

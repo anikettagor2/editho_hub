@@ -83,7 +83,6 @@ export function DraftReviewModal({
                             <div className="rounded-xl overflow-hidden border border-border bg-black shadow-2xl">
                                 <VideoPlayer
                                     videoPath={revision.videoUrl}
-                                    playbackId={revision.playbackId}
                                     title={`Draft v${revision.version}`}
                                     className="w-full"
                                 />

@@ -44,6 +44,7 @@ import {
 import { db } from "@/lib/firebase/config";
 import { collection, query, orderBy, onSnapshot, updateDoc, doc, where, arrayUnion } from "firebase/firestore";
 import { UploadService } from "@/lib/services/upload-service";
+import { UploadDraftModal } from "./upload-draft-modal";
 import { Project, User } from "@/types/schema";
 import { 
     assignEditor,
@@ -156,6 +157,8 @@ function PaymentBadge({ type, paid }: { type: "client" | "editor"; paid: boolean
 }
 
 export function ProjectManagerDashboard() {
+        // Track multiple open upload modals for editor
+        const [openDraftModals, setOpenDraftModals] = useState<Array<{ id: string; projectId?: string; projectName?: string }>>([]);
     const { user } = useAuth();
 
     const [projects, setProjects] = useState<Project[]>([]);
@@ -486,6 +489,20 @@ export function ProjectManagerDashboard() {
 
     return (
         <div className="space-y-8 pb-16">
+            {/* Always-visible Upload Another Draft button for editors */}
+            {user?.role === 'editor' && (
+                <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', margin: '24px 24px 0 0' }}>
+                    <button
+                        className="px-4 py-2 rounded-lg bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 transition-all"
+                        onClick={() => setOpenDraftModals((prev) => [
+                            ...prev,
+                            { id: `${Date.now()}-${Math.random()}` }
+                        ])}
+                    >
+                        + Upload Another Draft
+                    </button>
+                </div>
+            )}
             {/* Header */}
             <motion.div 
                 initial={{ opacity: 0, y: -10 }}
@@ -942,6 +959,18 @@ export function ProjectManagerDashboard() {
                                                     {reviewLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <MessageSquare className="h-3 w-3" />}
                                                     Review
                                                 </button>
+                                                {user?.role === 'editor' && (
+                                                    <button
+                                                        onClick={() => setOpenDraftModals((prev) => [
+                                                            ...prev,
+                                                            { id: `${Date.now()}-${Math.random()}`, projectId: project.id, projectName: project.name || '' }
+                                                        ])}
+                                                        className="h-8 flex items-center gap-1.5 px-3 rounded-md bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-700 transition-colors cursor-pointer active:scale-95"
+                                                        style={{ marginLeft: '8px' }}
+                                                    >
+                                                        + Upload Another Draft
+                                                    </button>
+                                                )}
                                                 <DropdownMenu>
                                                     <DropdownMenuTrigger asChild>
                                                         <button className="h-8 w-8 flex items-center justify-center rounded-md hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer active:scale-95">
@@ -1951,6 +1980,28 @@ export function ProjectManagerDashboard() {
 
                         {/* Sidebar - Financials & History */}
                         <div className="space-y-5">
+                            {/* Editor Upload Draft Button */}
+                            {user?.role === 'editor' && (
+                inspectProject ? (
+                    <button
+                        className="w-full mb-3 py-2 rounded-lg bg-emerald-600 text-white font-bold text-xs hover:bg-emerald-700 transition-all"
+                        onClick={() => setOpenDraftModals((prev) => [
+                            ...prev,
+                            { id: `${Date.now()}-${Math.random()}`, projectId: inspectProject.id, projectName: inspectProject.name || '' }
+                        ])}
+                    >
+                        + Upload Another Draft
+                    </button>
+                ) : (
+                    <button
+                        className="w-full mb-3 py-2 rounded-lg bg-gray-300 text-gray-500 font-bold text-xs cursor-not-allowed"
+                        disabled
+                        title="Select a project to upload a draft"
+                    >
+                        + Upload Another Draft
+                    </button>
+                )
+            )}
                             {/* Financials */}
                             <div className="bg-muted/30 border border-border rounded-lg p-4 space-y-4">
                                 <h4 className="text-sm font-semibold text-foreground">Payment Details</h4>
@@ -2043,6 +2094,7 @@ export function ProjectManagerDashboard() {
                 )}
             </Modal>
 
+
             <ReviewSystemModal
                 isOpen={isReviewSystemOpen}
                 onClose={() => setIsReviewSystemOpen(false)}
@@ -2055,6 +2107,20 @@ export function ProjectManagerDashboard() {
                     createdAt: reviewProject.createdAt
                 } : null}
             />
+
+            {/* Multiple Upload Draft Modals for Editor */}
+            {openDraftModals
+                .filter((modal) => modal.projectId && modal.projectName)
+                .map((modal) => (
+                <UploadDraftModal
+                    key={modal.id}
+                    isOpen={true}
+                    projectId={modal.projectId!}
+                    projectName={modal.projectName!}
+                    onClose={() => setOpenDraftModals((prev) => prev.filter((m) => m.id !== modal.id))}
+                    onSuccess={() => setOpenDraftModals((prev) => prev.filter((m) => m.id !== modal.id))}
+                />
+            ))}
 
         </div>
     );

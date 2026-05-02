@@ -88,7 +88,8 @@ function isVideoFile(file: any) {
 }
 
 export default function ProjectDetailsPage() {
-    const { id } = useParams();
+    const params = useParams();
+    const id = Array.isArray(params?.id) ? params.id[0] : params?.id;
     const router = useRouter();
     const { user, loading: authLoading } = useAuth();
     const [project, setProject] = useState<ExtendedProject | null>(null);
