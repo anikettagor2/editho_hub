@@ -10,6 +10,7 @@ import {
     where,
     onSnapshot,
     addDoc,
+    getDocs,
 } from "firebase/firestore";
 import {
     Loader2,
@@ -33,6 +34,7 @@ type RevisionData = {
     playbackId?: string;
     hlsUrl?: string;
     videoUrl?: string;
+    fileSize?: number;
     description?: string;
     createdAt?: number;
 };

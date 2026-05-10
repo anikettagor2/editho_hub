@@ -3,15 +3,16 @@ import { adminDb } from "@/lib/firebase/admin";
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: { uploadId: string } }
+    { params }: { params: Promise<{ uploadId: string }> }
 ) {
-    const uploadId = params.uploadId;
-
-    if (!uploadId) {
-        return NextResponse.json({ error: "Missing uploadId" }, { status: 400 });
-    }
-
     try {
+        const resolvedParams = await params;
+        const uploadId = resolvedParams.uploadId;
+
+        if (!uploadId) {
+            return NextResponse.json({ error: "Missing uploadId" }, { status: 400 });
+        }
+
         // We track jobs in the 'video_jobs' collection, keyed by either Mux Upload ID or our Revision ID
         const jobRef = adminDb.collection("video_jobs").doc(uploadId);
         const jobSnap = await jobRef.get();

@@ -1,148 +1,257 @@
 "use client";
 
-import React, { forwardRef, useImperativeHandle, useRef } from "react";
+import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect } from "react";
 import MuxPlayer from "@mux/mux-player-react";
 import { cn } from "@/lib/utils";
+import { Loader2, AlertCircle, Play, Pause, RotateCcw } from "lucide-react";
 
 interface VideoPlayerProps {
-  videoPath?: string; // Legacy/Fallback URL
-  playbackId?: string; // Mux Playback ID
-  thumbnailUrl?: string;
-  title?: string;
-  className?: string;
-  onTimeUpdate?: (currentTime: number, duration: number) => void;
-  onPlaying?: () => void;
-  onPause?: () => void;
-  onError?: (error: Error) => void;
-  onLoadedMetadata?: (duration: number) => void;
-  watermark?: string; // Client/project name to display as watermark
-  primaryColor?: string;
-  accentColor?: string;
-  startTime?: number;
-  metadata?: {
-    video_id?: string;
-    video_title?: string;
-    viewer_user_id?: string;
-    [key: string]: any;
-  };
+    videoPath?: string; // Legacy/Fallback URL
+    playbackId?: string; // Mux Playback ID
+    thumbnailUrl?: string;
+    title?: string;
+    className?: string;
+    onTimeUpdate?: (currentTime: number, duration: number) => void;
+    onPlaying?: () => void;
+    onPause?: () => void;
+    onError?: (error: Error) => void;
+    onLoadedMetadata?: (duration: number) => void;
+    onEnded?: () => void;
+    watermark?: string; // Client/project name to display as watermark
+    primaryColor?: string;
+    accentColor?: string;
+    startTime?: number;
+    autoPlay?: boolean;
+    muted?: boolean;
+    loop?: boolean;
+    metadata?: {
+        video_id?: string;
+        video_title?: string;
+        viewer_user_id?: string;
+        [key: string]: any;
+    };
 }
 
 const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
-  const {
-    videoPath,
-    playbackId,
-    thumbnailUrl,
-    title,
-    className,
-    watermark,
-    primaryColor,
-    accentColor,
-    startTime,
-    metadata,
-    onTimeUpdate,
-    onPlaying,
-    onPause,
-    onError,
-    onLoadedMetadata,
-  } = props;
+    const {
+        videoPath,
+        playbackId,
+        thumbnailUrl,
+        title,
+        className,
+        watermark,
+        primaryColor = "#3b82f6",
+        accentColor = "#3b82f6",
+        startTime = 0,
+        autoPlay = false,
+        muted = false,
+        loop = false,
+        metadata,
+        onTimeUpdate,
+        onPlaying,
+        onPause,
+        onError,
+        onLoadedMetadata,
+        onEnded,
+    } = props;
 
-  const playerRef = useRef<any>(null);
+    const playerRef = useRef<any>(null);
+    const [isLoading, setIsLoading] = useState(true);
+    const [hasError, setHasError] = useState(false);
+    const [retryCount, setRetryCount] = useState(0);
 
-  // Expose the underlying player element via ref
-  useImperativeHandle(ref, () => playerRef.current);
+    // Expose the underlying player element via ref
+    useImperativeHandle(ref, () => playerRef.current);
 
-  // Prioritize Mux Playback ID
-  const isMux = !!playbackId || (videoPath?.startsWith("mux://"));
-  const effectivePlaybackId = playbackId || (videoPath?.startsWith("mux://") ? videoPath.replace("mux://", "") : null);
+    // Prioritize Mux Playback ID
+    const isMux = !!playbackId || (videoPath?.startsWith("mux://"));
+    const effectivePlaybackId = playbackId || (videoPath?.startsWith("mux://") ? videoPath.replace("mux://", "") : null);
 
-  if (!isMux && !videoPath) {
-    return (
-      <div className={cn("group relative w-full aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center", className)}>
-        <div className="text-center text-muted-foreground">No video available</div>
-      </div>
-    );
-  }
+    useEffect(() => {
+        setHasError(false);
+        setIsLoading(true);
+    }, [effectivePlaybackId, videoPath]);
 
-  // Handling Mux "optimizing" state
-  if (isMux && videoPath?.startsWith("mux://") && !playbackId) {
-    return (
-        <div className={cn("group relative w-full aspect-video bg-black rounded-lg overflow-hidden flex flex-col items-center justify-center gap-3", className)}>
-            <div className="w-12 h-12 border-4 border-primary/30 border-t-primary rounded-full animate-spin" />
-            <div className="text-center">
-                <p className="text-sm font-bold text-white uppercase tracking-widest">Optimizing Video</p>
-                <p className="text-[10px] text-white/50 mt-1">Mux is preparing your high-quality stream...</p>
+    const handleRetry = () => {
+        setRetryCount(prev => prev + 1);
+        setHasError(false);
+        setIsLoading(true);
+    };
+
+    if (!isMux && !videoPath) {
+        return (
+            <div className={cn("group relative w-full aspect-video bg-black/90 rounded-2xl overflow-hidden flex flex-col items-center justify-center border border-white/5 shadow-2xl", className)}>
+                <AlertCircle className="h-10 w-10 text-white/20 mb-3" />
+                <div className="text-center">
+                    <p className="text-sm font-bold text-white/40 uppercase tracking-widest">No Video Source</p>
+                    <p className="text-[10px] text-white/20 mt-1">Please upload a file or check the connection</p>
+                </div>
             </div>
+        );
+    }
+
+    // Handling Mux "optimizing" state (waiting for playbackId)
+    if (isMux && videoPath?.startsWith("mux://") && !playbackId) {
+        return (
+            <div className={cn("group relative w-full aspect-video bg-black/95 rounded-2xl overflow-hidden flex flex-col items-center justify-center gap-4 border border-white/5 shadow-2xl", className)}>
+                <div className="relative">
+                    <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                        <Loader2 className="h-6 w-6 text-primary animate-pulse" />
+                    </div>
+                </div>
+                <div className="text-center">
+                    <p className="text-sm font-black text-white uppercase tracking-[0.2em] animate-pulse">Processing Video</p>
+                    <p className="text-[10px] text-white/40 mt-2 font-medium">Generating ultra-high quality renditions...</p>
+                </div>
+                <div className="absolute bottom-6 left-6 right-6 h-1 bg-white/5 rounded-full overflow-hidden">
+                    <motion.div 
+                        initial={{ x: "-100%" }}
+                        animate={{ x: "100%" }}
+                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
+                        className="w-1/2 h-full bg-gradient-to-r from-transparent via-primary to-transparent"
+                    />
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div className={cn(
+            "group relative w-full aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] border border-white/5 transition-all duration-500",
+            hasError ? "border-destructive/30" : "hover:border-primary/30",
+            className
+        )}>
+            {isLoading && !hasError && (
+                <div className="absolute inset-0 z-20 bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-none">
+                    <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                </div>
+            )}
+
+            {hasError ? (
+                <div className="absolute inset-0 z-30 bg-black/80 flex flex-col items-center justify-center gap-4 p-6 text-center">
+                    <div className="h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+                        <AlertCircle className="h-6 w-6 text-destructive" />
+                    </div>
+                    <div>
+                        <h4 className="text-sm font-black text-white uppercase tracking-widest">Playback Failed</h4>
+                        <p className="text-[10px] text-white/50 mt-1 max-w-xs mx-auto">There was a problem loading this video stream. This could be due to network issues or the file being processed.</p>
+                    </div>
+                    <button 
+                        onClick={handleRetry}
+                        className="mt-2 flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 hover:bg-white/20 text-white text-[10px] font-black uppercase tracking-widest transition-all"
+                    >
+                        <RotateCcw className="h-3 w-3" />
+                        Retry Connection
+                    </button>
+                </div>
+            ) : (
+                isMux ? (
+                    <MuxPlayer
+                        ref={playerRef}
+                        playbackId={effectivePlaybackId!}
+                        metadata={{
+                            video_id: metadata?.video_id || effectivePlaybackId,
+                            video_title: metadata?.video_title || title || "Project Video",
+                            viewer_user_id: metadata?.viewer_user_id,
+                            ...metadata
+                        }}
+                        className="w-full h-full object-contain"
+                        streamType="on-demand"
+                        placeholder={thumbnailUrl}
+                        accentColor={accentColor}
+                        primaryColor={primaryColor}
+                        title={title}
+                        startTime={startTime}
+                        autoPlay={autoPlay}
+                        muted={muted}
+                        loop={loop}
+                        onTimeUpdate={(e) => {
+                            const target = e.target as HTMLVideoElement;
+                            onTimeUpdate?.(target.currentTime, target.duration);
+                        }}
+                        onLoadedMetadata={(e) => {
+                            const target = e.target as HTMLVideoElement;
+                            setIsLoading(false);
+                            onLoadedMetadata?.(target.duration);
+                        }}
+                        onPlay={() => {
+                            setIsLoading(false);
+                            onPlaying?.();
+                        }}
+                        onPause={onPause}
+                        onEnded={onEnded}
+                        onError={(e) => {
+                            console.error("Mux Player Error:", e);
+                            setHasError(true);
+                            setIsLoading(false);
+                            onError?.(new Error("Mux Player Error"));
+                        }}
+                    />
+                ) : (
+                    <video
+                        ref={playerRef}
+                        src={videoPath}
+                        controls
+                        className="w-full h-full object-contain"
+                        poster={thumbnailUrl}
+                        autoPlay={autoPlay}
+                        muted={muted}
+                        loop={loop}
+                        onTimeUpdate={(e) => {
+                            const target = e.target as HTMLVideoElement;
+                            onTimeUpdate?.(target.currentTime, target.duration);
+                        }}
+                        onLoadedMetadata={(e) => {
+                            const target = e.target as HTMLVideoElement;
+                            setIsLoading(false);
+                            onLoadedMetadata?.(target.duration);
+                        }}
+                        onPlay={() => {
+                            setIsLoading(false);
+                            onPlaying?.();
+                        }}
+                        onPause={onPause}
+                        onEnded={onEnded}
+                        onError={() => {
+                            setHasError(true);
+                            setIsLoading(false);
+                            onError?.(new Error("Video Fallback Error"));
+                        }}
+                    />
+                )
+            )}
+
+            {/* Premium Watermark Overlay */}
+            {watermark && !hasError && (
+                <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none select-none overflow-hidden">
+                    <div className="grid grid-cols-3 grid-rows-3 w-full h-full opacity-[0.03]">
+                        {Array.from({ length: 9 }).map((_, i) => (
+                            <div key={i} className="flex items-center justify-center rotate-[-30deg]">
+                                <span className="text-xl md:text-2xl font-black text-white uppercase tracking-[0.3em] whitespace-nowrap">
+                                    {watermark}
+                                </span>
+                            </div>
+                        ))}
+                    </div>
+                    {/* Centered Main Watermark */}
+                    <div className="text-center opacity-10 hover:opacity-20 transition-opacity duration-700">
+                        <span className="text-4xl md:text-7xl font-black text-white uppercase tracking-[0.2em] drop-shadow-[0_0_30px_rgba(255,255,255,0.1)]">
+                            {watermark}
+                        </span>
+                    </div>
+                </div>
+            )}
+            
+            {/* Custom Play Overlay for Premium Feel */}
+            {!isLoading && !hasError && (
+                <div className="absolute inset-0 z-5 bg-gradient-to-t from-black/60 via-transparent to-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
+            )}
         </div>
     );
-  }
-
-  return (
-    <div className={cn("group relative w-full aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center shadow-2xl", className)}>
-      {isMux ? (
-        <MuxPlayer
-          ref={playerRef}
-          playbackId={effectivePlaybackId!}
-          metadata={{
-            video_id: metadata?.video_id || playbackId,
-            video_title: metadata?.video_title || title || "Project Video",
-            viewer_user_id: metadata?.viewer_user_id,
-            ...metadata
-          }}
-          className="w-full h-full"
-          streamType="on-demand"
-          placeholder={thumbnailUrl}
-          accentColor={accentColor || "#3b82f6"}
-          primaryColor={primaryColor || "#3b82f6"}
-          title={title}
-          startTime={startTime}
-          onTimeUpdate={(e) => {
-            const target = e.target as HTMLVideoElement;
-            onTimeUpdate?.(target.currentTime, target.duration);
-          }}
-          onLoadedMetadata={(e) => {
-            const target = e.target as HTMLVideoElement;
-            onLoadedMetadata?.(target.duration);
-          }}
-          onPlay={onPlaying}
-          onPause={onPause}
-          onError={() => onError?.(new Error("Mux Player Error"))}
-        />
-      ) : (
-        <video
-          ref={playerRef}
-          src={videoPath}
-          controls
-          className="w-full h-full"
-          poster={thumbnailUrl}
-          onTimeUpdate={(e) => {
-            const target = e.target as HTMLVideoElement;
-            onTimeUpdate?.(target.currentTime, target.duration);
-          }}
-          onLoadedMetadata={(e) => {
-            const target = e.target as HTMLVideoElement;
-            onLoadedMetadata?.(target.duration);
-          }}
-          onPlay={onPlaying}
-          onPause={onPause}
-          onError={() => onError?.(new Error("Video Fallback Error"))}
-        />
-      )}
-
-      {/* Premium Watermark Overlay */}
-      {watermark && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none select-none">
-          <div className="text-center space-y-2 opacity-20 hover:opacity-30 transition-opacity">
-            <span className="text-4xl md:text-6xl font-black text-white/40 uppercase tracking-[0.2em] drop-shadow-[0_0_20px_rgba(0,0,0,0.5)]">
-              {watermark}
-            </span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 });
 
 VideoPlayer.displayName = "VideoPlayer";
 
-export default VideoPlayer;
 export { VideoPlayer };
+export default VideoPlayer;
