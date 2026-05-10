@@ -15,12 +15,14 @@ export async function POST(req: Request) {
             filename
         };
 
+        const assetSettings: any = {
+            playback_policy: ["public"],
+            static_renditions: "standard",
+            passthrough: JSON.stringify(passthroughData),
+        };
+
         const upload = await video.uploads.create({
-            new_asset_settings: {
-                playback_policy: ["public"],
-                static_renditions: "standard" as any,
-                passthrough: JSON.stringify(passthroughData),
-            },
+            new_asset_settings: assetSettings,
             cors_origin: "*",
         });
 
