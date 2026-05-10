@@ -17,7 +17,7 @@ export async function POST(req: Request) {
 
         const assetSettings: any = {
             playback_policy: ["public"],
-            static_renditions: "standard",
+            static_renditions: [{ resolution: "highest" }],
             passthrough: JSON.stringify(passthroughData),
         };
 
