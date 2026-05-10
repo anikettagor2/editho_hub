@@ -59,7 +59,7 @@ export default function UploadRevisionPage() {
             }
         }).use(AwsS3Multipart, {
             limit: 64, // Absolute maximum concurrency for lightning fast speed
-            chunkSize: 50 * 1024 * 1024, // 50MB chunks for extreme throughput
+            getChunkSize: (file) => 50 * 1024 * 1024, // 50MB chunks for extreme throughput
             shouldUseMultipart: true,
             retryDelays: [0, 1000, 3000, 5000],
             createMultipartUpload: async (file) => {
