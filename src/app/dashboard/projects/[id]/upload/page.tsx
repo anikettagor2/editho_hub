@@ -43,6 +43,8 @@ export default function UploadRevisionPage() {
     const [playbackId, setPlaybackId] = useState<string | null>(null);
     const [isComplete, setIsComplete] = useState(false);
     const [revisionId, setRevisionId] = useState<string | null>(null);
+    const [isUploading, setIsUploading] = useState(false);
+    const [uploadProg, setUploadProg] = useState<UploadProgress | null>(null);
 
     const lastUpdateRef = useRef<number>(0);
     const progressSamples = useRef<{ time: number, bytes: number }[]>([]);
