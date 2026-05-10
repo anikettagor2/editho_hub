@@ -4,6 +4,7 @@ import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect } f
 import MuxPlayer from "@mux/mux-player-react";
 import { cn } from "@/lib/utils";
 import { Loader2, AlertCircle, Play, Pause, RotateCcw } from "lucide-react";
+import { motion } from "framer-motion";
 
 interface VideoPlayerProps {
     videoPath?: string; // Legacy/Fallback URL
