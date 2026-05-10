@@ -3,7 +3,7 @@ import { adminDb } from "@/lib/firebase/admin";
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: Promise<{ uploadId: string }> }
+    { params }: { params: any }
 ) {
     try {
         const resolvedParams = await params;
