@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { forwardRef, useImperativeHandle, useRef } from "react";
 import MuxPlayer from "@mux/mux-player-react";
 import { cn } from "@/lib/utils";
 
@@ -18,6 +18,7 @@ interface VideoPlayerProps {
   watermark?: string; // Client/project name to display as watermark
   primaryColor?: string;
   accentColor?: string;
+  startTime?: number;
   metadata?: {
     video_id?: string;
     video_title?: string;
@@ -26,7 +27,7 @@ interface VideoPlayerProps {
   };
 }
 
-function VideoPlayer(props: VideoPlayerProps) {
+const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
   const {
     videoPath,
     playbackId,
@@ -36,6 +37,7 @@ function VideoPlayer(props: VideoPlayerProps) {
     watermark,
     primaryColor,
     accentColor,
+    startTime,
     metadata,
     onTimeUpdate,
     onPlaying,
@@ -43,6 +45,11 @@ function VideoPlayer(props: VideoPlayerProps) {
     onError,
     onLoadedMetadata,
   } = props;
+
+  const playerRef = useRef<any>(null);
+
+  // Expose the underlying player element via ref
+  useImperativeHandle(ref, () => playerRef.current);
 
   // Prioritize Mux Playback ID
   const isMux = !!playbackId || (videoPath?.startsWith("mux://"));
@@ -56,11 +63,7 @@ function VideoPlayer(props: VideoPlayerProps) {
     );
   }
 
-  // If it's a mux:// URL, we might still be waiting for the playback ID from the webhook.
-  // In that case, effectivePlaybackId is actually the uploadId.
-  // MuxPlayer needs a playbackId. If we only have uploadId, we show a processing state.
-  const isActuallyReady = !!playbackId || (isMux && !videoPath?.startsWith("mux://"));
-  
+  // Handling Mux "optimizing" state
   if (isMux && videoPath?.startsWith("mux://") && !playbackId) {
     return (
         <div className={cn("group relative w-full aspect-video bg-black rounded-lg overflow-hidden flex flex-col items-center justify-center gap-3", className)}>
@@ -77,6 +80,7 @@ function VideoPlayer(props: VideoPlayerProps) {
     <div className={cn("group relative w-full aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center shadow-2xl", className)}>
       {isMux ? (
         <MuxPlayer
+          ref={playerRef}
           playbackId={effectivePlaybackId!}
           metadata={{
             video_id: metadata?.video_id || playbackId,
@@ -90,6 +94,7 @@ function VideoPlayer(props: VideoPlayerProps) {
           accentColor={accentColor || "#3b82f6"}
           primaryColor={primaryColor || "#3b82f6"}
           title={title}
+          startTime={startTime}
           onTimeUpdate={(e) => {
             const target = e.target as HTMLVideoElement;
             onTimeUpdate?.(target.currentTime, target.duration);
@@ -103,8 +108,8 @@ function VideoPlayer(props: VideoPlayerProps) {
           onError={() => onError?.(new Error("Mux Player Error"))}
         />
       ) : (
-        // Fallback for legacy videos (Firebase Storage URLs)
         <video
+          ref={playerRef}
           src={videoPath}
           controls
           className="w-full h-full"
@@ -123,7 +128,7 @@ function VideoPlayer(props: VideoPlayerProps) {
         />
       )}
 
-      {/* Premium Watermark Overlay - Center (Visible in fullscreen) */}
+      {/* Premium Watermark Overlay */}
       {watermark && (
         <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none select-none">
           <div className="text-center space-y-2 opacity-20 hover:opacity-30 transition-opacity">
@@ -133,24 +138,11 @@ function VideoPlayer(props: VideoPlayerProps) {
           </div>
         </div>
       )}
-      
-      {/* Processing State for Mux */}
-      {isMux && !playbackId && videoPath?.startsWith("mux://") && (
-        <div className="absolute inset-0 z-40 bg-black/90 flex flex-col items-center justify-center gap-4 backdrop-blur-sm">
-            <div className="relative">
-                <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
-                <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-8 h-8 bg-primary/20 rounded-full animate-pulse" />
-                </div>
-            </div>
-            <div className="text-center">
-                <p className="text-sm font-bold text-white uppercase tracking-widest animate-pulse">Processing High-Quality Stream</p>
-                <p className="text-[10px] text-white/50 mt-1 uppercase tracking-wider font-medium">Adaptive Bitrate & HDR Optimization in progress</p>
-            </div>
-        </div>
-      )}
     </div>
   );
-}
+});
 
+VideoPlayer.displayName = "VideoPlayer";
+
+export default VideoPlayer;
 export { VideoPlayer };
