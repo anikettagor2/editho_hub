@@ -78,10 +78,28 @@ export default function GuestReviewPageClient({ revisionId }: GuestReviewPageCli
     // Comments
     const [comments, setComments] = useState<CommentDoc[]>([]);
     const [newComment, setNewComment] = useState("");
-    const [savingComment, setSavingComment] = useState(false);
+    const [hasSoughtFromUrl, setHasSoughtFromUrl] = useState(false);
+    const playerRef = useRef<any>(null);
+    const commentsEndRef = useRef<HTMLDivElement>(null);
     const [activeTab, setActiveTab] = useState<"timeline" | "direct">("timeline");
 
-    const commentsEndRef = useRef<HTMLDivElement>(null);
+    const [savingComment, setSavingComment] = useState(false);
+    const [allRevisions, setAllRevisions] = useState<RevisionData[]>([]);
+
+    // Initial seek from URL param
+    useEffect(() => {
+        if (!hasSoughtFromUrl && duration > 0 && playerRef.current) {
+            const params = new URLSearchParams(window.location.search);
+            const t = params.get('t');
+            if (t) {
+                const startTime = parseFloat(t);
+                if (!isNaN(startTime)) {
+                    playerRef.current.currentTime = startTime;
+                    setHasSoughtFromUrl(true);
+                }
+            }
+        }
+    }, [duration, hasSoughtFromUrl]);
 
     // ── Load revision by ID directly ───────────────────────────────────────────
     useEffect(() => {
@@ -108,6 +126,19 @@ export default function GuestReviewPageClient({ revisionId }: GuestReviewPageCli
                             setProject({ id: projSnap.id, ...projSnap.data() });
                         }
                     } catch { /* non-critical */ }
+                }
+
+                // Load all revisions for this project
+                if (data.projectId) {
+                    const revsQuery = query(
+                        collection(db, "revisions"),
+                        where("projectId", "==", data.projectId)
+                    );
+                    const revsSnap = await getDocs(revsQuery);
+                    const revs = revsSnap.docs
+                        .map((d) => ({ id: d.id, ...d.data() } as RevisionData))
+                        .sort((a, b) => (b.version || 0) - (a.version || 0));
+                    setAllRevisions(revs);
                 }
 
                 setLoading(false);
@@ -296,12 +327,28 @@ export default function GuestReviewPageClient({ revisionId }: GuestReviewPageCli
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     {/* Left: Video + timeline */}
                     <div className="lg:col-span-8 space-y-4">
-                        {/* Version pill */}
+                        {/* Version selector */}
                         <div className="flex items-center gap-3">
-                            <span className="text-sm text-muted-foreground font-bold uppercase tracking-widest">Draft Versions</span>
-                            <span className="px-3 py-1 rounded-lg text-sm font-bold border bg-primary/15 border-primary/40 text-primary">
-                                v{revision.version || "1"}
-                            </span>
+                            <span className="text-sm text-muted-foreground font-bold uppercase tracking-widest">Revisions</span>
+                            <div className="flex flex-wrap gap-2">
+                                {allRevisions.map((rev) => (
+                                    <button
+                                        key={rev.id}
+                                        onClick={() => {
+                                            if (rev.id !== revision.id) {
+                                                window.location.href = `/review/${rev.id}?guest=${guestName}`;
+                                            }
+                                        }}
+                                        className={`px-3 py-1 rounded-lg text-sm font-bold border transition-all ${
+                                            rev.id === revision.id
+                                                ? "bg-primary border-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105"
+                                                : "bg-muted/40 border-white/5 text-muted-foreground hover:bg-muted/60 hover:text-white"
+                                        }`}
+                                    >
+                                        v{rev.version || "1"}
+                                    </button>
+                                ))}
+                            </div>
                         </div>
 
                         {/* Video player */}

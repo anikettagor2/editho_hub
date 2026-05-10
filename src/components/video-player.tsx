@@ -16,6 +16,14 @@ interface VideoPlayerProps {
   onError?: (error: Error) => void;
   onLoadedMetadata?: (duration: number) => void;
   watermark?: string; // Client/project name to display as watermark
+  primaryColor?: string;
+  accentColor?: string;
+  metadata?: {
+    video_id?: string;
+    video_title?: string;
+    viewer_user_id?: string;
+    [key: string]: any;
+  };
 }
 
 function VideoPlayer(props: VideoPlayerProps) {
@@ -26,7 +34,13 @@ function VideoPlayer(props: VideoPlayerProps) {
     title,
     className,
     watermark,
+    primaryColor,
+    accentColor,
+    metadata,
     onTimeUpdate,
+    onPlaying,
+    onPause,
+    onError,
     onLoadedMetadata,
   } = props;
 
@@ -60,18 +74,22 @@ function VideoPlayer(props: VideoPlayerProps) {
   }
 
   return (
-    <div className={cn("group relative w-full aspect-video bg-black rounded-lg overflow-hidden flex items-center justify-center", className)}>
+    <div className={cn("group relative w-full aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center shadow-2xl", className)}>
       {isMux ? (
         <MuxPlayer
           playbackId={effectivePlaybackId!}
           metadata={{
-            video_id: playbackId,
-            video_title: title || "Project Video",
+            video_id: metadata?.video_id || playbackId,
+            video_title: metadata?.video_title || title || "Project Video",
+            viewer_user_id: metadata?.viewer_user_id,
+            ...metadata
           }}
           className="w-full h-full"
           streamType="on-demand"
           placeholder={thumbnailUrl}
-          primaryColor="#3b82f6"
+          accentColor={accentColor || "#3b82f6"}
+          primaryColor={primaryColor || "#3b82f6"}
+          title={title}
           onTimeUpdate={(e) => {
             const target = e.target as HTMLVideoElement;
             onTimeUpdate?.(target.currentTime, target.duration);
@@ -80,6 +98,9 @@ function VideoPlayer(props: VideoPlayerProps) {
             const target = e.target as HTMLVideoElement;
             onLoadedMetadata?.(target.duration);
           }}
+          onPlay={onPlaying}
+          onPause={onPause}
+          onError={() => onError?.(new Error("Mux Player Error"))}
         />
       ) : (
         // Fallback for legacy videos (Firebase Storage URLs)
@@ -96,17 +117,36 @@ function VideoPlayer(props: VideoPlayerProps) {
             const target = e.target as HTMLVideoElement;
             onLoadedMetadata?.(target.duration);
           }}
+          onPlay={onPlaying}
+          onPause={onPause}
+          onError={() => onError?.(new Error("Video Fallback Error"))}
         />
       )}
 
-      {/* Watermark Overlay - Center (Visible in fullscreen) */}
+      {/* Premium Watermark Overlay - Center (Visible in fullscreen) */}
       {watermark && (
-        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none" style={{ position: 'absolute' }}>
-          <div className="text-center space-y-2 opacity-30 select-none pointer-events-none">
-            <span className="text-3xl font-bold text-white/40 uppercase tracking-widest drop-shadow-2xl">
+        <div className="absolute inset-0 z-50 flex items-center justify-center pointer-events-none select-none">
+          <div className="text-center space-y-2 opacity-20 hover:opacity-30 transition-opacity">
+            <span className="text-4xl md:text-6xl font-black text-white/40 uppercase tracking-[0.2em] drop-shadow-[0_0_20px_rgba(0,0,0,0.5)]">
               {watermark}
             </span>
           </div>
+        </div>
+      )}
+      
+      {/* Processing State for Mux */}
+      {isMux && !playbackId && videoPath?.startsWith("mux://") && (
+        <div className="absolute inset-0 z-40 bg-black/90 flex flex-col items-center justify-center gap-4 backdrop-blur-sm">
+            <div className="relative">
+                <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                    <div className="w-8 h-8 bg-primary/20 rounded-full animate-pulse" />
+                </div>
+            </div>
+            <div className="text-center">
+                <p className="text-sm font-bold text-white uppercase tracking-widest animate-pulse">Processing High-Quality Stream</p>
+                <p className="text-[10px] text-white/50 mt-1 uppercase tracking-wider font-medium">Adaptive Bitrate & HDR Optimization in progress</p>
+            </div>
         </div>
       )}
     </div>

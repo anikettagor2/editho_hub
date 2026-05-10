@@ -17,8 +17,6 @@ import { warmVideoInMemory } from "@/lib/video-preload";
 import { VideoPlayer } from "@/components/video-player";
 import { safeJsonParse, cn } from "@/lib/utils";
 
-// Mux Architecture Cutoff Date: April 12, 2026
-const MUX_CUTOFF_DATE = 1775952000000;
 
 type ReviewProject = {
     id: string;
@@ -182,11 +180,6 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
         [revisions, selectedRevisionId]
     );
 
-    // Mux-First Architecture Detection
-    const isModern = useMemo(() => {
-        if (!project?.createdAt) return false;
-        return project.createdAt >= MUX_CUTOFF_DATE;
-    }, [project?.createdAt]);
 
     const videoInfo = useMemo(() => getVideoSource(selectedRevision), [selectedRevision]);
 

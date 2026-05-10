@@ -1,7 +1,7 @@
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { storage, db } from "@/lib/firebase/config";
-import { doc, getDoc, setDoc, updateDoc, FieldValue } from "firebase/firestore";
-
+import { storage } from "@/lib/firebase/config";
+import Uppy from '@uppy/core';
+import AwsS3Multipart from '@uppy/aws-s3';
 
 export interface UploadProgress {
   percent: number;
@@ -24,7 +24,8 @@ export interface UploadOptions {
 export class UploadService {
   /**
    * Main entry point for file uploads.
-   * Routes to Mux for videos and Firebase Storage for others.
+   * Client project creation uploads go to Firebase Storage.
+   * Editor revisions go to AWS S3 Multipart + Mux.
    */
   static async uploadFileUnified(
     file: File,
@@ -32,10 +33,6 @@ export class UploadService {
     onProgressLegacy?: (progress: number) => void,
     maybeOptions?: Partial<UploadOptions>
   ): Promise<string> {
-    const videoExtensions = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'm4v', '3gp', 'qt', 'flv', 'wmv'];
-    const isVideo = file.type.startsWith('video/') ||
-      videoExtensions.some(ext => file.name.toLowerCase().endsWith('.' + ext));
-
     let options: UploadOptions;
 
     if (typeof projectIdOrOptions === 'string') {
@@ -52,78 +49,13 @@ export class UploadService {
       options = projectIdOrOptions;
     }
 
-    // ROUTING LOGIC (Mux-First):
-    // 1. All Videos (Revisions or Raw) -> Mux
-    // 2. Non-video assets -> Firebase Storage
-    console.log(`[UploadService] Unified Upload Start: ${file.name} (${file.size} bytes), Type: ${options.type}, isVideo: ${isVideo}`);
-
-    if (isVideo) {
-      console.log(`[UploadService] Routing ${options.type} video upload to Mux for project ${options.projectId}`);
-      return this.uploadToMux(file, options);
+    if (options.type === 'revision') {
+      console.log(`[UploadService] Routing ${options.type} upload to AWS S3 Multipart for project ${options.projectId}`);
+      return this.uploadToAwsS3Mux(file, options);
     }
 
-    // All other non-video uploads go to Firebase Storage
-    console.log(`[UploadService] Routing non-video ${options.type} upload to Firebase Storage for project ${options.projectId}`);
+    console.log(`[UploadService] Routing ${options.type} upload to Firebase Storage for project ${options.projectId}`);
     return this.uploadToFirebase(file, options);
-  }
-
-  /**
-   * Internal helper to determine if a project should use Mux based on its creation date.
-   * Cutoff: 12/04/2026 (April 12, 2026)
-   */
-  private static async shouldProjectUseMux(projectId: string): Promise<boolean> {
-    // 1. If it's a temporary ID from NewProjectPage (starts with req_), it's a new project.
-    if (!projectId) return true;
-    if (projectId.startsWith('req_')) return true;
-
-    try {
-      // 2. Fetch project metadata
-      const projectDoc = await getDoc(doc(db, "projects", projectId));
-      if (!projectDoc.exists()) {
-        console.warn(`[UploadService] Project ${projectId} not found in Firestore. Defaulting to Mux.`);
-        return true;
-      }
-
-      const projectData = projectDoc.data();
-      const rawCreatedAt = projectData.createdAt;
-      
-      // Robust normalization of createdAt
-      let createdAt = 0;
-      if (typeof rawCreatedAt === 'number') {
-        createdAt = rawCreatedAt;
-      } else if (rawCreatedAt && typeof rawCreatedAt.toMillis === 'function') {
-        createdAt = rawCreatedAt.toMillis();
-      } else if (rawCreatedAt instanceof Date) {
-        createdAt = rawCreatedAt.getTime();
-      } else if (typeof rawCreatedAt === 'string') {
-        createdAt = new Date(rawCreatedAt).getTime();
-      }
-
-      // Cutoff is April 12, 2026
-      // 12/04/2026 formatted as timestamp: 1775952000000
-      const MUX_CUTOFF = 1775952000000; 
-      
-      // If no date found, it's safer to treat it as a new project (Mux)
-      if (!createdAt) {
-          console.warn(`[UploadService] Project ${projectId} has no valid createdAt. Defaulting to Mux.`);
-          return true;
-      }
-
-      const isLegacy = createdAt < MUX_CUTOFF;
-      console.log(`[UploadService] Routing Decision:`, {
-          projectId,
-          createdAt,
-          cutoff: MUX_CUTOFF,
-          isLegacy,
-          action: isLegacy ? 'FIREBASE' : 'MUX'
-      });
-
-      return !isLegacy;
-    } catch (error) {
-      console.error("[UploadService] Error checking project date:", error);
-      // Fail safe: use Mux for new uploads if we can't determine the date
-      return true;
-    }
   }
 
   static async uploadFile(
@@ -135,229 +67,233 @@ export class UploadService {
     return this.uploadFileUnified(file, projectIdOrOptions, onProgressLegacy, maybeOptions);
   }
 
-
   /**
-   * Upload video to Mux via direct upload
+   * Upload video revisions directly to Mux
+   * @deprecated Use uploadToAwsS3Mux for faster parallel uploads
    */
-  private static async uploadToMux(file: File, options: UploadOptions): Promise<string> {
-    const { projectId, revisionId, type, onProgress, onCancelRef } = options;
+  private static async uploadToMuxDirect(file: File, options: UploadOptions): Promise<string> {
+    const passthrough = JSON.stringify({
+      projectId: options.projectId,
+      revisionId: options.revisionId,
+      type: options.type,
+    });
 
-    try {
-      // 1. Get Direct Upload URL from our backend
-      const response = await fetch("/api/mux-upload-url", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId,
-          revisionId,
-          type: type || "revision",
-        }),
-      });
+    // 1. Get Direct Upload URL from our API
+    const response = await fetch('/api/video/upload-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ filename: file.name, passthrough }),
+    });
 
-      if (!response.ok) {
-        throw new Error(`Failed to get Mux upload URL: ${response.statusText}`);
-      }
-
-      const { uploadUrl, uploadId } = await response.json();
-
-      // 2. If it's a revision, update the revision document to "processing" status
-      if (type === 'revision' && revisionId) {
-          await updateDoc(doc(db, "revisions", revisionId), {
-              status: "processing",
-              videoUrl: `mux://${uploadId}`,
-              muxUploadId: uploadId,
-              updatedAt: Date.now()
-          });
-
-          // Create a video job record
-          await setDoc(doc(db, "video_jobs", uploadId), {
-              projectId,
-              revisionId,
-              status: "uploading",
-              type: "revision",
-              createdAt: Date.now(),
-              updatedAt: Date.now()
-          });
-      }
-
-      // 3. Perform the actual upload to Mux
-      console.log(`[UploadService] Starting Mux upload for ${file.name}`);
-      await this.performMuxUpload(
-        file,
-        uploadUrl,
-        uploadId,
-        onProgress,
-        onCancelRef,
-        3600000 // 1 hour timeout for large videos
-      );
-
-      // Return a temporary mux-prefixed URL for UI reference
-      // The webhook will eventually replace this with the real playbackId
-      return `mux://${uploadId}`;
-    } catch (error) {
-      console.error("[UploadService] Mux upload failed:", error);
-      
-      // Update job status to error if we have a revisionId or uploadId
-      if (revisionId) {
-        try {
-          await updateDoc(doc(db, "video_jobs", revisionId), {
-            status: "error",
-            error: error instanceof Error ? error.message : "Upload failed",
-            updatedAt: Date.now()
-          });
-        } catch (dbErr) {
-          console.error("[UploadService] Failed to update job error status:", dbErr);
-        }
-      }
-      
-      throw error;
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(`Failed to get Mux upload URL: ${errorData.details || response.statusText}`);
     }
+
+    const { url, id: uploadId } = await response.json();
+
+    // 2. Perform the upload using XHR to track progress
+    return new Promise((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('PUT', url);
+
+      xhr.upload.onprogress = (event) => {
+        if (event.lengthComputable && options.onProgress) {
+          const percent = (event.loaded / event.total) * 100;
+          options.onProgress({
+            percent,
+            transferred: event.loaded,
+            total: event.total,
+            status: 'uploading'
+          });
+        }
+      };
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          console.log(`[UploadService] Mux Direct upload complete: ${file.name}`);
+          // We return the upload ID prefixed with mux://
+          // The webhook will later update the revision with the actual playbackId
+          resolve(`mux://${uploadId}`);
+        } else {
+          reject(new Error(`Mux upload failed with status ${xhr.status}`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error('Mux upload network error'));
+      xhr.send(file);
+
+      if (options.onCancelRef) {
+        options.onCancelRef(() => {
+          console.log(`[UploadService] Mux upload cancelled: ${file.name}`);
+          xhr.abort();
+        });
+      }
+    });
   }
 
   /**
-   * Perform the actual file upload to Mux with progress tracking, timeout handling, and exponential backoff retries.
+   * Upload video revisions to AWS S3 via Uppy Multipart, then ingest to Mux
+   * Uses parallel chunk transfers for maximum speed.
    */
-  private static async performMuxUpload(
-    file: File,
-    uploadUrl: string,
-    uploadId: string,
-    onProgress: ((progress: UploadProgress) => void) | undefined,
-    onCancelRef: ((cancel: () => void) => void) | undefined,
-    timeout: number,
-    maxRetries: number = 3
-  ): Promise<string> {
-    let attempt = 0;
-    
-    const executeUpload = (): Promise<string> => {
+  private static async uploadToAwsS3Mux(file: File, options: UploadOptions): Promise<string> {
+    console.log(`[UploadService] Initiating Hyper-Threaded Ultra upload for ${file.name} (${this.formatBytes(file.size)})`);
+    return new Promise((resolve, reject) => {
+      const uppy = new Uppy({
+        id: `upload-${Date.now()}`,
+        autoProceed: true,
+        allowMultipleUploadBatches: false,
+        debug: false,
+      }).use(AwsS3Multipart, {
+        limit: 50, // Ultra-high concurrency for lightning fast speed
+        chunkSize: 40 * 1024 * 1024, // 40MB chunks for massive throughput on high bandwidth
+        shouldUseMultipart: true,
+        retryDelays: [0, 1000, 3000, 5000],
+        createMultipartUpload: async (f) => {
+          const response = await fetch('/api/upload/s3/multipart', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'create', filename: f.name, type: f.type }),
+          });
+          if (!response.ok) throw new Error(`Create multipart failed: ${response.status}`);
+          return response.json();
+        },
+        listParts: async (f, { uploadId, key }) => {
+          const response = await fetch('/api/upload/s3/multipart', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'listParts', uploadId, key }),
+          });
+          return response.json();
+        },
+        abortMultipartUpload: async (f, { uploadId, key }) => {
+          await fetch('/api/upload/s3/multipart', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'abort', uploadId, key }),
+          });
+        },
+        signPart: async (f, partData) => {
+          const { uploadId, key, partNumber } = partData;
+          const response = await fetch('/api/upload/s3/multipart', {
+            method: 'PUT',
+            body: JSON.stringify({ uploadId, key, partNumbers: [partNumber] }),
+          });
+          const { presignedUrls } = await response.json();
+          return { url: presignedUrls[partNumber], headers: {} };
+        },
+        // @ts-expect-error missing type in Uppy 
+        prepareUploadParts: async (f: any, partData: any) => {
+          const { uploadId, key } = partData;
+          let numbers: number[] = [];
+          if (partData.partNumbers && Array.isArray(partData.partNumbers)) {
+            numbers = partData.partNumbers;
+          } else if (partData.parts && Array.isArray(partData.parts)) {
+            numbers = partData.parts.map((p: any) => p.number || p.partNumber);
+          } else if (partData.partData && Array.isArray(partData.partData.parts)) {
+            numbers = partData.partData.parts.map((p: any) => p.number || p.partNumber);
+          }
+          const response = await fetch('/api/upload/s3/multipart', {
+            method: 'PUT',
+            body: JSON.stringify({ uploadId, key, partNumbers: numbers }),
+          });
+          if (!response.ok) throw new Error('Failed to sign parts');
+          return response.json();
+        },
+        completeMultipartUpload: async (f, { uploadId, key, parts }) => {
+          const response = await fetch('/api/upload/s3/multipart', {
+            method: 'POST',
+            body: JSON.stringify({ action: 'complete', uploadId, key, parts }),
+          });
+          const { location } = await response.json();
+          
+          const passthrough = JSON.stringify({
+            projectId: options.projectId,
+            revisionId: options.revisionId,
+            type: options.type,
+          });
+
+          const ingestResponse = await fetch('/api/ingest', {
+            method: 'POST',
+            body: JSON.stringify({ url: location, passthrough }),
+          });
+          const ingestData = await ingestResponse.json();
+          
+          if (!ingestResponse.ok) {
+            throw new Error(`Ingest failed: ${ingestData.error} - ${ingestData.details}`);
+          }
+          
+          return { location: ingestData.id };
+        },
+      });
+
       const startTime = Date.now();
       let lastProgressUpdate = 0;
       const PROGRESS_THROTTLE_MS = 200;
-      let timeoutHandle: NodeJS.Timeout | null = null;
 
-      return new Promise((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-
-        const handleTimeout = () => {
-          console.error(`[MuxUpload] [Attempt ${attempt + 1}] Upload timeout after`, timeout, "ms");
-          xhr.abort();
-          reject(new Error(`Mux upload timeout after ${timeout}ms`));
-        };
-        
-        timeoutHandle = setTimeout(handleTimeout, timeout);
-
-        xhr.open("PUT", uploadUrl, true);
-        
-        // Mux requires Content-Type for direct PUT uploads
-        xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
-        
-        // DO NOT set "Connection: keep-alive" as it is a forbidden header in browsers 
-        // and can cause CORS/Security errors.
-
-        xhr.upload.onprogress = (event) => {
-          if (!onProgress || !event.lengthComputable) return;
-
+      uppy.on('upload-progress', (f, progress) => {
+        if (options.onProgress) {
           const now = Date.now();
-          if (now - lastProgressUpdate < PROGRESS_THROTTLE_MS && event.loaded < event.total) {
+          const total = progress.bytesTotal || 0;
+          const uploaded = progress.bytesUploaded || 0;
+
+          if (now - lastProgressUpdate < PROGRESS_THROTTLE_MS && uploaded < total) {
             return;
           }
           lastProgressUpdate = now;
 
           const elapsed = (now - startTime) / 1000;
-          const bytesSent = event.loaded;
-          const bytesTotal = event.total;
-          const speedBps = elapsed > 0 ? bytesSent / elapsed : 0;
-          const remainingBytes = bytesTotal - bytesSent;
+          const speedBps = elapsed > 0 ? uploaded / elapsed : 0;
+          const remainingBytes = total - uploaded;
           const eta = speedBps > 0 ? remainingBytes / speedBps : 0;
-
-          onProgress({
-            percent: (bytesSent / bytesTotal) * 100,
-            transferred: bytesSent,
-            total: bytesTotal,
+          
+          options.onProgress({
+            percent: total > 0 ? (uploaded / total) * 100 : 0,
+            transferred: uploaded,
+            total: total,
             speedBps,
             eta,
             status: 'uploading'
           });
-        };
-
-        xhr.onreadystatechange = () => {
-          if (timeoutHandle) clearTimeout(timeoutHandle);
-          if (xhr.readyState === XMLHttpRequest.LOADING) {
-            timeoutHandle = setTimeout(handleTimeout, timeout);
-          }
-        };
-
-        xhr.onload = () => {
-          if (timeoutHandle) clearTimeout(timeoutHandle);
-
-          if (xhr.status >= 200 && xhr.status < 300) {
-            console.log(`[MuxUpload] [Attempt ${attempt + 1}] Upload successful for ${uploadId}`);
-            
-            if (onProgress) {
-              onProgress({
-                percent: 100,
-                transferred: file.size,
-                total: file.size,
-                status: 'processing'
-              });
-            }
-            resolve(uploadId);
-            return;
-          }
-
-          console.error(`[MuxUpload] [Attempt ${attempt + 1}] PUT failed:`, {
-            status: xhr.status,
-            statusText: xhr.statusText,
-            uploadId,
-            responseText: xhr.responseText?.slice(0, 500)
-          });
-          reject(new Error(`Mux upload failed with status ${xhr.status} ${xhr.statusText}`));
-        };
-
-        xhr.onerror = () => {
-          if (timeoutHandle) clearTimeout(timeoutHandle);
-          console.error(`[MuxUpload] [Attempt ${attempt + 1}] Network error during direct upload`, uploadId);
-          reject(new Error("Mux upload failed due to a network or CORS error."));
-        };
-
-        xhr.onabort = () => {
-          if (timeoutHandle) clearTimeout(timeoutHandle);
-          console.log(`[MuxUpload] [Attempt ${attempt + 1}] Upload cancelled:`, uploadId);
-          reject(new Error("Upload cancelled"));
-        };
-
-        if (onCancelRef) {
-          onCancelRef(() => {
-            if (timeoutHandle) clearTimeout(timeoutHandle);
-            console.log(`[MuxUpload] [Attempt ${attempt + 1}] Cancel requested:`, uploadId);
-            xhr.abort();
-          });
         }
-
-        console.log(`[MuxUpload] [Attempt ${attempt + 1}] Starting PUT upload: ${file.name} (${this.formatBytes(file.size)})`);
-        xhr.send(file);
       });
-    };
 
-    while (attempt <= maxRetries) {
-      try {
-        return await executeUpload();
-      } catch (error) {
-        attempt++;
-        if (attempt > maxRetries || (error instanceof Error && error.message === "Upload cancelled")) {
-          throw error;
+      uppy.on('upload-success', (f, response) => {
+        if (options.onProgress) {
+          options.onProgress({
+            percent: 100, transferred: file.size, total: file.size, status: 'complete'
+          });
         }
-        
-        const delay = Math.min(1000 * Math.pow(2, attempt), 10000); // Max 10s delay
-        console.warn(`[MuxUpload] Upload attempt ${attempt} failed. Retrying in ${delay}ms...`, error);
-        await new Promise(resolve => setTimeout(resolve, delay));
+        console.log(`[UploadService] AWS S3/Mux upload complete: ${file.name}`);
+        // Save the mux asset id in format mux://assetId so UI understands it
+        const muxId = response.body?.location;
+        if (!muxId) {
+          console.error('[UploadService] Upload success but location missing in response body');
+          reject(new Error('Upload failed: Location missing in response'));
+          return;
+        }
+        resolve(`mux://${muxId}`);
+      });
+
+      uppy.on('upload-error', (f, error) => {
+        console.error('[UploadService] Uppy S3 Error:', error);
+        reject(error);
+      });
+
+      if (options.onCancelRef) {
+        options.onCancelRef(() => {
+          console.log(`[UploadService] AWS S3 upload cancelled: ${file.name}`);
+          uppy.cancelAll();
+        });
       }
-    }
-    
-    throw new Error("Mux upload failed after maximum retry attempts.");
+
+      uppy.addFile({
+        name: file.name,
+        type: file.type,
+        data: file,
+      });
+    });
   }
 
   /**
-   * Upload non-video files to Firebase Storage
+   * Upload files to Firebase Storage
    */
   private static async uploadToFirebase(file: File, options: UploadOptions): Promise<string> {
     const { projectId, type, onProgress, storagePath, onCancelRef } = options;
@@ -415,9 +351,6 @@ export class UploadService {
         async () => {
           try {
             const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-            
-            // Non-video files don't trigger the complex revision/transcoding lifecycle
-            // they are just assets. Revisions (videos) now always go through Mux.
             if (onProgress) {
               onProgress({
                 percent: 100,

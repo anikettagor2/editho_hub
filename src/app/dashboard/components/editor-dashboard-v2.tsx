@@ -4,12 +4,11 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/context/auth-context";
 import { db } from "@/lib/firebase/config";
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, getDocs, limit, setDoc } from "firebase/firestore";
-import { Project } from "@/types/schema";
+import { Project, Revision, VideoJob } from "@/types/schema";
 import { cn } from "@/lib/utils";
 import { 
     Loader2,
     Eye,
-    IndianRupee,
     CheckCircle2,
     Clock,
     AlertCircle,
@@ -17,81 +16,104 @@ import {
     Film,
     Check,
     Download,
-    FileStack,
-    Zap,
-    CheckCircle,
     RefreshCw,
-    MessageSquare,
     History,
     FileVideo,
-    FileText,
-    File,
-    Archive,
-    FileIcon,
     Briefcase,
     Banknote,
-    Circle,
     User,
     Mail,
     Users,
-    LinkIcon,
     ArrowRight,
     ExternalLink,
-    Copy,
-    ImageIcon,
     UploadCloud,
     ChevronRight,
     Gauge,
     Timer,
     Layers,
-    ShieldCheck
+    ShieldCheck,
+    X,
+    LayoutDashboard,
+    Wallet,
+    Bell,
+    Settings,
+    LogOut,
+    Plus,
+    Play
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
-import { X } from "lucide-react";
 import { ReviewSystemModal } from "./review-system-modal";
 import { preloadVideosIntoMemory, warmVideoInMemory } from "@/lib/video-preload";
-import { FilePreview } from "@/components/file-preview";
-import { useVideoTranscodeStatus } from "@/hooks/use-video-transcode-status";
-import { IndicatorCard } from "@/components/ui/indicator-card";
 import { VideoPlayer } from "@/components/video-player";
 import { UploadService, UploadProgress } from "@/lib/services/upload-service";
-import { Revision, VideoJob } from "@/types/schema";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_GB } from "@/lib/constants";
 import { handleRevisionUploaded } from "@/app/actions/notification-actions";
+import { useVideoTranscodeStatus } from "@/hooks/use-video-transcode-status";
 
+// --- Components ---
 
-function isVideoResource(resource?: string) {
-    if (!resource) return false;
-    return /\.(mp4|webm|mov|avi|mkv)(\?|$)/i.test(resource);
+function StatusBadge({ status }: { status: string }) {
+    const colors = {
+        active: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+        in_review: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+        completed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+        approved: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
+        completed_pending_payment: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+    } as any;
+
+    const label = status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    
+    return (
+        <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border", colors[status] || "bg-muted text-muted-foreground")}>
+            {label}
+        </span>
+    );
 }
 
-function isVideoFile(file: any) {
-    const type = file?.type || "";
-    const name = file?.name || "";
-    return type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv)$/i.test(name);
+function StatCard({ icon: Icon, label, value, subValue, trend }: any) {
+    return (
+        <motion.div 
+            whileHover={{ y: -5 }}
+            className="p-6 rounded-3xl bg-card border border-border/50 shadow-xl shadow-black/5 relative overflow-hidden group"
+        >
+            <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
+                <Icon size={80} />
+            </div>
+            <div className="flex items-center gap-4 mb-4">
+                <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                    <Icon size={24} />
+                </div>
+                <div className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{label}</div>
+            </div>
+            <div className="flex items-baseline gap-2">
+                <div className="text-3xl font-black text-foreground tracking-tight">{value}</div>
+                {trend && <div className="text-xs font-bold text-emerald-500">{trend}</div>}
+            </div>
+            {subValue && <div className="text-sm text-muted-foreground mt-1">{subValue}</div>}
+        </motion.div>
+    );
 }
+
+// --- Main Dashboard ---
 
 export function EditorDashboardV2() {
     const { user } = useAuth();
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
-    const [previewFile, setPreviewFile] = useState<any | null>(null);
-    const [searchQuery, setSearchQuery] = useState("");
     const [userData, setUserData] = useState<any>(null);
-    const [selectedProjectAssets, setSelectedProjectAssets] = useState<any>(null);
-    const [selectedProjectDetails, setSelectedProjectDetails] = useState<Project | null>(null);
     const [allUsers, setAllUsers] = useState<any>({});
     const [projectRevisions, setProjectRevisions] = useState<Record<string, any>>({});
-    const [isReviewSystemOpen, setIsReviewSystemOpen] = useState(false);
-    const [reviewProject, setReviewProject] = useState<Project | null>(null);
     const [activeTab, setActiveTab] = useState<'projects' | 'finance'>('projects');
-    const [projectTimers, setProjectTimers] = useState<Record<string, number>>({});
-    const [totalPaid, setTotalPaid] = useState(0);
-    const [pendingEarnings, setPendingEarnings] = useState(0);
-
+    const [searchQuery, setSearchQuery] = useState("");
+    
+    // Review/Modal States
+    const [reviewProject, setReviewProject] = useState<Project | null>(null);
+    const [selectedProjectAssets, setSelectedProjectAssets] = useState<Project | null>(null);
+    const [previewVideo, setPreviewVideo] = useState<any | null>(null);
+    
     // Upload State
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
     const [uploadProject, setUploadProject] = useState<Project | null>(null);
@@ -100,13 +122,53 @@ export function EditorDashboardV2() {
     const [uploadDescription, setUploadDescription] = useState("");
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProg, setUploadProg] = useState<UploadProgress | null>(null);
-    const abortRef = useRef<AbortController | (() => void) | null>(null);
+    const abortRef = useRef<(() => void) | null>(null);
 
     useEffect(() => {
-        return () => {
-            if (uploadPreviewUrl) URL.revokeObjectURL(uploadPreviewUrl);
-        };
-    }, [uploadPreviewUrl]);
+        if (!user) return;
+        setLoading(true);
+
+        // Fetch assigned projects
+        const projectsRef = collection(db, "projects");
+        const q = query(projectsRef, where("assignedEditorId", "==", user.uid));
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const fetchedProjects: Project[] = [];
+            snapshot.forEach((pDoc) => {
+                fetchedProjects.push({ id: pDoc.id, ...pDoc.data() } as Project);
+            });
+            
+            fetchedProjects.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+            setProjects(fetchedProjects);
+            setLoading(false);
+
+            // Fetch latest revisions
+            fetchedProjects.forEach(project => {
+                const revisionsRef = collection(db, "revisions");
+                const revQ = query(revisionsRef, where("projectId", "==", project.id), orderBy("version", "desc"), limit(1));
+                getDocs(revQ).then(snap => {
+                    if (!snap.empty) {
+                        setProjectRevisions(prev => ({
+                            ...prev,
+                            [project.id]: { id: snap.docs[0].id, ...snap.docs[0].data() }
+                        }));
+                    }
+                });
+            });
+        });
+
+        // User data
+        const userUnsub = onSnapshot(doc(db, "users", user.uid), d => d.exists() && setUserData(d.data()));
+        
+        // All users for PM info
+        const usersUnsub = onSnapshot(collection(db, "users"), snap => {
+            const map = {} as any;
+            snap.forEach(d => map[d.id] = d.data());
+            setAllUsers(map);
+        });
+
+        return () => { unsubscribe(); userUnsub(); usersUnsub(); };
+    }, [user]);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const f = e.target.files?.[0];
@@ -114,18 +176,6 @@ export function EditorDashboardV2() {
         setUploadFile(f);
         if (uploadPreviewUrl) URL.revokeObjectURL(uploadPreviewUrl);
         setUploadPreviewUrl(URL.createObjectURL(f));
-    };
-
-    const handleCancelUpload = () => {
-        if (abortRef.current) {
-            if (typeof abortRef.current === 'function') {
-                abortRef.current();
-            } else {
-                abortRef.current.abort();
-            }
-        }
-        setIsUploading(false);
-        setUploadProg(null);
     };
 
     const handleStartUpload = async () => {
@@ -144,1979 +194,520 @@ export function EditorDashboardV2() {
 
         try {
             const projectId = uploadProject.id;
-            
-            // 1. Versioning Logic
-            const q = query(
-                collection(db, "revisions"),
-                where("projectId", "==", projectId)
-            );
-            const snap = await getDocs(q);
+            const revisionsRef = collection(db, "revisions");
+            const snap = await getDocs(query(revisionsRef, where("projectId", "==", projectId)));
             let nextVersion = 1;
             if (!snap.empty) {
                 const revisions = snap.docs.map(doc => doc.data() as Revision);
-                const latest = revisions.sort((a, b) => (b.version || 0) - (a.version || 0))[0];
-                nextVersion = (latest.version || 0) + 1;
+                nextVersion = Math.max(...revisions.map(r => r.version || 0)) + 1;
             }
 
-            const revisionRef = doc(collection(db, "revisions"));
-            const revisionId = revisionRef.id;
-
-            // 2. Create the Revision document
-            const newRevision: Revision = {
+            const revisionId = doc(revisionsRef).id;
+            await setDoc(doc(revisionsRef, revisionId), {
                 id: revisionId,
-                projectId: projectId,
+                projectId,
                 version: nextVersion,
-                videoUrl: "", 
+                videoUrl: "",
                 status: "active",
                 uploadedBy: user.uid,
                 createdAt: Date.now(),
                 description: uploadDescription,
-            };
+            });
 
-            await setDoc(revisionRef, newRevision);
+            await setDoc(doc(db, "video_jobs", revisionId), {
+                id: revisionId, projectId, revisionId, status: "uploading", createdAt: Date.now(), updatedAt: Date.now()
+            });
 
-            // 3. Create VideoJob
-            const videoJob: VideoJob = {
-                id: revisionId,
-                projectId: projectId,
-                revisionId,
-                status: "uploading", // Start in uploading state
-                createdAt: Date.now(),
-                updatedAt: Date.now(),
-            };
-            await setDoc(doc(db, "video_jobs", revisionId), videoJob);
-
-            // 4. Perform upload
-            console.log(`[Dashboard] Starting Mux upload with session: ${revisionId}`);
             await UploadService.uploadFileUnified(uploadFile, {
-                projectId: projectId,
+                projectId,
                 revisionId,
                 type: 'revision',
-                onProgress: (progress) => {
-                    setUploadProg(progress);
-                },
-                onCancelRef: (cancel) => {
-                    abortRef.current = cancel;
-                }
+                onProgress: setUploadProg,
+                onCancelRef: cancel => abortRef.current = cancel
             });
 
             await handleRevisionUploaded(projectId);
-            toast.success("Draft uploaded successfully!");
+            toast.success("Revision uploaded successfully!");
             setIsUploadModalOpen(false);
             setUploadFile(null);
             setUploadDescription("");
             if (uploadPreviewUrl) URL.revokeObjectURL(uploadPreviewUrl);
             setUploadPreviewUrl(null);
-        } catch (err: unknown) {
-            if (err instanceof Error && err.name !== "AbortError") {
-                console.error("Upload failed:", err);
-                toast.error("Upload failed. Please try again.");
-            }
+        } catch (err) {
+            console.error("Upload failed:", err);
+            toast.error("Upload failed. Check your connection.");
         } finally {
             setIsUploading(false);
-            setUploadProg(null);
         }
     };
 
-    useEffect(() => {
-        if (!user) return;
-        setLoading(true);
+    const filteredProjects = projects.filter(p => p.name?.toLowerCase().includes(searchQuery.toLowerCase()));
+    const earnings = projects.filter(p => ['completed', 'approved', 'completed_pending_payment'].includes(p.status));
+    const totalPaid = earnings.filter(p => p.editorPaid).reduce((acc, p) => acc + (p.editorPrice || 0), 0);
+    const pendingEarnings = earnings.filter(p => !p.editorPaid).reduce((acc, p) => acc + (p.editorPrice || 0), 0);
 
-        // Fetch assigned projects
-        const projectsRef = collection(db, "projects");
-        const q = query(
-            projectsRef, 
-            where("assignedEditorId", "==", user.uid)
-        );
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const fetchedProjects: Project[] = [];
-            const revisionsMap: Record<string, any> = {};
-            const now = Date.now();
-            
-            snapshot.forEach((pDoc) => {
-                const project = { id: pDoc.id, ...pDoc.data() } as Project;
-                
-                // Filter out expired assignments - don't show if assignment has expired and not yet accepted
-                if (project.assignmentStatus === 'pending' && (project as any).assignmentExpiresAt) {
-                    if (now > (project as any).assignmentExpiresAt) {
-                        // Assignment expired, skip this project
-                        return;
-                    }
-                }
-                
-                // Also skip if assignment status is 'expired'
-                if (project.assignmentStatus === 'expired') {
-                    return;
-                }
-                
-                fetchedProjects.push(project);
-                
-                // Fetch latest revision for this project
-                const revisionsRef = collection(db, "revisions");
-                const revQ = query(
-                    revisionsRef,
-                    where("projectId", "==", project.id),
-                    orderBy("version", "desc"),
-                    limit(1)
-                );
-                
-                getDocs(revQ).then(revSnap => {
-                    if (!revSnap.empty) {
-                        const latestRev = revSnap.docs[0];
-                        revisionsMap[project.id] = {
-                            id: latestRev.id,
-                            ...latestRev.data()
-                        };
-                        setProjectRevisions(prev => ({
-                            ...prev,
-                            [project.id]: revisionsMap[project.id]
-                        }));
-                    }
-                });
-            });
-
-            fetchedProjects.sort((a, b) => {
-                const aUpdated = typeof a.updatedAt === "number" ? a.updatedAt : 0;
-                const bUpdated = typeof b.updatedAt === "number" ? b.updatedAt : 0;
-                return bUpdated - aUpdated;
-            });
-            
-            setProjects(fetchedProjects);
-            setProjectRevisions(revisionsMap);
-            
-            // Recalculate finance totals based on new data
-            const comp = fetchedProjects.filter(p => ['completed', 'approved', 'completed_pending_payment'].includes(p.status));
-            const totalE = comp.reduce((acc, curr) => acc + (curr.editorPrice || 0), 0);
-            const paid = fetchedProjects
-                .filter(p => ['completed', 'approved', 'completed_pending_payment'].includes(p.status) && p.editorPaid)
-                .reduce((acc, p) => acc + (p.editorPrice || 0), 0);
-            const pending = fetchedProjects
-                .filter(p => ['completed', 'approved', 'completed_pending_payment'].includes(p.status) && !p.editorPaid)
-                .reduce((acc, p) => acc + (p.editorPrice || 0), 0);
-            
-            setTotalPaid(paid);
-            setPendingEarnings(pending);
-            
-            setLoading(false);
-        }, (error) => {
-            console.error("[EditorDashboardV2] Failed to subscribe assigned projects", {
-                code: (error as any)?.code,
-                message: error?.message,
-                uid: user.uid,
-            });
-            toast.error("Failed to load assigned projects. Please refresh.");
-            setLoading(false);
-        });
-
-        // Fetch user data
-        const userRef = doc(db, "users", user.uid);
-        const unsubscribeUser = onSnapshot(userRef, (docSnap) => {
-            if (docSnap.exists()) {
-                setUserData(docSnap.data());
-            }
-        });
-
-        // Fetch all users for PM contact info
-        const usersRef = collection(db, "users");
-        const usersQuery = query(usersRef);
-        const unsubscribeUsers = onSnapshot(usersQuery, (snapshot) => {
-            const usersMap: any = {};
-            snapshot.forEach((uDoc) => {
-                usersMap[uDoc.id] = uDoc.data();
-            });
-            setAllUsers(usersMap);
-        });
-
-        return () => { 
-            unsubscribe(); 
-            unsubscribeUser();
-            unsubscribeUsers();
-        };
-    }, [user]);
-
-    // Timer countdown for pending assignments - calculates from assignmentExpiresAt
-    useEffect(() => {
-        const interval = setInterval(() => {
-            // Check if setProjectTimers exists and is a function to avoid race condition
-            if (typeof setProjectTimers === 'function') {
-                setProjectTimers(prev => {
-                    const updated = { ...prev };
-                    let hasActive = false;
-                    
-                    // Recalculate time remaining for each pending project based on assignmentExpiresAt
-                    for (const projectId in updated) {
-                        const project = projects.find(p => p.id === projectId);
-                        if (project && project.assignmentStatus === 'pending') {
-                            const expiresAt = (project as any).assignmentExpiresAt || 0;
-                            const now = Date.now();
-                            const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
-                            
-                            if (remaining > 0) {
-                                updated[projectId] = remaining;
-                                hasActive = true;
-                            } else if (remaining === 0 && updated[projectId] > 0) {
-                                // Timer just expired
-                                handleAssignmentTimeout(projectId);
-                            }
-                        }
-                    }
-                    
-                    return hasActive ? updated : {};
-                });
-            }
-        }, 1000);
-        
-        return () => clearInterval(interval);
-    }, [projects]);
-
-    const handleAssignmentTimeout = async (projectId: string) => {
-        const project = projects.find(p => p.id === projectId);
-        if (!project) return;
-
-        // Check if still pending (cloud function will auto-reject, but we show UI feedback)
-        toast.error(
-            "⏱️ Assignment Time Expired: You did not accept this project within 15 minutes. The PM has been notified automatically.",
-            { duration: 5000 }
-        );
-
-        // Remove from pending state UI
-        setProjectTimers(prev => {
-            const updated = { ...prev };
-            delete updated[projectId];
-            return updated;
-        });
-
-        // Close modal if this project was open
-        if (selectedProjectDetails?.id === projectId) {
-            setSelectedProjectDetails(null);
-        }
-    };
-
-    // Sub-component for asset grid items with transcoding status
-    const AssetGridItem = ({ file, idx, onPreview }: { file: any, idx: number, onPreview: () => void }) => {
-        const transcodeState = useVideoTranscodeStatus(file.storagePath || file.url || "", file.name || "");
-        
-        // Determine if we have a Mux playback ID
-        const isMux = file.storagePath?.startsWith("mux://") || file.url?.startsWith("mux://");
-        const muxPlaybackId = (transcodeState.status === "ready" && isMux) ? transcodeState.videoUrl : null;
-        
-        const effectiveUrl = (transcodeState.status === "ready" && !isMux && transcodeState.videoUrl) 
-            ? transcodeState.videoUrl 
-            : file.url;
-        
-        return (
-            <motion.div 
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: idx * 0.05 }}
-                className="group border border-border rounded-lg overflow-hidden bg-muted/20 hover:bg-muted/40 transition-all relative"
-            >
-                <div className="relative aspect-video bg-black flex items-center justify-center overflow-hidden">
-                    {transcodeState.status === 'processing' && (
-                        <div className="absolute inset-0 z-10 bg-black/40 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2">
-                            <Loader2 className="h-6 w-6 text-white animate-spin" />
-                            <span className="text-[10px] text-white font-bold uppercase tracking-tighter">
-                                {isMux ? "Mux Processing..." : "Optimizing..."}
-                            </span>
-                        </div>
-                    )}
-                    <VideoPlayer 
-                        videoPath={effectiveUrl} 
-                        playbackId={muxPlaybackId || undefined}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        title={file.name || "Video Preview"}
-                    />
-                    <button
-                        onClick={onPreview}
-                        className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity cursor-pointer z-20"
-                    >
-                        <Eye className="h-8 w-8 text-white" />
-                    </button>
-                </div>
-                <div className="p-3">
-                    <div className="flex items-start justify-between gap-1">
-                        <p className="text-sm font-medium text-foreground truncate flex-1">{file.name}</p>
-                        {transcodeState.status === 'ready' && (
-                            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
-                        )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1">
-                        {file.size ? `${(file.size / (1024*1024)).toFixed(2)} MB` : 'N/A'}
-                    </p>
-                    <button
-                        onClick={onPreview}
-                        className={cn(
-                            "mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center gap-1",
-                            transcodeState.status === 'ready' 
-                                ? "bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500/20" 
-                                : "bg-primary/10 text-primary hover:bg-primary/20"
-                        )}
-                    >
-                        <Eye className="h-3 w-3" />
-                        {transcodeState.status === 'ready' ? (isMux ? 'Play Stream' : 'Play Optimized') : 'Play'}
-                    </button>
-                </div>
-            </motion.div>
-        );
-    };
-
-    // Video Player with Optimization Integration
-    const OptimizedVideoModal = ({ file, onClose }: { file: any, onClose: () => void }) => {
-        const transcodeState = useVideoTranscodeStatus(file.storagePath || file.url || "", file.name || "");
-        
-        const isMux = file.storagePath?.startsWith("mux://") || file.url?.startsWith("mux://");
-        const muxPlaybackId = (transcodeState.status === "ready" && isMux) ? transcodeState.videoUrl : null;
-
-        const effectiveUrl = (transcodeState.status === "ready" && !isMux && transcodeState.videoUrl) 
-            ? transcodeState.videoUrl 
-            : file.url;
-        
-        const isOptimized = transcodeState.status === "ready";
-
-        return (
-            <motion.div 
-                key="video-preview-modal"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                className="fixed inset-0 z-[9999] bg-black/95 backdrop-blur-xl flex items-center justify-center p-4 pointer-events-auto" 
-                onClick={onClose}
-            >
-                <motion.div 
-                    initial={{ scale: 0.95 }}
-                    animate={{ scale: 1 }}
-                    exit={{ scale: 0.95 }}
-                    className="relative w-full h-full md:h-auto md:max-w-7xl md:aspect-video bg-black rounded-3xl overflow-hidden shadow-[0_0_200px_rgba(0,0,0,0.8)]" 
-                    onClick={e => e.stopPropagation()}
-                >
-                    <button 
-                        onClick={onClose} 
-                        className="absolute top-6 right-6 h-12 w-12 bg-white/20 hover:bg-white/30 text-white rounded-full flex items-center justify-center backdrop-blur-md z-[10000] transition-all hover:bg-white/40 cursor-pointer active:scale-95"
-                    >
-                        <X className="h-6 w-6" />
-                    </button>
-                    
-                    {isOptimized && (
-                        <div className="absolute top-6 left-6 z-[10000] flex items-center gap-2 px-4 py-2 bg-emerald-500/90 text-white text-xs font-bold rounded-full backdrop-blur-md shadow-lg border border-emerald-400/30">
-                            <CheckCircle2 className="h-4 w-4" />
-                            {isMux ? "Playing Mux Adaptive Stream" : "Playing Optimized MP4"}
-                        </div>
-                    )}
-
-                    {!isOptimized && (file.name?.toLowerCase().endsWith('.mov') || isMux) && (
-                        <div className="absolute top-6 left-6 z-[10000] flex items-center gap-2 px-4 py-2 bg-amber-500/90 text-white text-xs font-bold rounded-full backdrop-blur-md shadow-lg border border-amber-400/30">
-                            <Clock className="h-4 w-4" />
-                            {isMux ? "Mux Processing..." : "Playing Raw .MOV (Optimizing...)"}
-                        </div>
-                    )}
-
-                    <VideoPlayer 
-                        videoPath={effectiveUrl} 
-                        playbackId={muxPlaybackId || undefined}
-                        className="w-full h-full"
-                        title={file.name}
-                    />
-                </motion.div>
-            </motion.div>
-        );
-    };
-
-    // Calculate time remaining when details modal opens for pending projects
-    useEffect(() => {
-        if (selectedProjectDetails?.assignmentStatus === "pending") {
-            const expiresAt = (selectedProjectDetails as any).assignmentExpiresAt || 0;
-            const now = Date.now();
-            const remaining = Math.max(0, Math.floor((expiresAt - now) / 1000));
-            
-            setProjectTimers(prev => ({
-                ...prev,
-                [selectedProjectDetails.id]: remaining
-            }));
-        }
-    }, [selectedProjectDetails?.id, selectedProjectDetails?.assignmentStatus, selectedProjectDetails?.assignmentExpiresAt]);
-
-    useEffect(() => {
-        const urls = projects.flatMap((project) => {
-            const raw = (project.rawFiles || []).filter(isVideoFile).map((file: any) => file?.url);
-            const delivered = (project.deliveredFiles || []).filter(isVideoFile).map((file: any) => file?.url);
-            const pmFiles = ((((project as any).pmFiles || []) as any[]).filter(isVideoFile).map((file) => file?.url));
-            return [...raw, ...delivered, ...pmFiles];
-        });
-
-        preloadVideosIntoMemory(urls, 30);
-    }, [projects]);
-
-    const formatTimeRemaining = (seconds: number) => {
-        const mins = Math.floor(seconds / 60);
-        const secs = seconds % 60;
-        return `${mins}:${secs.toString().padStart(2, '0')}`;
-    };
-
-    const editorStatus = userData?.availabilityStatus || "offline";
-
-    const buildWhatsAppLink = (phoneNumber: string | null | undefined) => {
-        if (!phoneNumber) return null;
-        // Clean and normalize phone number for WhatsApp
-        const cleaned = phoneNumber.replace(/\D/g, '');
-        const isIndia = cleaned.length === 10;
-        const formatted = isIndia ? `91${cleaned}` : cleaned;
-        return `https://wa.me/${formatted}`;
-    };
-
-    const handleAcceptProject = async (projectId: string) => {
-        if (!user?.uid) return;
-        try {
-            await updateDoc(doc(db, "projects", projectId), {
-                assignmentStatus: "accepted",
-                status: "active"
-            });
-            toast.success("Project accepted! You can now upload draft files.");
-            setSelectedProjectDetails(null);
-            setProjectTimers(prev => {
-                const updated = { ...prev };
-                delete updated[projectId];
-                return updated;
-            });
-        } catch (error) {
-            toast.error("Failed to accept project");
-            console.error(error);
-        }
-    };
-
-    const handleRejectProject = async (projectId: string) => {
-        if (!user?.uid) return;
-        
-        // Prompt for rejection reason (required)
-        const reason = window.prompt("Please provide a reason for declining this project:\n\n(This is required and will be shown to the PM)");
-        if (!reason?.trim()) {
-            toast.error("A reason is required to decline the project.");
-            return;
-        }
-        
-        try {
-            const { respondToAssignment } = await import('@/app/actions/admin-actions');
-            const result = await respondToAssignment(projectId, 'rejected', reason.trim());
-            
-            if (result.success) {
-                toast.success("Project declined. PM will be notified with your reason.");
-                setSelectedProjectDetails(null);
-                setProjectTimers(prev => {
-                    const updated = { ...prev };
-                    delete updated[projectId];
-                    return updated;
-                });
-            } else {
-                toast.error(result.error || "Failed to decline project");
-            }
-        } catch (error) {
-            toast.error("Failed to decline project");
-            console.error(error);
-        }
-    };
-
-    const getPMWhatsAppNumber = (project: any) => {
-        const pmId = project.assignedPMId;
-        if (!pmId || !allUsers[pmId]) return null;
-        const pmData = allUsers[pmId];
-        return pmData.whatsappNumber || pmData.phoneNumber;
-    };
-
-    const handleStatusUpdate = async (newStatus: "online" | "offline" | "sleep") => {
-        if (!user?.uid) return;
-        try {
-            await updateDoc(doc(db, "users", user.uid), {
-                availabilityStatus: newStatus,
-                updatedAt: Date.now(),
-            });
-            toast.success(`Status updated to ${newStatus}`);
-        } catch {
-            toast.error("Failed to update status");
-        }
-    };
-
-    // Filter projects based on search
-    const filteredProjects = projects.filter(p =>
-        p.name?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-
-    // Count statistics
-    const activeProjects = projects.filter(p => p.status === 'active');
-    const completedProjects = projects.filter(p => ['completed', 'approved', 'completed_pending_payment'].includes(p.status));
-    const totalEarnings = completedProjects.reduce((acc, curr) => acc + (curr.editorPrice || 0), 0);
-    const selectedProjectPmFiles = selectedProjectDetails
-        ? ((((selectedProjectDetails as any).pmFiles || []) as any[]).length > 0
-            ? (((selectedProjectDetails as any).pmFiles || []) as any[])
-            : (selectedProjectDetails.referenceFiles || []).filter((file: any) => Boolean(file?.uploadedBy)))
-        : [];
-    const selectedProjectStyleReferenceFiles = selectedProjectDetails
-        ? (selectedProjectDetails.referenceFiles || []).filter((file: any) => !file?.uploadedBy)
-        : [];
-    const canEditorDownloadAssets = selectedProjectDetails?.assignmentStatus === 'accepted';
-
-    const getStatusColor = (status: string) => {
-        switch(status) {
-            case 'active': return 'bg-blue-500/10 text-blue-600 dark:text-blue-400';
-            case 'in_review': return 'bg-amber-500/10 text-amber-600 dark:text-amber-400';
-            case 'completed': 
-            case 'completed_pending_payment': return 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400';
-            case 'approved': return 'bg-emerald-600/10 text-emerald-700 dark:text-emerald-300';
-            default: return 'bg-muted text-muted-foreground';
-        }
-    };
-
-    const getStatusIcon = (status: string) => {
-        switch(status) {
-            case 'active': return <Clock className="h-4 w-4" />;
-            case 'in_review': return <AlertCircle className="h-4 w-4" />;
-            case 'completed':
-            case 'completed_pending_payment':
-            case 'approved': return <CheckCircle2 className="h-4 w-4" />;
-            default: return null;
-        }
-    };
-
-    const getStatusLabel = (status: string) => {
-        if (status === 'completed_pending_payment') return 'Completed';
-        return status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
-    };
-
-    const getPaymentStatus = (project: Project) => {
-        if (!['completed', 'approved', 'completed_pending_payment'].includes(project.status)) {
-            return { label: 'Pending', color: 'text-muted-foreground' };
-        }
-        return project.editorPaid 
-            ? { label: 'Paid', color: 'text-emerald-500 font-bold' }
-            : { label: 'Unpaid', color: 'text-amber-500 font-bold' };
-    };
-
-    const triggerDirectDownload = async (url: string, fileName?: string) => {
-        if (!canEditorDownloadAssets) {
-            toast.error("You can download assets only after accepting the project assignment.");
-            return;
-        }
-        
-        const toastId = toast.loading(`Preparing ${fileName || 'file'} for download...`);
-
-        try {
-            // Check if it's a firebase storage URL
-            if (url.includes("firebasestorage.googleapis.com")) {
-                const downloadApiUrl = `/api/downloadProxy?url=${encodeURIComponent(url)}&fileName=${encodeURIComponent(fileName || 'download')}`;
-                // Use window.location.assign to trigger the redirect from API which has Content-Disposition
-                window.location.assign(downloadApiUrl);
-                toast.success("Download started", { id: toastId });
-                return;
-            }
-
-            // Fallback for non-firebase or if above fails
-            const response = await fetch(url);
-            if (!response.ok) throw new Error("Failed to fetch file");
-
-            const blob = await response.blob();
-            const blobUrl = window.URL.createObjectURL(blob);
-            const anchor = document.createElement("a");
-            anchor.href = blobUrl;
-            anchor.download = fileName || "download";
-            document.body.appendChild(anchor);
-            anchor.click();
-            anchor.remove();
-            
-            // Clean up
-            setTimeout(() => window.URL.revokeObjectURL(blobUrl), 100);
-            toast.success("Download started", { id: toastId });
-        } catch (error) {
-            console.error("Download error:", error);
-            // Last resort: simple anchor click
-            const anchor = document.createElement("a");
-            anchor.href = url;
-            anchor.target = "_blank";
-            anchor.download = fileName || "download";
-            document.body.appendChild(anchor);
-            anchor.click();
-            anchor.remove();
-            toast.success("Opening in new tab (Download might start automatically)", { id: toastId });
-        }
-    };
-
-    const triggerAudioDownload = async (url: string, fileName?: string) => {
-        triggerDirectDownload(url, fileName || 'audio');
-    };
-
-    const openFilePreview = (file: any) => {
-        if (isVideoFile(file)) {
-            warmVideoInMemory(file.url);
-            setPreviewFile(file);
-            return;
-        }
-        window.open(file.url, "_blank", "noopener,noreferrer");
-    };
-
-    if (loading) {
-        return (
-            <div className="flex h-[calc(100vh-12rem)] items-center justify-center">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            </div>
-        );
-    }
+    if (loading) return <div className="flex h-[80vh] items-center justify-center"><Loader2 className="animate-spin text-primary" size={40} /></div>;
 
     return (
-        <>
-            {/* Video Preview Modal - Top Level */}
-            <AnimatePresence>
-                {previewFile && (
-                    <OptimizedVideoModal 
-                        file={previewFile}
-                        onClose={() => setPreviewFile(null)}
-                    />
-                )}
-            </AnimatePresence>
-
-            {/* Assets Modal - Upload/Client Videos */}
-            <AnimatePresence>
-                {selectedProjectAssets && (
-                    <motion.div 
-                        key="assets-modal"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[9998] bg-black/60 backdrop-blur-md flex items-center justify-center p-4 pointer-events-auto" 
-                        onClick={() => setSelectedProjectAssets(null)}
-                    >
-                        <motion.div 
-                            initial={{ scale: 0.95, y: 20 }}
-                            animate={{ scale: 1, y: 0 }}
-                            exit={{ scale: 0.95, y: 20 }}
-                            className="relative w-full max-w-4xl bg-card border border-border rounded-2xl overflow-hidden shadow-2xl max-h-[85vh] overflow-y-auto" 
-                            onClick={e => e.stopPropagation()}
-                        >
-                            <div className="sticky top-0 bg-card border-b border-border p-6 flex items-center justify-between z-50">
-                                <div>
-                                    <h2 className="text-xl font-bold text-foreground">{selectedProjectAssets.name}</h2>
-                                    <p className="text-sm text-muted-foreground mt-1">Client Uploaded Video Assets</p>
-                                </div>
-                                <button 
-                                    onClick={() => setSelectedProjectAssets(null)} 
-                                    className="h-10 w-10 bg-muted/30 hover:bg-muted/50 text-foreground rounded-lg flex items-center justify-center transition-colors cursor-pointer active:scale-95"
-                                >
-                                    <X className="h-5 w-5" />
-                                </button>
-                            </div>
-
-                            <div className="p-6 space-y-4">
-                                {selectedProjectAssets.rawFiles && selectedProjectAssets.rawFiles.length > 0 ? (
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                                        {selectedProjectAssets.rawFiles.map((file: any, idx: number) => (
-                                            <AssetGridItem 
-                                                key={idx} 
-                                                file={file} 
-                                                idx={idx} 
-                                                onPreview={() => setPreviewFile(file)} 
-                                            />
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center py-12">
-                                        <Film className="h-12 w-12 text-muted-foreground/30 mx-auto mb-3" />
-                                        <p className="text-muted-foreground">No video assets uploaded yet</p>
-                                    </div>
-                                )}
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            {/* Project Details Modal */}
-            <AnimatePresence>
-                {selectedProjectDetails && (
-                    <motion.div
-                        key="project-details-modal"
-                        initial={{ opacity: 0 }}
-                        animate={{ opacity: 1 }}
-                        exit={{ opacity: 0 }}
-                        className="fixed inset-0 z-[9997] bg-black/60 backdrop-blur-md flex items-center justify-center p-4 pointer-events-auto"
-                        onClick={() => setSelectedProjectDetails(null)}
-                    >
-                        <motion.div
-                            initial={{ scale: 0.96, y: 16 }}
-                            animate={{ scale: 1, y: 0 }}
-                            exit={{ scale: 0.96, y: 16 }}
-                            className="relative w-full max-w-6xl max-h-[88vh] overflow-y-auto bg-card border border-border rounded-2xl shadow-2xl"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            <div className="sticky top-0 z-20 bg-card/95 backdrop-blur border-b border-border p-5 flex items-center justify-between">
-                                <div>
-                                    <h3 className="text-xl font-bold text-foreground">{selectedProjectDetails.name}</h3>
-                                    <p className="text-xs text-muted-foreground mt-1">Project Details</p>
-                                </div>
-                                <button
-                                    onClick={() => setSelectedProjectDetails(null)}
-                                    className="h-9 w-9 rounded-lg bg-muted/40 hover:bg-muted/70 text-muted-foreground hover:text-foreground flex items-center justify-center transition-all"
-                                >
-                                    <X className="h-4 w-4" />
-                                </button>
-                            </div>
-
-                            <div className="p-5 grid grid-cols-1 lg:grid-cols-3 gap-5">
-                                <div className="lg:col-span-2 space-y-4">
-                                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                        <div className="p-3 rounded-lg border border-border bg-muted/20">
-                                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Type</p>
-                                            <p className="text-sm font-semibold mt-1">{selectedProjectDetails.videoType || 'Video'}</p>
-                                        </div>
-                                        <div className="p-3 rounded-lg border border-border bg-muted/20">
-                                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Format</p>
-                                            <p className="text-sm font-semibold mt-1">{selectedProjectDetails.videoFormat || '—'}</p>
-                                        </div>
-                                        <div className="p-3 rounded-lg border border-border bg-muted/20">
-                                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Aspect Ratio</p>
-                                            <p className="text-sm font-semibold mt-1">{selectedProjectDetails.aspectRatio || '—'}</p>
-                                        </div>
-                                        <div className="p-3 rounded-lg border border-border bg-muted/20">
-                                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Duration</p>
-                                            <p className="text-sm font-semibold mt-1">{selectedProjectDetails.duration ? `${selectedProjectDetails.duration}m` : '—'}</p>
-                                        </div>
-                                    </div>
-
-                                    {/* PROFESSIONAL CLIENT UPLOADED ASSETS PANEL */}
-                                    <div className="bg-muted/20 border border-border/50 rounded-xl p-6 space-y-5">
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-8 w-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
-                                                <Briefcase className="h-4 w-4 text-primary" />
-                                            </div>
-                                            <h4 className="text-sm font-bold uppercase tracking-widest text-foreground">Client Assets</h4>
-                                        </div>
-
-                                        {/* 1. Google Drive Link */}
-                                        <div className="space-y-3">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">📎 Google Drive Link</span>
-                                            </div>
-                                            {selectedProjectDetails.footageLink ? (
-                                                <a 
-                                                    href={selectedProjectDetails.footageLink.startsWith('http') ? selectedProjectDetails.footageLink : `https://${selectedProjectDetails.footageLink}`} 
-                                                    target="_blank"
-                                                    className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20 hover:border-primary/40 hover:bg-primary/10 transition-all group"
-                                                >
-                                                    <ExternalLink className="h-4 w-4 text-primary flex-shrink-0" />
-                                                    <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Access Google Drive</span>
-                                                </a>
-                                            ) : (
-                                                <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                                    <p className="text-xs text-muted-foreground">Not uploaded yet</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* 2. Raw Video Files */}
-                                        <div className="space-y-3 pt-3 border-t border-border/30">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">🎬 Raw Video Files</span>
-                                            </div>
-                                            {selectedProjectDetails.rawFiles && selectedProjectDetails.rawFiles.length > 0 ? (
-                                                <div className="grid gap-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
-                                                    {selectedProjectDetails.rawFiles.map((file: any, idx: number) => (
-                                                        <div key={idx} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
-                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                                <FileVideo className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                                <div className="min-w-0">
-                                                                    <p className="text-xs font-semibold text-foreground truncate">{file.name}</p>
-                                                                    {file.size && <p className="text-[9px] text-muted-foreground">{(file.size / (1024*1024)).toFixed(1)} MB</p>}
-                                                                </div>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 flex-shrink-0">
-                                                                <button
-                                                                    onClick={() => openFilePreview(file)}
-                                                                    className="h-8 px-2.5 rounded text-xs font-bold uppercase tracking-widest bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all"
-                                                                >
-                                                                    Preview
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => triggerDirectDownload(file.url, file.name)}
-                                                                    className="h-8 w-8 rounded-lg bg-muted/50 group-hover:bg-primary/20 group-hover:text-primary text-muted-foreground flex items-center justify-center transition-all flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                    disabled={!canEditorDownloadAssets}
-                                                                >
-                                                                    <Download className="h-3.5 w-3.5" />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-
-                                                </div>
-                                            ) : (
-                                                <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                                    <p className="text-xs text-muted-foreground">Not uploaded yet</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* 3. Scripts & Pasted Text */}
-                                        <div className="space-y-3 pt-3 border-t border-border/30">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">📝 Scripts & Directions</span>
-                                            </div>
-
-                                            {/* Uploaded Script Files */}
-                                            {selectedProjectDetails.scripts && selectedProjectDetails.scripts.length > 0 && (
-                                                <div className="grid gap-2 max-h-[150px] overflow-y-auto custom-scrollbar pr-1">
-                                                    {selectedProjectDetails.scripts.map((file: any, idx: number) => (
-                                                        <div key={idx} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
-                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                                <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                                <p className="text-xs font-semibold text-foreground truncate">{file.name}</p>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 flex-shrink-0">
-                                                                <button
-                                                                    onClick={() => openFilePreview(file)}
-                                                                    className="h-8 px-2.5 rounded text-xs font-bold uppercase tracking-widest bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all"
-                                                                >
-                                                                    Preview
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => triggerDirectDownload(file.url, file.name)}
-                                                                    className="h-8 w-8 rounded-lg bg-muted/50 group-hover:bg-primary/20 group-hover:text-primary text-muted-foreground flex items-center justify-center transition-all flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                    disabled={!canEditorDownloadAssets}
-                                                                >
-                                                                    <Download className="h-3.5 w-3.5" />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            )}
-
-                                            {/* Pasted Script Text */}
-                                            {(selectedProjectDetails as any).scriptText && (
-                                                <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                                                    <div className="flex items-center justify-between gap-2 mb-3">
-                                                        <p className="text-[10px] font-bold uppercase tracking-widest text-primary">✍️ Pasted Script</p>
-                                                        <button 
-                                                            onClick={() => {
-                                                                navigator.clipboard.writeText((selectedProjectDetails as any).scriptText);
-                                                                toast.success("Script copied to clipboard");
-                                                            }}
-                                                            className="h-7 px-2.5 rounded text-[9px] font-bold uppercase tracking-widest bg-primary/10 hover:bg-primary/20 text-primary transition-all flex items-center gap-1.5"
-                                                        >
-                                                            <Copy className="h-3 w-3" /> Copy
-                                                        </button>
-                                                    </div>
-                                                    <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap font-medium max-h-[120px] overflow-y-auto">
-                                                        {(selectedProjectDetails as any).scriptText}
-                                                    </p>
-                                                </div>
-                                            )}
-
-                                            {/* Empty State */}
-                                            {!((selectedProjectDetails as any).scriptText) && (!selectedProjectDetails.scripts || selectedProjectDetails.scripts.length === 0) && (
-                                                <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                                    <p className="text-xs text-muted-foreground">Not uploaded yet</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* 4. Audio Files */}
-                                        <div className="space-y-3 pt-3 border-t border-border/30">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">🎧 Audio Files</span>
-                                            </div>
-                                            {selectedProjectDetails.audioFiles && selectedProjectDetails.audioFiles.length > 0 ? (
-                                                <div className="grid gap-2">
-                                                    {selectedProjectDetails.audioFiles.map((file: any, idx: number) => (
-                                                        <div key={`${file.url}-${idx}`} className="p-3 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group space-y-2 overflow-hidden">
-                                                            <div className="flex items-center justify-between gap-3 min-w-0">
-                                                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                                    <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                                                                    <p className="text-xs font-semibold text-foreground truncate min-w-0 block">{file.name}</p>
-                                                                </div>
-                                                                <button
-                                                                    onClick={() => triggerAudioDownload(file.url, file.name)}
-                                                                    className="h-8 w-8 rounded-lg bg-muted/50 group-hover:bg-primary/20 group-hover:text-primary text-muted-foreground flex items-center justify-center transition-all flex-shrink-0"
-                                                                >
-                                                                    <Download className="h-3.5 w-3.5" />
-                                                                </button>
-                                                            </div>
-                                                            <audio controls className="w-full max-w-full h-8" src={file.url} preload="metadata" />
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                                    <p className="text-xs text-muted-foreground">Not uploaded yet</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* 5. B-Roll Assets */}
-                                        <div className="space-y-3 pt-3 border-t border-border/30">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">🎞️ B-Roll Assets</span>
-                                            </div>
-                                            {(selectedProjectDetails as any).bRoleFiles && (selectedProjectDetails as any).bRoleFiles.length > 0 ? (
-                                                <div className="grid gap-2 max-h-56 overflow-y-auto pr-1">
-                                                    {(selectedProjectDetails as any).bRoleFiles.map((file: any, idx: number) => (
-                                                        <div key={idx} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
-                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                                {file.type?.includes('image') ? (
-                                                                    <ImageIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                                ) : (
-                                                                    <FileVideo className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                                )}
-                                                                <p className="text-xs font-semibold text-foreground truncate">{file.name}</p>
-                                                            </div>
-                                                            <div className="flex items-center gap-2 flex-shrink-0">
-                                                                <button
-                                                                    onClick={() => openFilePreview(file)}
-                                                                    className="h-8 px-2.5 rounded text-xs font-bold uppercase tracking-widest bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all"
-                                                                >
-                                                                    Preview
-                                                                </button>
-                                                                <button
-                                                                    onClick={() => triggerDirectDownload(file.url, file.name)}
-                                                                    className="h-8 w-8 rounded-lg bg-muted/50 group-hover:bg-primary/20 group-hover:text-primary text-muted-foreground flex items-center justify-center transition-all flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                    disabled={!canEditorDownloadAssets}
-                                                                >
-                                                                    <Download className="h-3.5 w-3.5" />
-                                                                </button>
-                                                            </div>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            ) : (
-                                                <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                                    <p className="text-xs text-muted-foreground">Not uploaded yet</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* 5. Style References */}
-                                        <div className="space-y-3 pt-3 border-t border-border/30">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">✨ Style References</span>
-                                            </div>
-
-                                            {/* Reference Link */}
-                                            {(selectedProjectDetails as any).referenceLink && (
-                                                <a 
-                                                    href={(selectedProjectDetails as any).referenceLink.startsWith('http') ? (selectedProjectDetails as any).referenceLink : `https://${(selectedProjectDetails as any).referenceLink}`}
-                                                    target="_blank"
-                                                    className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 hover:border-emerald-500/40 hover:bg-emerald-500/10 transition-all group"
-                                                >
-                                                    <LinkIcon className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                                                    <span className="text-sm font-semibold text-foreground group-hover:text-emerald-600 transition-colors">Open Style Reference</span>
-                                                </a>
-                                            )}
-
-                                            {/* Reference Files */}
-                                            {selectedProjectStyleReferenceFiles.length > 0 && (
-                                                <div className="grid gap-2 max-h-[280px] overflow-y-auto pr-1">
-                                                    {selectedProjectStyleReferenceFiles.map((file: any, idx: number) => {
-                                                        const isPreviewable = file.type?.includes('image') || file.type?.includes('video') || 
-                                                                             /\.(mp4|webm|mov|avi|mkv|jpg|jpeg|png|gif|webp)(\?|$)/i.test(file.url || '');
-                                                        
-                                                        return (
-                                                            <div key={`${file.url}-${idx}`} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
-                                                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                                    {file.type?.includes('image') ? (
-                                                                        <ImageIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                                    ) : (
-                                                                        <FileVideo className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                                    )}
-                                                                    <p className="text-xs font-semibold text-foreground truncate">{file.name}</p>
-                                                                </div>
-                                                                <div className="flex items-center gap-2 flex-shrink-0">
-                                                                    {isPreviewable && (
-                                                                        <button
-                                                                            onClick={() => openFilePreview(file)}
-                                                                            className="h-8 px-2.5 rounded text-xs font-bold uppercase tracking-widest bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all"
-                                                                        >
-                                                                            Preview
-                                                                        </button>
-                                                                    )}
-                                                                    <button
-                                                                        onClick={() => triggerDirectDownload(file.url, file.name)}
-                                                                        className="h-8 w-8 rounded-lg bg-muted/50 group-hover:bg-primary/20 group-hover:text-primary text-muted-foreground flex items-center justify-center transition-all flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                        disabled={!canEditorDownloadAssets}
-                                                                    >
-                                                                        <Download className="h-3.5 w-3.5" />
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            )}
-
-                                            {/* Empty State */}
-                                            {!(selectedProjectDetails as any).referenceLink && selectedProjectStyleReferenceFiles.length === 0 && (
-                                                <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                                    <p className="text-xs text-muted-foreground">Not uploaded yet</p>
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        {/* 6. PM Uploaded Files */}
-                                        <div className="space-y-3 pt-3 border-t border-border/30">
-                                            <div className="flex items-center gap-2">
-                                                <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">📤 PM Uploaded Files</span>
-                                            </div>
-                                            {selectedProjectPmFiles.length > 0 ? (
-                                                <div className="grid gap-2 max-h-[280px] overflow-y-auto pr-1">
-                                                    {selectedProjectPmFiles.map((file: any, idx: number) => {
-                                                        const isPreviewable = file.type?.includes('image') || file.type?.includes('video') || 
-                                                                             /\.(mp4|webm|mov|avi|mkv|jpg|jpeg|png|gif|webp)(\?|$)/i.test(file.url || '');
-                                                        
-                                                        return (
-                                                            <div key={`${file.url}-${idx}`} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
-                                                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                                    {file.type?.includes('image') ? (
-                                                                        <ImageIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                                    ) : (
-                                                                        <FileVideo className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                                    )}
-                                                                    <p className="text-xs font-semibold text-foreground truncate">{file.name}</p>
-                                                                </div>
-                                                                <div className="flex items-center gap-2 flex-shrink-0">
-                                                                    {isPreviewable && (
-                                                                        <button
-                                                                            onClick={() => openFilePreview(file)}
-                                                                            className="h-8 px-2.5 rounded text-xs font-bold uppercase tracking-widest bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all"
-                                                                        >
-                                                                            Preview
-                                                                        </button>
-                                                                    )}
-                                                                    <button
-                                                                        onClick={() => triggerDirectDownload(file.url, file.name)}
-                                                                        className="h-8 w-8 rounded-lg bg-muted/50 group-hover:bg-primary/20 group-hover:text-primary text-muted-foreground flex items-center justify-center transition-all flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
-                                                                        disabled={!canEditorDownloadAssets}
-                                                                    >
-                                                                        <Download className="h-3.5 w-3.5" />
-                                                                    </button>
-                                                                </div>
-                                                            </div>
-                                                        );
-                                                    })}
-                                                </div>
-                                            ) : (
-                                                <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                                    <p className="text-xs text-muted-foreground">No PM uploads yet</p>
-                                                </div>
-                                            )}
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-muted/30 border border-border rounded-lg p-4 space-y-4">
-                                        <div className="flex items-center gap-2 justify-between">
-                                            <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest">📅 Timeline & Activity Log</p>
-                                            {selectedProjectDetails.logs && selectedProjectDetails.logs.length > 0 && (
-                                                <span className="text-[9px] font-bold px-2 py-1 bg-primary/20 text-primary rounded-full">
-                                                    {selectedProjectDetails.logs.length} events
-                                                </span>
-                                            )}
-                                        </div>
-
-                                        {selectedProjectDetails.logs && selectedProjectDetails.logs.length > 0 ? (
-                                            <div className="space-y-2 max-h-[320px] overflow-y-auto pr-2">
-                                                {[...selectedProjectDetails.logs].reverse().slice(0, 12).map((log: any, idx: number) => {
-                                                    const eventType = String(log.event || '').toLowerCase();
-                                                    const isUpload = eventType.includes('upload') || eventType.includes('added');
-                                                    const isStatusChange = eventType.includes('status') || eventType.includes('change');
-                                                    const isComment = eventType.includes('comment') || eventType.includes('noted');
-                                                    const isCompletion = eventType.includes('completed') || eventType.includes('finished');
-                                                    const isDownload = eventType.includes('download') || eventType.includes('exported');
-
-                                                    let bgColor = 'bg-muted/20';
-                                                    let borderColor = 'border-muted/30';
-                                                    let iconBg = 'bg-muted/40 text-muted-foreground';
-                                                    let dotColor = 'bg-muted-foreground/40';
-                                                    let icon = <FileIcon className="h-3.5 w-3.5" />;
-
-                                                    if (isUpload) {
-                                                        bgColor = 'bg-blue-500/10';
-                                                        borderColor = 'border-blue-500/20';
-                                                        iconBg = 'bg-blue-500/20 text-blue-500';
-                                                        dotColor = 'bg-blue-500';
-                                                        icon = <UploadCloud className="h-3.5 w-3.5" />;
-                                                    } else if (isStatusChange) {
-                                                        bgColor = 'bg-amber-500/10';
-                                                        borderColor = 'border-amber-500/20';
-                                                        iconBg = 'bg-amber-500/20 text-amber-500';
-                                                        dotColor = 'bg-amber-500';
-                                                        icon = <RefreshCw className="h-3.5 w-3.5" />;
-                                                    } else if (isComment) {
-                                                        bgColor = 'bg-cyan-500/10';
-                                                        borderColor = 'border-cyan-500/20';
-                                                        iconBg = 'bg-cyan-500/20 text-cyan-500';
-                                                        dotColor = 'bg-cyan-500';
-                                                        icon = <MessageSquare className="h-3.5 w-3.5" />;
-                                                    } else if (isCompletion) {
-                                                        bgColor = 'bg-emerald-500/10';
-                                                        borderColor = 'border-emerald-500/20';
-                                                        iconBg = 'bg-emerald-500/20 text-emerald-500';
-                                                        dotColor = 'bg-emerald-500';
-                                                        icon = <CheckCircle2 className="h-3.5 w-3.5" />;
-                                                    } else if (isDownload) {
-                                                        bgColor = 'bg-purple-500/10';
-                                                        borderColor = 'border-purple-500/20';
-                                                        iconBg = 'bg-purple-500/20 text-purple-500';
-                                                        dotColor = 'bg-purple-500';
-                                                        icon = <Download className="h-3.5 w-3.5" />;
-                                                    }
-
-                                                    return (
-                                                        <div key={idx} className={`flex items-start gap-3 p-3 rounded-lg border transition-all hover:border-opacity-50 group ${bgColor} ${borderColor}`}>
-                                                            <div className={`h-6 w-6 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 ${iconBg}`}>
-                                                                {icon}
-                                                            </div>
-                                                            <div className="min-w-0 flex-1">
-                                                                <div className="flex items-start justify-between gap-2">
-                                                                    <div className="flex-1">
-                                                                        <p className="text-xs font-bold text-foreground capitalize">{String(log.event || '').replace(/_/g, ' ')}</p>
-                                                                        {log.details && (
-                                                                            <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{log.details}</p>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                                <div className="flex items-center gap-2 mt-2 text-[10px]">
-                                                                    <span className="text-muted-foreground font-medium">{log.userName || 'System'}</span>
-                                                                    <span className="text-muted-foreground/50">•</span>
-                                                                    <span className="text-muted-foreground/60">{new Date(log.timestamp).toLocaleDateString()} {new Date(log.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                                                                </div>
-                                                            </div>
-                                                        </div>
-                                                    );
-                                                })}
-                                            </div>
-                                        ) : (
-                                            <div className="py-8 text-center">
-                                                <div className="h-12 w-12 rounded-lg bg-muted/30 mx-auto mb-3 flex items-center justify-center text-muted-foreground">
-                                                    <History className="h-5 w-5" />
-                                                </div>
-                                                <p className="text-xs text-muted-foreground font-medium">No activity yet</p>
-                                                <p className="text-[10px] text-muted-foreground mt-1">Project updates will appear here</p>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-
-                                <div className="space-y-4">
-                                    {selectedProjectDetails.assignmentStatus === "pending" && (
-                                        <div className="bg-gradient-to-br from-amber-500/20 via-amber-500/10 to-transparent border border-amber-500/30 rounded-lg p-4 space-y-4">
-                                            <div className="flex items-start gap-3">
-                                                <div className="h-10 w-10 rounded-lg bg-amber-500/20 flex items-center justify-center text-amber-500 flex-shrink-0 mt-0.5">
-                                                    <AlertCircle className="h-5 w-5" />
-                                                </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <p className="text-xs font-bold text-amber-500 uppercase tracking-widest">Decision Required</p>
-                                                    <p className="text-sm text-foreground font-semibold mt-1">Please respond to this project assignment</p>
-                                                </div>
-                                            </div>
-
-                                            {projectTimers[selectedProjectDetails.id] ? (
-                                                <div className="bg-amber-500/10 rounded-lg p-3 border border-amber-500/20">
-                                                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest mb-2">⏱️ Time Remaining</p>
-                                                    <div className="text-3xl font-black text-amber-500 tabular-nums font-mono">
-                                                        {formatTimeRemaining(projectTimers[selectedProjectDetails.id])}
-                                                    </div>
-                                                </div>
-                                            ) : null}
-
-                                            <div className="grid grid-cols-2 gap-2.5">
-                                                <button
-                                                    onClick={() => handleAcceptProject(selectedProjectDetails.id)}
-                                                    className="h-10 inline-flex items-center justify-center gap-2 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/30 hover:border-emerald-500/60 text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95"
-                                                >
-                                                    <Check className="h-4 w-4" />
-                                                    Accept
-                                                </button>
-                                                <button
-                                                    onClick={() => handleRejectProject(selectedProjectDetails.id)}
-                                                    className="h-10 inline-flex items-center justify-center gap-2 rounded-lg bg-red-500/20 border border-red-500/40 text-red-500 hover:bg-red-500/30 hover:border-red-500/60 text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95"
-                                                >
-                                                    <X className="h-4 w-4" />
-                                                    Reject
-                                                </button>
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="bg-muted/30 border border-border rounded-lg p-4 space-y-4">
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
-                                                <Users className="h-4 w-4" />
-                                            </div>
-                                            <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest">Project Manager</p>
-                                        </div>
-
-                                        {selectedProjectDetails.assignedPMId && allUsers[selectedProjectDetails.assignedPMId] ? (
-                                            <div className="space-y-3">
-                                                <div>
-                                                    <p className="text-sm font-bold text-foreground">{allUsers[selectedProjectDetails.assignedPMId].displayName || 'Project Manager'}</p>
-                                                    {allUsers[selectedProjectDetails.assignedPMId].email && (
-                                                        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1.5">
-                                                            <Mail className="h-3 w-3" />
-                                                            {allUsers[selectedProjectDetails.assignedPMId].email}
-                                                        </p>
-                                                    )}
-                                                </div>
-                                                <button
-                                                    onClick={() => {
-                                                        const pmNumber = getPMWhatsAppNumber(selectedProjectDetails as any);
-                                                        if (!pmNumber) return;
-                                                        const link = buildWhatsAppLink(pmNumber);
-                                                        if (link) window.open(link, '_blank');
-                                                    }}
-                                                    disabled={!getPMWhatsAppNumber(selectedProjectDetails as any)}
-                                                    className="w-full h-9 inline-flex items-center justify-center gap-2 rounded-lg bg-green-500/10 border border-green-500/20 text-green-500 hover:bg-green-500/20 hover:border-green-500/40 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95"
-                                                >
-                                                    <MessageCircle className="h-4 w-4" />
-                                                    Message on WhatsApp
-                                                </button>
-                                            </div>
-                                        ) : (
-                                            <div className="py-6 text-center">
-                                                <div className="h-10 w-10 rounded-lg bg-muted/30 mx-auto mb-2 flex items-center justify-center text-muted-foreground">
-                                                    <User className="h-4 w-4 opacity-50" />
-                                                </div>
-                                                <p className="text-xs text-muted-foreground font-medium">No Project Manager Assigned</p>
-                                            </div>
-                                        )}
-                                    </div>
-
-                                    <div className="bg-muted/30 border border-border rounded-lg p-4 space-y-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
-                                                <Briefcase className="h-4 w-4" />
-                                            </div>
-                                            <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest">Project Overview</p>
-                                        </div>
-
-                                        <div className="grid gap-2.5">
-                                            <div className="flex items-center justify-between p-2.5 rounded-lg bg-card border border-border/50">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="h-6 w-6 rounded-lg bg-blue-500/10 flex items-center justify-center text-blue-500">
-                                                        <User className="h-3.5 w-3.5" />
-                                                    </div>
-                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Client</span>
-                                                </div>
-                                                <span className="text-xs font-bold text-foreground">{selectedProjectDetails.clientName || 'N/A'}</span>
-                                            </div>
-
-                                            <div className="flex items-center justify-between p-2.5 rounded-lg bg-card border border-border/50">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="h-6 w-6 rounded-lg bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                                                        <Banknote className="h-3.5 w-3.5" />
-                                                    </div>
-                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Your Payment</span>
-                                                </div>
-                                                <span className="text-xs font-bold text-emerald-500">₹{(selectedProjectDetails.editorPrice || 0).toLocaleString()}</span>
-                                            </div>
-
-                                            <div className="flex items-center justify-between p-2.5 rounded-lg bg-card border border-border/50">
-                                                <div className="flex items-center gap-2">
-                                                    <div className="h-6 w-6 rounded-lg bg-amber-500/10 flex items-center justify-center text-amber-500">
-                                                        <Circle className="h-3.5 w-3.5" />
-                                                    </div>
-                                                    <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">Status</span>
-                                                </div>
-                                                <span className={cn(
-                                                    "text-xs font-bold px-2 py-1 rounded-full",
-                                                    selectedProjectDetails.status === 'completed' && 'bg-emerald-500/20 text-emerald-500',
-                                                    selectedProjectDetails.status === 'active' && 'bg-blue-500/20 text-blue-500',
-                                                    selectedProjectDetails.status === 'in_review' && 'bg-amber-500/20 text-amber-500',
-                                                    selectedProjectDetails.status === 'pending_assignment' && 'bg-gray-500/20 text-gray-500'
-                                                )}>
-                                                    {getStatusLabel(selectedProjectDetails.status)}
-                                                </span>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    <div className="bg-gradient-to-br from-primary/10 via-primary/5 to-transparent border border-primary/20 rounded-lg p-4 space-y-3">
-                                        <div className="flex items-center gap-2">
-                                            <div className="h-8 w-8 rounded-lg bg-primary/20 flex items-center justify-center text-primary">
-                                                <MessageSquare className="h-4 w-4" />
-                                            </div>
-                                            <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest">Manager Notes</p>
-                                        </div>
-                                        <div className="bg-card/50 border border-primary/10 rounded-lg p-3">
-                                            <p className="text-sm text-foreground leading-relaxed whitespace-pre-wrap break-words font-medium">
-                                                {(selectedProjectDetails as any).pmRemarks || 'No remarks from the manager yet.'}
-                                            </p>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        </motion.div>
-                    </motion.div>
-                )}
-            </AnimatePresence>
-
-            <div className="space-y-6 pb-16">
-                {/* Header */}
-                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-                    <div>
-                        <h1 className="text-2xl md:text-3xl font-bold text-foreground">
-                            {activeTab === 'projects' ? 'My Projects' : 'Finance Center'}
-                        </h1>
-                        <p className="text-muted-foreground mt-1">
-                            {activeTab === 'projects' 
-                                ? 'All projects assigned to you with payment and status information.'
-                                : 'Track your earnings, pending payouts, and financial history.'}
-                        </p>
+        <div className="min-h-screen bg-background pb-20">
+            {/* --- Premium Header --- */}
+            <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border/50">
+                <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+                    <div className="flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/20">
+                            <Film size={20} />
+                        </div>
+                        <h1 className="text-xl font-black tracking-tight text-foreground">Editor Dashboard</h1>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-4">
-                        {/* Tab Switcher */}
-                        <div className="inline-flex p-1 bg-muted/30 border border-border rounded-xl">
-                            <button
-                                onClick={() => setActiveTab('projects')}
-                                className={cn(
-                                    "px-4 py-2 text-sm font-bold transition-all rounded-lg flex items-center gap-2",
-                                    activeTab === 'projects' 
-                                        ? "bg-card text-foreground shadow-sm border border-border" 
-                                        : "text-muted-foreground hover:text-foreground"
-                                )}
+                    <div className="flex items-center gap-6">
+                        {/* Status Toggle */}
+                        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 border border-border/50">
+                            <div className={cn("h-2 w-2 rounded-full", userData?.availabilityStatus === 'online' ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground")} />
+                            <select 
+                                className="bg-transparent text-[10px] font-bold uppercase tracking-widest outline-none cursor-pointer"
+                                value={userData?.availabilityStatus || 'offline'}
+                                onChange={(e) => updateDoc(doc(db, "users", user!.uid), { availabilityStatus: e.target.value })}
                             >
-                                <Briefcase className="h-4 w-4" />
-                                Projects
-                            </button>
-                            <button
-                                onClick={() => setActiveTab('finance')}
-                                className={cn(
-                                    "px-4 py-2 text-sm font-bold transition-all rounded-lg flex items-center gap-2",
-                                    activeTab === 'finance' 
-                                        ? "bg-card text-foreground shadow-sm border border-border" 
-                                        : "text-muted-foreground hover:text-foreground"
-                                )}
-                            >
-                                <Banknote className="h-4 w-4" />
-                                Finance
-                            </button>
+                                <option value="online">Online</option>
+                                <option value="offline">Offline</option>
+                                <option value="sleep">Sleep</option>
+                            </select>
                         </div>
 
-                        <div className="flex items-center gap-3 bg-card border border-border rounded-lg px-4 py-2 w-fit">
-                            <div className={cn(
-                                "h-2.5 w-2.5 rounded-full",
-                                editorStatus === "online"
-                                    ? "bg-emerald-500"
-                                    : editorStatus === "sleep"
-                                        ? "bg-amber-500"
-                                        : "bg-red-500"
-                            )} />
-                            <select
-                                value={editorStatus}
-                                onChange={(e) => handleStatusUpdate(e.target.value as "online" | "offline" | "sleep")}
-                                className="bg-transparent border-none text-sm font-medium text-foreground focus:ring-0 cursor-pointer appearance-none pr-2"
-                                style={{ colorScheme: "dark" }}
-                            >
-                                <option value="online" className="bg-card text-foreground">Online</option>
-                                <option value="sleep" className="bg-card text-foreground">Away</option>
-                                <option value="offline" className="bg-card text-foreground">Offline</option>
-                            </select>
+                        <div className="flex items-center gap-3">
+                            <div className="text-right hidden sm:block">
+                                <p className="text-xs font-bold text-foreground">{user?.displayName}</p>
+                                <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Master Editor</p>
+                            </div>
+                            <div className="h-10 w-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold">
+                                {user?.displayName?.charAt(0)}
+                            </div>
                         </div>
                     </div>
                 </div>
+            </div>
 
+            <main className="max-w-7xl mx-auto px-6 pt-10 space-y-10">
+                {/* --- Stats Overview --- */}
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    <StatCard icon={Gauge} label="Active Projects" value={projects.filter(p => p.status === 'active').length} trend="+2 this week" />
+                    <StatCard icon={CheckCircle2} label="Completed" value={earnings.length} trend="+12 total" />
+                    <StatCard icon={Banknote} label="Paid Earnings" value={`₹${totalPaid.toLocaleString()}`} trend="Withdrawal Ready" />
+                    <StatCard icon={Wallet} label="Pending Payment" value={`₹${pendingEarnings.toLocaleString()}`} subValue="Awaiting client approval" />
+                </div>
+
+                {/* --- Project Controls --- */}
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div className="flex p-1.5 bg-muted/40 rounded-2xl border border-border/50 w-fit">
+                        <button 
+                            onClick={() => setActiveTab('projects')}
+                            className={cn("px-6 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2", activeTab === 'projects' ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
+                        >
+                            <LayoutDashboard size={14} /> Projects
+                        </button>
+                        <button 
+                            onClick={() => setActiveTab('finance')}
+                            className={cn("px-6 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2", activeTab === 'finance' ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
+                        >
+                            <Wallet size={14} /> Finance
+                        </button>
+                    </div>
+
+                    <div className="relative group flex-1 md:max-w-md">
+                        <input 
+                            type="text"
+                            placeholder="Search projects by name..."
+                            className="w-full h-12 pl-12 pr-6 rounded-2xl bg-card border border-border/50 focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all outline-none text-sm"
+                            value={searchQuery}
+                            onChange={e => setSearchQuery(e.target.value)}
+                        />
+                        <Eye className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" size={18} />
+                    </div>
+                </div>
+
+                {/* --- Project List --- */}
                 <AnimatePresence mode="wait">
                     {activeTab === 'projects' ? (
-                        <motion.div
-                            key="projects-tab"
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            className="space-y-6"
+                        <motion.div 
+                            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+                            className="grid grid-cols-1 lg:grid-cols-2 gap-6"
                         >
-                            {/* Stats Cards */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                                <IndicatorCard 
-                                    label="Total Projects" 
-                                    value={projects.length} 
-                                    icon={<FileStack className="h-5 w-5" />}
-                                    subtext="Assigned across all time"
+                            {filteredProjects.map((project, idx) => (
+                                <ProjectCard 
+                                    key={project.id} 
+                                    project={project} 
+                                    idx={idx} 
+                                    pm={project.assignedPMId ? allUsers[project.assignedPMId] : undefined}
+                                    latestRevision={projectRevisions[project.id]}
+                                    onUpload={() => { setUploadProject(project); setIsUploadModalOpen(true); }}
+                                    onReview={() => setReviewProject(project)}
+                                    onAssets={() => setSelectedProjectAssets(project)}
                                 />
-                                <IndicatorCard 
-                                    label="Active" 
-                                    value={activeProjects.length} 
-                                    icon={<Zap className="h-5 w-5" />}
-                                    subtext="Current production tasks"
-                                />
-                                <IndicatorCard 
-                                    label="Completed" 
-                                    value={completedProjects.length} 
-                                    icon={<CheckCircle className="h-5 w-5" />}
-                                    subtext="Finished and approved"
-                                />
-                                <IndicatorCard 
-                                    label="Pending Payout" 
-                                    value={`₹${pendingEarnings.toLocaleString()}`} 
-                                    icon={<IndianRupee className="h-5 w-5" />}
-                                    subtext="Awaiting PM settlement"
-                                    alert={pendingEarnings > 0}
-                                />
-                            </div>
-
-                            {/* Search Bar */}
-                            <div className="relative">
-                                <input
-                                    type="text"
-                                    placeholder="Search projects by name..."
-                                    value={searchQuery}
-                                    onChange={(e) => setSearchQuery(e.target.value)}
-                                    className="w-full px-4 py-3 rounded-xl border border-border bg-muted/30 text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all shadow-sm"
-                                />
-                            </div>
-
-                            {/* Projects Table */}
-                            <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
-                                <div className="p-4 md:p-5 border-b border-border flex items-center justify-between">
-                                    <h2 className="text-lg font-semibold text-foreground">Assigned Projects</h2>
-                                    <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">{filteredProjects.length} projects</span>
-                                </div>
-
-                                <div className="overflow-x-auto">
-                                    <table className="w-full">
-                                        <thead>
-                                            <tr className="bg-muted/30 border-b border-border">
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-widest">#</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-widest">Project Name</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-widest">Assigned PM</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-widest">Editor Share</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-widest">Status</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-widest">Payment</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-widest">PM Remarks</th>
-                                                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground uppercase tracking-widest">Action</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-border">
-                                            {filteredProjects.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={8} className="px-4 py-14 text-center text-sm text-muted-foreground">
-                                                        {projects.length === 0 ? 'No projects assigned yet.' : 'No projects match your search.'}
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                filteredProjects.map((project, index) => {
-                                                    const paymentStatus = getPaymentStatus(project);
-                                                    const pmWhatsApp = getPMWhatsAppNumber(project);
-                                                    const isAccepted = project.assignmentStatus === "accepted";
-
-                                                    return (
-                                                        <tr key={project.id} className={cn("hover:bg-muted/20 transition-colors", ['completed', 'approved', 'completed_pending_payment'].includes(project.status) && "bg-emerald-500/5")}>
-                                                            <td className="px-4 py-4">
-                                                                <span className="text-sm font-bold text-muted-foreground">{index + 1}</span>
-                                                            </td>
-                                                            <td className="px-4 py-4">
-                                                                <div className="font-semibold text-foreground">{project.name}</div>
-                                                            </td>
-                                                            <td className="px-4 py-4">
-                                                                <div className="text-sm font-medium text-foreground">
-                                                                    {project.assignedPMId && allUsers[project.assignedPMId]
-                                                                        ? allUsers[project.assignedPMId].displayName || 'Project Manager'
-                                                                        : 'Not Assigned'}
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-4 py-4">
-                                                                <div className="text-sm font-bold text-emerald-500 tabular-nums">
-                                                                    ₹{(project.editorPrice || 0).toLocaleString()}
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-4 py-4">
-                                                                <div className={cn(
-                                                                    "inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold",
-                                                                    getStatusColor(project.status)
-                                                                )}>
-                                                                    {getStatusIcon(project.status)}
-                                                                    {getStatusLabel(project.status)}
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-4 py-4">
-                                                                <div className={cn("text-xs font-bold uppercase tracking-widest", paymentStatus.color)}>
-                                                                    {['completed', 'approved', 'completed_pending_payment'].includes(project.status) 
-                                                                        ? paymentStatus.label 
-                                                                        : 'N/A'
-                                                                    }
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-4 py-4">
-                                                                <div className="max-w-xs">
-                                                                    <p className="text-sm text-muted-foreground truncate hover:text-foreground transition-colors" title={(project as any).pmRemarks || 'No remarks'}>
-                                                                        {(project as any).pmRemarks || '—'}
-                                                                    </p>
-                                                                </div>
-                                                            </td>
-                                                            <td className="px-4 py-4">
-                                                                <div className="flex items-center gap-2 flex-wrap">
-                                                                    {['completed', 'approved', 'completed_pending_payment'].includes(project.status) ? (
-                                                                        <button
-                                                                            onClick={() => setSelectedProjectDetails(project)}
-                                                                            className="h-8 px-3 inline-flex items-center justify-center gap-1 rounded-lg bg-emerald-500/20 border border-emerald-500/40 text-emerald-500 hover:bg-emerald-500/30 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
-                                                                            title="View completed project details"
-                                                                        >
-                                                                            <CheckCircle2 className="h-3.5 w-3.5" />
-                                                                            Project Details
-                                                                        </button>
-                                                                    ) : projectRevisions[project.id] ? (
-                                                                        <button
-                                                                            onClick={() => {
-                                                                                setReviewProject(project);
-                                                                                setIsReviewSystemOpen(true);
-                                                                            }}
-                                                                            className="h-8 px-3 inline-flex items-center justify-center gap-1 rounded-lg bg-blue-500/20 border border-blue-500/40 text-blue-500 hover:bg-blue-500/30 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
-                                                                            title="Review uploaded draft"
-                                                                        >
-                                                                            <Eye className="h-3.5 w-3.5" />
-                                                                            Review
-                                                                        </button>
-                                                                    ) : (
-                                                                        <button
-                                                                            onClick={() => setSelectedProjectDetails(project)}
-                                                                            className="h-8 px-3 inline-flex items-center justify-center gap-1 rounded-lg bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
-                                                                            title="View complete project details"
-                                                                        >
-                                                                            <Eye className="h-3.5 w-3.5" />
-                                                                            Details
-                                                                        </button>
-                                                                    )}
-
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            if (pmWhatsApp) {
-                                                                                const link = buildWhatsAppLink(pmWhatsApp);
-                                                                                if (link) window.open(link, '_blank');
-                                                                            }
-                                                                        }}
-                                                                        disabled={!pmWhatsApp}
-                                                                        className="h-8 px-3 inline-flex items-center justify-center gap-1 rounded-lg bg-green-500/10 border border-green-500/20 text-green-500 hover:bg-green-500/20 disabled:opacity-50 disabled:cursor-not-allowed text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
-                                                                        title="Chat with PM on WhatsApp"
-                                                                    >
-                                                                        <MessageCircle className="h-3.5 w-3.5" />
-                                                                        Chat PM
-                                                                    </button>
-
-                                                                    <button
-                                                                        onClick={() => {
-                                                                            setUploadProject(project);
-                                                                            setIsUploadModalOpen(true);
-                                                                        }}
-                                                                        className="h-8 px-3 inline-flex items-center justify-center gap-1 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-500 hover:bg-orange-500/20 text-[10px] font-bold uppercase tracking-widest transition-all whitespace-nowrap"
-                                                                        title="Upload new draft version"
-                                                                    >
-                                                                        <UploadCloud className="h-3.5 w-3.5" />
-                                                                        Upload Draft
-                                                                    </button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-                                                    );
-                                                })
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
+                            ))}
                         </motion.div>
                     ) : (
-                        <motion.div
-                            key="finance-tab"
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            exit={{ opacity: 0, y: -10 }}
-                            className="space-y-6"
+                        <motion.div 
+                            initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
+                            className="bg-card border border-border/50 rounded-[32px] overflow-hidden shadow-2xl"
                         >
-                            {/* Finance Specific Stats */}
-                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                                <div className="bg-gradient-to-br from-emerald-500/15 via-emerald-500/5 to-transparent border border-emerald-500/20 rounded-2xl p-6 shadow-sm">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <div className="h-12 w-12 rounded-xl bg-emerald-500/20 flex items-center justify-center text-emerald-600">
-                                            <Banknote className="h-6 w-6" />
-                                        </div>
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-600/60">Lifetime Earned</span>
+                            <table className="w-full text-left">
+                                <thead className="bg-muted/30 border-b border-border/50">
+                                    <tr>
+                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Project Name</th>
+                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Editor Price</th>
+                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Payment Status</th>
+                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Completion Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-border/30">
+                                    {earnings.map((p) => (
+                                        <tr key={p.id} className="hover:bg-muted/10 transition-colors group">
+                                            <td className="px-8 py-6">
+                                                <p className="text-sm font-bold text-foreground">{p.name}</p>
+                                                <p className="text-[10px] text-muted-foreground mt-0.5">ID: {p.id.slice(0, 8)}</p>
+                                            </td>
+                                            <td className="px-8 py-6 font-black text-foreground">₹{p.editorPrice?.toLocaleString()}</td>
+                                            <td className="px-8 py-6">
+                                                {p.editorPaid ? (
+                                                    <span className="flex items-center gap-1.5 text-emerald-500 font-bold text-xs">
+                                                        <CheckCircle2 size={14} /> Paid
+                                                    </span>
+                                                ) : (
+                                                    <span className="flex items-center gap-1.5 text-amber-500 font-bold text-xs">
+                                                        <Clock size={14} /> Pending
+                                                    </span>
+                                                )}
+                                            </td>
+                                            <td className="px-8 py-6 text-sm text-muted-foreground">
+                                                {p.updatedAt ? new Date(p.updatedAt).toLocaleDateString() : 'N/A'}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {earnings.length === 0 && (
+                                <div className="py-20 text-center space-y-4">
+                                    <div className="h-16 w-16 bg-muted/30 rounded-full flex items-center justify-center mx-auto text-muted-foreground">
+                                        <Banknote size={32} />
                                     </div>
-                                    <p className="text-4xl font-black text-foreground tabular-nums">₹{totalEarnings.toLocaleString()}</p>
-                                    <p className="text-xs text-muted-foreground mt-2 font-medium">Total value of all projects delivered</p>
+                                    <p className="text-sm text-muted-foreground">No financial records found yet.</p>
                                 </div>
-
-                                <div className="bg-gradient-to-br from-blue-500/15 via-blue-500/5 to-transparent border border-blue-500/20 rounded-2xl p-6 shadow-sm">
-                                    <div className="flex items-center justify-between mb-4">
-                                        <div className="h-12 w-12 rounded-xl bg-blue-500/20 flex items-center justify-center text-blue-600">
-                                            <CheckCircle2 className="h-6 w-6" />
-                                        </div>
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-blue-600/60">Total Paid</span>
-                                    </div>
-                                    <p className="text-4xl font-black text-foreground tabular-nums">₹{totalPaid.toLocaleString()}</p>
-                                    <p className="text-xs text-muted-foreground mt-2 font-medium">Successfully settled payments</p>
-                                </div>
-
-                                <div className="bg-gradient-to-br from-amber-500/15 via-amber-500/5 to-transparent border border-amber-500/20 rounded-2xl p-6 shadow-sm relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 p-4 opacity-10 group-hover:scale-110 transition-transform">
-                                        <History className="h-20 w-20" />
-                                    </div>
-                                    <div className="flex items-center justify-between mb-4">
-                                        <div className="h-12 w-12 rounded-xl bg-amber-500/20 flex items-center justify-center text-amber-600">
-                                            <Clock className="h-6 w-6" />
-                                        </div>
-                                        <span className="text-[10px] font-black uppercase tracking-widest text-amber-600/60">Pending Payout</span>
-                                    </div>
-                                    <p className="text-4xl font-black text-amber-600 tabular-nums">₹{pendingEarnings.toLocaleString()}</p>
-                                    <p className="text-xs text-muted-foreground mt-2 font-medium">Awaiting settlement from admin</p>
-                                </div>
-                            </div>
-
-                            {/* Pending Payouts Breakdown */}
-                            {pendingEarnings > 0 && (
-                                <div className="mb-0">
-                                    <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-4 mb-4 flex items-center gap-3">
-                                                <AlertCircle className="h-5 w-5 text-amber-500" />
-                                                <p className="text-sm text-amber-700 font-medium">You have ₹{pendingEarnings.toLocaleString()} awaiting settlement across {completedProjects.filter(p => !p.editorPaid).length} projects.</p>
-                                            </div>
-                                            <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-                                                <div className="p-4 border-b border-border bg-amber-500/5 flex items-center justify-between">
-                                                    <h3 className="text-sm font-bold text-amber-700 uppercase tracking-widest">Pending Payouts Breakdown</h3>
-                                                </div>
-                                                <div className="overflow-x-auto">
-                                                    <table className="w-full text-left">
-                                                        <thead>
-                                                            <tr className="bg-muted/30 border-b border-border">
-                                                                <th className="px-6 py-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Project</th>
-                                                                <th className="px-6 py-3 text-right text-[10px] font-black uppercase tracking-widest text-muted-foreground">Amount</th>
-                                                                <th className="px-6 py-3 text-center text-[10px] font-black uppercase tracking-widest text-muted-foreground">Status</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody className="divide-y divide-border">
-                                                            {completedProjects
-                                                                .filter(p => !p.editorPaid)
-                                                                .map(project => (
-                                                                    <tr key={project.id} className="hover:bg-amber-500/5 transition-colors">
-                                                                        <td className="px-6 py-4">
-                                                                            <p className="font-bold text-foreground">{project.name}</p>
-                                                                            <p className="text-[10px] text-muted-foreground uppercase">{project.videoFormat}</p>
-                                                                        </td>
-                                                                        <td className="px-6 py-4 text-right">
-                                                                            <span className="text-base font-black text-foreground">₹{project.editorPrice?.toLocaleString() || 0}</span>
-                                                                        </td>
-                                                                        <td className="px-6 py-4 text-center">
-                                                                            <span className="px-2 py-0.5 rounded text-[9px] font-bold border bg-amber-500/10 text-amber-500 border-amber-500/20 uppercase tracking-widest">
-                                                                                Awaiting Payout
-                                                                            </span>
-                                                                        </td>
-                                                                    </tr>
-                                                                ))}
-                                                        </tbody>
-                                                    </table>
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-
-                                    <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-sm">
-                                <div className="p-6 border-b border-border flex items-center justify-between bg-muted/20">
-                                    <div className="flex items-center gap-3">
-                                        <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary">
-                                            <History className="h-5 w-5" />
-                                        </div>
-                                        <div>
-                                            <h2 className="text-lg font-bold text-foreground">Project Earnings Breakdown</h2>
-                                            <p className="text-xs text-muted-foreground">Detailed history of your project payments</p>
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="overflow-x-auto">
-                                    <table className="w-full">
-                                        <thead>
-                                            <tr className="bg-muted/40 border-b border-border">
-                                                <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-muted-foreground">Project Details</th>
-                                                <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-muted-foreground">Amount</th>
-                                                <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-muted-foreground">Status</th>
-                                                <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-muted-foreground">Delivered At</th>
-                                                <th className="px-6 py-4 text-left text-[10px] font-black uppercase tracking-widest text-muted-foreground">Paid At</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="divide-y divide-border">
-                                            {completedProjects.length === 0 ? (
-                                                <tr>
-                                                    <td colSpan={5} className="px-6 py-20 text-center">
-                                                        <div className="flex flex-col items-center justify-center space-y-3">
-                                                            <div className="h-16 w-16 rounded-full bg-muted/30 flex items-center justify-center text-muted-foreground/30">
-                                                                <IndianRupee className="h-8 w-8" />
-                                                            </div>
-                                                            <p className="text-sm text-muted-foreground font-medium">No earnings history yet.</p>
-                                                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Complete your first project to see financial data</p>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ) : (
-                                                [...completedProjects]
-                                                    .sort((a, b) => (b.completedAt || b.updatedAt) - (a.completedAt || a.updatedAt))
-                                                    .map((project) => (
-                                                    <tr key={project.id} className="hover:bg-muted/10 transition-colors group">
-                                                        <td className="px-6 py-5">
-                                                            <div>
-                                                                <p className="font-bold text-foreground group-hover:text-primary transition-colors">{project.name}</p>
-                                                                <p className="text-[10px] text-muted-foreground mt-1 flex items-center gap-1.5 uppercase tracking-tighter">
-                                                                    <User className="h-3 w-3" /> {project.clientName}
-                                                                </p>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-5">
-                                                            <div className="flex flex-col">
-                                                                <span className="text-base font-black text-foreground">₹{(project.editorPrice || 0).toLocaleString()}</span>
-                                                                <span className="text-[9px] text-muted-foreground uppercase tracking-widest mt-1">Net Share</span>
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-5">
-                                                            {project.editorPaid ? (
-                                                                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/10 text-emerald-500 border border-emerald-500/20">
-                                                                    <div className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                                                    <span className="text-xs font-black uppercase tracking-widest">Paid</span>
-                                                                </div>
-                                                            ) : (
-                                                                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-500/10 text-amber-500 border border-amber-500/20">
-                                                                    <div className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-                                                                    <span className="text-xs font-black uppercase tracking-widest">Pending Payment</span>
-                                                                </div>
-                                                            )}
-                                                        </td>
-                                                        <td className="px-6 py-5">
-                                                            <div className="flex items-center gap-2 text-sm text-foreground/80 font-medium">
-                                                                <Clock className="h-3.5 w-3.5 text-muted-foreground" />
-                                                                {project.completedAt 
-                                                                    ? new Date(project.completedAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
-                                                                    : new Date(project.updatedAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })
-                                                                }
-                                                            </div>
-                                                        </td>
-                                                        <td className="px-6 py-5">
-                                                            <div className="flex items-center gap-2 text-sm text-foreground/80 font-medium">
-                                                                {project.editorPaid && project.editorPaidAt ? (
-                                                                    <>
-                                                                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                                                                        {new Date(project.editorPaidAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}
-                                                                    </>
-                                                                ) : project.editorPaid ? (
-                                                                     <>
-                                                                        <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
-                                                                        Cleared
-                                                                    </>
-                                                                ) : (
-                                                                    <span className="text-muted-foreground/40 italic">Not settled yet</span>
-                                                                )}
-                                                            </div>
-                                                        </td>
-                                                    </tr>
-                                                ))
-                                            )}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
+                            )}
                         </motion.div>
                     )}
                 </AnimatePresence>
-                {completedProjects.length > 0 && (
-                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-6">
-                        <div className="flex items-start justify-between gap-4">
-                            <div>
-                                <h3 className="font-semibold text-emerald-600 dark:text-emerald-400 text-lg mb-1">Total Earnings</h3>
-                                <p className="text-sm text-emerald-600/70 dark:text-emerald-400/70">From all completed projects</p>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-3xl font-black text-emerald-600 dark:text-emerald-400 tabular-nums">
-                                    ₹{totalEarnings.toLocaleString()}
-                                </p>
-                                {pendingEarnings > 0 && (
-                                    <p className="text-sm text-amber-600 dark:text-amber-400 font-semibold mt-1">
-                                        ₹{pendingEarnings.toLocaleString()} pending payment
-                                    </p>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
+            </main>
 
-            <ReviewSystemModal
-                isOpen={isReviewSystemOpen}
-                onClose={() => setIsReviewSystemOpen(false)}
-                project={reviewProject ? { 
-                    id: reviewProject.id, 
-                    name: reviewProject.name,
-                    clientName: (reviewProject as any).clientName || reviewProject.name,
-                    paymentStatus: reviewProject.paymentStatus,
-                    editorRating: reviewProject.editorRating,
-                    createdAt: (reviewProject as any).createdAt
-                } : null}
+            {/* --- Modals --- */}
+            <ReviewSystemModal 
+                isOpen={!!reviewProject} 
+                onClose={() => setReviewProject(null)} 
+                project={reviewProject as any} 
+                allowUploadDraft={true}
             />
 
-            {/* Upload Draft Modal */}
             <AnimatePresence>
+                {selectedProjectAssets && (
+                    <AssetModal project={selectedProjectAssets} onClose={() => setSelectedProjectAssets(null)} onPreview={setPreviewVideo} />
+                )}
                 {isUploadModalOpen && (
-                    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-                        <motion.div
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0 }}
-                            onClick={() => !isUploading && setIsUploadModalOpen(false)}
-                            className="absolute inset-0 bg-background/80 backdrop-blur-sm"
-                        />
-                        
-                        <motion.div
-                            initial={{ opacity: 0, scale: 0.95, y: 20 }}
-                            animate={{ opacity: 1, scale: 1, y: 0 }}
-                            exit={{ opacity: 0, scale: 0.95, y: 20 }}
-                            className="relative w-full max-w-2xl glass-panel !rounded-[2.5rem] overflow-hidden shadow-2xl border-white/10"
-                        >
-                            {/* Header */}
-                            <div className="p-8 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
-                                <div className="space-y-1">
-                                    <div className="flex items-center gap-2">
-                                        <div className="h-2 w-2 rounded-full bg-orange-500 animate-pulse" />
-                                        <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest">Handover Protocol v2.0</span>
-                                    </div>
-                                    <h2 className="text-2xl font-black text-foreground">
-                                        Upload Draft <span className="text-muted-foreground">/ {uploadProject?.name}</span>
-                                    </h2>
-                                </div>
-                                <button
-                                    onClick={() => !isUploading && setIsUploadModalOpen(false)}
-                                    className="h-10 w-10 rounded-xl bg-white/5 hover:bg-white/10 flex items-center justify-center border border-white/10 transition-colors"
-                                >
-                                    <X className="h-5 w-5" />
-                                </button>
-                            </div>
-
-                            {/* Body */}
-                            <div className="p-8 space-y-8 max-h-[70vh] overflow-y-auto custom-scrollbar">
-                                <div className="space-y-6">
-                                    <Label className="text-[11px] font-black uppercase tracking-[0.3em] text-muted-foreground ml-1">
-                                        Master Video File
-                                    </Label>
-                                    
-                                    <AnimatePresence mode="wait">
-                                        {uploadPreviewUrl ? (
-                                            <motion.div
-                                                key="preview"
-                                                className="relative rounded-[2rem] overflow-hidden border border-orange-500/40 shadow-xl bg-black"
-                                            >
-                                                <VideoPlayer 
-                                                    videoPath={uploadPreviewUrl} 
-                                                    className="w-full max-h-[240px] object-contain" 
-                                                />
-                                                {!isUploading && (
-                                                    <label className="absolute inset-0 flex items-end justify-center pb-4 bg-gradient-to-t from-black/60 to-transparent cursor-pointer opacity-0 hover:opacity-100 transition-opacity">
-                                                        <input type="file" accept="video/*" className="hidden" onChange={handleFileChange} />
-                                                        <span className="text-[10px] font-black text-white uppercase tracking-widest bg-white/20 backdrop-blur px-4 py-2 rounded-xl border border-white/30">
-                                                            Change File
-                                                        </span>
-                                                    </label>
-                                                )}
-                                                <div className="px-6 py-4 bg-muted/10 border-t border-border flex items-center gap-3">
-                                                    <FileVideo className="h-4 w-4 text-orange-500 shrink-0" />
-                                                    <span className="text-[12px] font-black text-foreground truncate">{uploadFile?.name}</span>
-                                                    <span className="ml-auto text-[10px] font-black text-emerald-500 uppercase tracking-widest shrink-0">
-                                                        {uploadFile ? UploadService.formatBytes(uploadFile.size) : ""}
-                                                    </span>
-                                                </div>
-                                            </motion.div>
-                                        ) : (
-                                            <motion.div
-                                                key="picker"
-                                                className={cn(
-                                                    "group relative border-2 border-dashed border-border rounded-[2.5rem] bg-muted/30",
-                                                    "hover:bg-muted/50 hover:border-orange-500/50 transition-all duration-700",
-                                                    "min-h-[160px] flex flex-col items-center justify-center text-center cursor-pointer p-8"
-                                                )}
-                                            >
-                                                <input
-                                                    type="file"
-                                                    accept="video/*"
-                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-20"
-                                                    onChange={handleFileChange}
-                                                />
-                                                <div className="space-y-3">
-                                                    <div className="h-14 w-14 bg-muted/50 rounded-2xl flex items-center justify-center mx-auto border border-border group-hover:scale-110 group-hover:border-orange-500/40 transition-all duration-500">
-                                                        <UploadCloud className="h-7 w-7 text-muted-foreground group-hover:text-orange-500 transition-colors" />
-                                                    </div>
-                                                    <div className="space-y-1">
-                                                        <p className="text-sm font-black text-muted-foreground">SELECT_VIDEO_PAYLOAD</p>
-                                                        <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">MP4 · MOV · WEBM // MAX {MAX_FILE_SIZE_GB} GB</p>
-                                                    </div>
-                                                </div>
-                                            </motion.div>
-                                        )}
-                                    </AnimatePresence>
-                                </div>
-
-                                <div className="space-y-4">
-                                    <Label className="text-[11px] font-black uppercase tracking-[0.3em] text-muted-foreground ml-1">
-                                        Operational Notes
-                                    </Label>
-                                    <Textarea
-                                        placeholder="What's new in this version?"
-                                        className="bg-muted/30 border-border focus:border-orange-500/50 rounded-2xl font-bold min-h-[100px] text-foreground"
-                                        value={uploadDescription}
-                                        onChange={(e) => setUploadDescription(e.target.value)}
-                                        disabled={isUploading}
-                                    />
-                                </div>
-
-                                {isUploading && uploadProg && (
-                                    <div className="space-y-4 p-6 rounded-[2rem] bg-orange-500/5 border border-orange-500/20">
-                                        <div className="flex justify-between items-center">
-                                            <div className="flex flex-col">
-                                                <span className="text-[10px] font-black text-orange-500 uppercase tracking-widest animate-pulse">
-                                                    {uploadProg.percent === 100 ? "Finalizing..." : "Active Stream..."}
-                                                </span>
-                                                <span className="text-[8px] font-bold text-muted-foreground uppercase">
-                                                    {UploadService.formatSpeed(uploadProg.speedBps || 0)} · {UploadService.formatEta(uploadProg.eta || 0)} LEFT
-                                                </span>
-                                            </div>
-                                            <span className="text-xl font-black text-foreground italic">{Math.round(uploadProg.percent)}%</span>
-                                        </div>
-                                        <div className="h-1.5 w-full bg-muted/50 rounded-full overflow-hidden">
-                                            <motion.div
-                                                animate={{ width: `${uploadProg.percent}%` }}
-                                                className="h-full bg-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.5)]"
-                                            />
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Footer */}
-                            <div className="p-8 bg-white/[0.02] border-t border-white/5 flex gap-3">
-                                {isUploading ? (
-                                    <button
-                                        onClick={handleCancelUpload}
-                                        className="h-14 px-6 rounded-2xl bg-white/5 border border-white/10 text-muted-foreground text-[10px] font-black uppercase tracking-widest hover:bg-destructive/10 hover:text-destructive transition-all flex items-center gap-2"
-                                    >
-                                        <X className="h-4 w-4" />
-                                        Abort
-                                    </button>
-                                ) : (
-                                    <button
-                                        onClick={() => setIsUploadModalOpen(false)}
-                                        className="h-14 px-6 rounded-2xl bg-white/5 border border-white/10 text-muted-foreground text-[10px] font-black uppercase tracking-widest hover:bg-white/10 transition-all"
-                                    >
-                                        Cancel
-                                    </button>
-                                )}
-                                <button
-                                    onClick={handleStartUpload}
-                                    disabled={!uploadFile || isUploading}
-                                    className="flex-1 h-14 rounded-2xl bg-orange-500 text-white text-[10px] font-black uppercase tracking-[0.2em] hover:bg-orange-600 transition-all flex items-center justify-center gap-3 shadow-lg shadow-orange-500/20 disabled:opacity-30"
-                                >
-                                    {isUploading ? (
-                                        <><Loader2 className="h-4 w-4 animate-spin" /> Transmission Active</>
-                                    ) : (
-                                        <>Initiate Handover <ChevronRight className="h-4 w-4" /></>
-                                    )}
-                                </button>
-                            </div>
-                        </motion.div>
-                    </div>
+                    <UploadModal 
+                        project={uploadProject!} 
+                        onClose={() => setIsUploadModalOpen(false)} 
+                        file={uploadFile}
+                        onFileChange={handleFileChange}
+                        description={uploadDescription}
+                        setDescription={setUploadDescription}
+                        onUpload={handleStartUpload}
+                        isUploading={isUploading}
+                        progress={uploadProg}
+                        onCancel={abortRef.current}
+                        previewUrl={uploadPreviewUrl}
+                    />
+                )}
+                {previewVideo && (
+                    <VideoPreviewModal video={previewVideo} onClose={() => setPreviewVideo(null)} />
                 )}
             </AnimatePresence>
+        </div>
+    );
+}
 
-        </>
+// --- Subcomponents ---
+
+function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets }: any) {
+    return (
+        <motion.div 
+            whileHover={{ y: -4 }}
+            className="group bg-card border border-border/50 rounded-[32px] p-6 shadow-xl shadow-black/5 hover:shadow-2xl hover:shadow-primary/5 transition-all space-y-6"
+        >
+            <div className="flex items-start justify-between">
+                <div className="space-y-2">
+                    <StatusBadge status={project.status} />
+                    <h3 className="text-lg font-black text-foreground group-hover:text-primary transition-colors">{project.name}</h3>
+                    <div className="flex items-center gap-4 text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
+                        <span className="flex items-center gap-1.5"><Clock size={12} /> {new Date(project.createdAt).toLocaleDateString()}</span>
+                        <span className="flex items-center gap-1.5"><User size={12} /> {pm?.displayName || "System"}</span>
+                    </div>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                    <div className="text-xs font-black text-foreground">₹{project.editorPrice?.toLocaleString()}</div>
+                    <div className="text-[9px] text-muted-foreground uppercase tracking-tighter">Assigned Rate</div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+                <div className="p-4 rounded-2xl bg-muted/20 border border-border/40 space-y-1">
+                    <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Latest Revision</div>
+                    <div className="text-xs font-bold text-foreground">
+                        {latestRevision ? `Version ${latestRevision.version}` : "No drafts yet"}
+                    </div>
+                </div>
+                <div className="p-4 rounded-2xl bg-muted/20 border border-border/40 space-y-1">
+                    <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Client Contact</div>
+                    <div className="text-xs font-bold text-foreground truncate">{project.clientName || "Protected"}</div>
+                </div>
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+                <button 
+                    onClick={onReview}
+                    className="flex-1 h-12 rounded-2xl bg-primary text-primary-foreground font-bold text-xs shadow-lg shadow-primary/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                    <MessageCircle size={16} /> Open Action Center
+                </button>
+                <button 
+                    onClick={onAssets}
+                    className="h-12 px-6 rounded-2xl bg-muted/50 border border-border/50 text-foreground font-bold text-xs hover:bg-muted active:scale-95 transition-all flex items-center justify-center gap-2"
+                >
+                    <Layers size={16} /> Assets
+                </button>
+                <button 
+                    onClick={onUpload}
+                    className="h-12 w-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20 active:scale-95 transition-all flex items-center justify-center"
+                    title="Upload New Draft"
+                >
+                    <Plus size={20} />
+                </button>
+            </div>
+        </motion.div>
+    );
+}
+
+function AssetModal({ project, onClose, onPreview }: any) {
+    const assets = [...(project.rawFiles || []), ...(project.pmFiles || [])];
+
+    return (
+        <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xl flex items-center justify-center p-6"
+            onClick={onClose}
+        >
+            <motion.div 
+                initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+                className="w-full max-w-5xl bg-card border border-border/50 rounded-[40px] shadow-3xl overflow-hidden flex flex-col max-h-[80vh]"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="p-8 border-b border-border/50 flex items-center justify-between">
+                    <div>
+                        <h2 className="text-2xl font-black text-foreground">Project Assets</h2>
+                        <p className="text-sm text-muted-foreground mt-1">{project.name} • {assets.length} Files</p>
+                    </div>
+                    <button onClick={onClose} className="h-12 w-12 rounded-2xl bg-muted hover:bg-muted/80 transition-colors flex items-center justify-center"><X size={20}/></button>
+                </div>
+
+                <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {assets.map((asset, i) => (
+                        <AssetItem key={i} asset={asset} onPreview={() => onPreview(asset)} />
+                    ))}
+                    {assets.length === 0 && <div className="col-span-full py-20 text-center text-muted-foreground">No assets found for this project.</div>}
+                </div>
+            </motion.div>
+        </motion.div>
+    );
+}
+
+function AssetItem({ asset, onPreview }: any) {
+    const isVideo = /\.(mp4|webm|mov|avi|mkv)$/i.test(asset.name) || asset.type?.startsWith('video/');
+    const transcode = useVideoTranscodeStatus(asset.url || "", asset.name || "");
+
+    return (
+        <div className="group border border-border/50 rounded-[24px] overflow-hidden bg-muted/10 hover:bg-muted/20 transition-all flex flex-col">
+            <div className="aspect-video bg-black relative overflow-hidden flex items-center justify-center">
+                {isVideo ? (
+                    <>
+                        <video src={transcode.videoUrl || asset.url} className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-500" />
+                        <div className="absolute inset-0 flex items-center justify-center z-10">
+                            <button 
+                                onClick={onPreview}
+                                className="h-12 w-12 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100"
+                            >
+                                <Play size={20} fill="currentColor" />
+                            </button>
+                        </div>
+                        {transcode.status === 'processing' && (
+                            <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2 z-20">
+                                <Loader2 className="animate-spin text-white" size={20} />
+                                <span className="text-[9px] font-black text-white uppercase tracking-widest">Optimizing...</span>
+                            </div>
+                        )}
+                    </>
+                ) : (
+                    <FileVideo size={40} className="text-muted-foreground/30" />
+                )}
+            </div>
+            <div className="p-4 space-y-2">
+                <p className="text-xs font-bold text-foreground truncate">{asset.name}</p>
+                <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-muted-foreground uppercase font-black">{(asset.size / (1024*1024)).toFixed(1)} MB</span>
+                    <a 
+                        href={asset.url} 
+                        download={asset.name}
+                        className="h-8 px-3 rounded-lg bg-primary/10 text-primary hover:bg-primary text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all hover:text-white"
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <Download size={12} /> Save
+                    </a>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function UploadModal({ project, onClose, file, onFileChange, description, setDescription, onUpload, isUploading, progress, onCancel, previewUrl }: any) {
+    return (
+        <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6"
+            onClick={onClose}
+        >
+            <motion.div 
+                initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
+                className="w-full max-w-2xl bg-card border border-border/50 rounded-[40px] shadow-3xl overflow-hidden p-10 space-y-8"
+                onClick={e => e.stopPropagation()}
+            >
+                <div className="text-center space-y-2">
+                    <h2 className="text-3xl font-black text-foreground">Upload Revision</h2>
+                    <p className="text-sm text-muted-foreground">Uploading for {project.name}</p>
+                </div>
+
+                {!isUploading ? (
+                    <div className="space-y-6">
+                        <div className="space-y-4">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Select Video File</Label>
+                            <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-border/50 rounded-[32px] cursor-pointer hover:bg-muted/30 hover:border-primary/50 transition-all group overflow-hidden relative">
+                                {previewUrl ? (
+                                    <video src={previewUrl} className="absolute inset-0 w-full h-full object-cover opacity-40" />
+                                ) : (
+                                    <div className="flex flex-col items-center justify-center pt-5 pb-6">
+                                        <UploadCloud className="w-12 h-12 mb-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                                        <p className="mb-2 text-sm text-foreground font-bold">Click to upload or drag and drop</p>
+                                        <p className="text-xs text-muted-foreground">MP4, MOV, WEBM (Max {MAX_FILE_SIZE_GB}GB)</p>
+                                    </div>
+                                )}
+                                <input type="file" className="hidden" accept="video/*" onChange={onFileChange} />
+                                {file && (
+                                    <div className="absolute bottom-4 left-4 right-4 p-3 rounded-2xl bg-background/80 backdrop-blur-md border border-border/50 flex items-center justify-between">
+                                        <span className="text-[10px] font-bold text-foreground truncate max-w-[200px]">{file.name}</span>
+                                        <span className="text-[10px] font-black text-primary">{(file.size / (1024*1024)).toFixed(1)} MB</span>
+                                    </div>
+                                )}
+                            </label>
+                        </div>
+
+                        <div className="space-y-4">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Work Summary / Patch Notes</Label>
+                            <Textarea 
+                                placeholder="What changes were made in this version?"
+                                className="min-h-[120px] rounded-[24px] bg-muted/30 border-border/50 focus:border-primary/50"
+                                value={description}
+                                onChange={e => setDescription(e.target.value)}
+                            />
+                        </div>
+
+                        <div className="flex gap-4">
+                            <button onClick={onClose} className="flex-1 h-14 rounded-2xl border border-border/50 font-bold text-sm hover:bg-muted transition-colors">Cancel</button>
+                            <button 
+                                onClick={onUpload}
+                                disabled={!file}
+                                className="flex-[2] h-14 rounded-2xl bg-primary text-primary-foreground font-black text-sm shadow-xl shadow-primary/20 hover:brightness-110 active:scale-95 transition-all disabled:opacity-50"
+                            >
+                                Start Upload Pipeline
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-8 py-10">
+                        <div className="flex flex-col items-center gap-6">
+                            <div className="relative h-32 w-32">
+                                <svg className="h-full w-full" viewBox="0 0 100 100">
+                                    <circle className="text-muted/20 stroke-current" strokeWidth="8" cx="50" cy="50" r="40" fill="transparent" />
+                                    <circle 
+                                        className="text-primary stroke-current transition-all duration-500 ease-out" 
+                                        strokeWidth="8" strokeLinecap="round" cx="50" cy="50" r="40" fill="transparent" 
+                                        strokeDasharray="251.2" 
+                                        strokeDashoffset={251.2 - (251.2 * (progress?.percent || 0)) / 100}
+                                        transform="rotate(-90 50 50)"
+                                    />
+                                </svg>
+                                <div className="absolute inset-0 flex flex-col items-center justify-center">
+                                    <span className="text-2xl font-black text-foreground">{Math.round(progress?.percent || 0)}%</span>
+                                </div>
+                            </div>
+
+                            <div className="text-center space-y-1">
+                                <p className="text-sm font-black text-foreground uppercase tracking-widest">Streaming to AWS S3</p>
+                                <div className="flex items-center gap-4 text-[10px] text-muted-foreground font-bold uppercase">
+                                    <span>{UploadService.formatSpeed(progress?.speedBps || 0)}</span>
+                                    <span>{UploadService.formatEta(progress?.eta || 0)} remaining</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="p-4 rounded-2xl bg-muted/30 border border-border/50 space-y-2">
+                            <div className="flex justify-between text-[10px] font-black uppercase tracking-widest">
+                                <span className="text-muted-foreground">Total Transferred</span>
+                                <span className="text-primary">{UploadService.formatBytes(progress?.transferred || 0)} / {UploadService.formatBytes(progress?.total || 0)}</span>
+                            </div>
+                            <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
+                                <motion.div className="h-full bg-primary" initial={{ width: 0 }} animate={{ width: `${progress?.percent || 0}%` }} />
+                            </div>
+                        </div>
+
+                        <button 
+                            onClick={onCancel as any}
+                            className="w-full h-12 rounded-2xl text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-destructive transition-colors"
+                        >
+                            Abort Upload
+                        </button>
+                    </div>
+                )}
+            </motion.div>
+        </motion.div>
+    );
+}
+
+function VideoPreviewModal({ video, onClose }: any) {
+    const transcode = useVideoTranscodeStatus(video.url || "", video.name || "");
+    const isMux = video.storagePath?.startsWith("mux://") || video.url?.startsWith("mux://");
+    const playbackId = (transcode.status === "ready" && isMux) ? transcode.videoUrl : null;
+
+    return (
+        <motion.div 
+            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4"
+            onClick={onClose}
+        >
+            <div className="relative w-full max-w-6xl aspect-video rounded-3xl overflow-hidden shadow-4xl" onClick={e => e.stopPropagation()}>
+                <button onClick={onClose} className="absolute top-6 right-6 h-12 w-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-xl z-50 transition-all active:scale-95"><X size={24}/></button>
+                <VideoPlayer 
+                    videoPath={transcode.videoUrl || video.url}
+                    playbackId={playbackId || undefined}
+                    title={video.name}
+                    className="w-full h-full"
+                />
+            </div>
+        </motion.div>
     );
 }
