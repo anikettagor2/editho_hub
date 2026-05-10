@@ -24,6 +24,15 @@ interface VideoPlayerProps {
     autoPlay?: boolean;
     muted?: boolean;
     loop?: boolean;
+    envKey?: string; // Mux Data env key
+    tokens?: {
+        playback?: string;
+        thumbnail?: string;
+        storyboard?: string;
+    };
+    preferPlayback?: "mse" | "native";
+    forwardSeekOffset?: number;
+    backwardSeekOffset?: number;
     metadata?: {
         video_id?: string;
         video_title?: string;
@@ -46,6 +55,11 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
         autoPlay = false,
         muted = false,
         loop = false,
+        envKey,
+        tokens,
+        preferPlayback,
+        forwardSeekOffset,
+        backwardSeekOffset,
         metadata,
         onTimeUpdate,
         onPlaying,
@@ -166,6 +180,11 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
                         autoPlay={autoPlay}
                         muted={muted}
                         loop={loop}
+                        tokens={tokens}
+                        envKey={envKey}
+                        preferPlayback={preferPlayback}
+                        forwardSeekOffset={forwardSeekOffset}
+                        backwardSeekOffset={backwardSeekOffset}
                         onTimeUpdate={(e) => {
                             const target = e.target as HTMLVideoElement;
                             onTimeUpdate?.(target.currentTime, target.duration);

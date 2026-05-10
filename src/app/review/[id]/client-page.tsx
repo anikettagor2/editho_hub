@@ -359,6 +359,7 @@ export default function GuestReviewPageClient({ revisionId }: GuestReviewPageCli
                             data-watermark-name={project?.clientName || project?.name || "Guest"}
                         >
                             <VideoPlayer
+                                ref={playerRef}
                                 playbackId={revision.playbackId}
                                 videoPath={revision.videoUrl || revision.hlsUrl}
                                 title={videoTitle}
@@ -375,6 +376,8 @@ export default function GuestReviewPageClient({ revisionId }: GuestReviewPageCli
                                 onLoadedMetadata={(dur) => {
                                     if (dur && !isNaN(dur)) setDuration(dur);
                                 }}
+                                autoPlay={true}
+                                accentColor="#3b82f6"
                                 primaryColor="#ffffff"
                                 className="w-full h-full"
                             />

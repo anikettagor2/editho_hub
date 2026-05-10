@@ -705,6 +705,8 @@ function VideoPreviewModal({ video, onClose }: any) {
                     videoPath={transcode.videoUrl || video.url}
                     playbackId={playbackId || undefined}
                     title={video.name}
+                    autoPlay={true}
+                    accentColor="#3b82f6"
                     className="w-full h-full"
                 />
             </div>
