@@ -3,11 +3,10 @@ import { adminDb } from "@/lib/firebase/admin";
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: any }
+    context: { params: Promise<{ uploadId: string }> }
 ) {
     try {
-        const resolvedParams = await params;
-        const uploadId = resolvedParams.uploadId;
+        const { uploadId } = await context.params;
 
         if (!uploadId) {
             return NextResponse.json({ error: "Missing uploadId" }, { status: 400 });
