@@ -97,7 +97,7 @@ export default function UploadRevisionPage() {
                 const { presignedUrls } = await response.json();
                 return { url: presignedUrls[partNumber], headers: {} };
             },
-            // @ts-expect-error - missing in TS definition
+            // @ts-ignore
             prepareUploadParts: async (file: any, partData: any) => {
                 const { uploadId, key } = partData;
                 let numbers: number[] = [];
@@ -131,7 +131,7 @@ export default function UploadRevisionPage() {
                 console.log('Upload complete:', { s3Location, s3Key });
                 
                 const passthrough = file.meta.passthrough;
-                const passthroughData = JSON.parse(passthrough);
+                const passthroughData = JSON.parse(passthrough as string);
                 
                 if (passthroughData.revisionId) {
                     await updateDoc(doc(db, "revisions", passthroughData.revisionId), {
@@ -151,7 +151,7 @@ export default function UploadRevisionPage() {
                     throw new Error(`Ingest failed: ${ingestData.error}`);
                 }
                 
-                return { location, muxAssetId: ingestData.id, key };
+                return { location: s3Location, muxAssetId: ingestData.id, key: s3Key } as any;
             },
         })
     );

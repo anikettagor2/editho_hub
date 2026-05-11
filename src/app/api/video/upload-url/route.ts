@@ -9,6 +9,7 @@ export async function POST(req: Request) {
       new_asset_settings: {
         playback_policy: ['public'],
         passthrough: passthrough || undefined,
+        mp4_support: 'none',
       },
       cors_origin: '*', // In production, this should be your domain
     });

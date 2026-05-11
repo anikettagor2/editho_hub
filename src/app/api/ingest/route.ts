@@ -9,6 +9,7 @@ export async function POST(req: Request) {
       input: [{ url }],
       playback_policy: ['public'],
       passthrough: passthrough || undefined,
+      mp4_support: 'none',
     } as any);
 
     return NextResponse.json({
