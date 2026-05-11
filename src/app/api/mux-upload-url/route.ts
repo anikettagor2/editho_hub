@@ -18,7 +18,6 @@ export async function POST(req: Request) {
         const upload = await video.uploads.create({
             new_asset_settings: {
                 playback_policy: ["public"],
-                static_renditions: ["standard"],
                 passthrough: JSON.stringify(passthroughData),
             },
             cors_origin: "*",

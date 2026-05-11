@@ -8,7 +8,6 @@ export async function POST(req: Request) {
     const upload = await video.uploads.create({
       new_asset_settings: {
         playback_policy: ['public'],
-        static_renditions: [{ resolution: "highest" }],
         passthrough: passthrough || undefined,
       },
       cors_origin: '*', // In production, this should be your domain
