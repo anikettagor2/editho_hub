@@ -11,6 +11,7 @@ import { toast } from "sonner";
  * 4. Fallback to direct link if fetch fails.
  */
 export async function handleFileDownload(urlOrId: string, filename: string = "video.mp4") {
+    console.log(`[DownloadUtils] handleFileDownload called with urlOrId: ${urlOrId}, filename: ${filename}`);
     const downloadToastId = toast.loading(`Preparing download: ${filename}...`);
     
     try {
@@ -30,6 +31,7 @@ export async function handleFileDownload(urlOrId: string, filename: string = "vi
 
         // 2. If it's already a blob/data URL, allow it
         if (urlOrId.startsWith('blob:') || urlOrId.startsWith('data:')) {
+            console.log(`[DownloadUtils] Triggering direct blob/data URL download`);
             triggerDownload(urlOrId, filename);
             toast.success("Download started", { id: downloadToastId });
             return;
@@ -41,7 +43,9 @@ export async function handleFileDownload(urlOrId: string, filename: string = "vi
         // If it's a signed URL (contains X-Goog-Signature or X-Amz-Signature), the server has already set response-content-disposition=attachment.
         // We can safely trigger the download directly without loading the entire video into memory as a blob.
         if (urlOrId.includes("X-Goog-Signature") || urlOrId.includes("GoogleAccessId") || urlOrId.includes("X-Amz-Signature")) {
-            triggerDownload(urlOrId, filename);
+            console.log(`[DownloadUtils] Detected signed URL, using location.assign for direct download`);
+            // For signed URLs with Content-Disposition attachment, window.location.assign is the safest way to download without popup blockers blocking async clicks.
+            window.location.assign(urlOrId);
             toast.success("Download started!", { id: downloadToastId });
             return;
         }
@@ -49,11 +53,13 @@ export async function handleFileDownload(urlOrId: string, filename: string = "vi
         toast.loading("Fetching file from storage...", { id: downloadToastId });
 
         try {
+            console.log(`[DownloadUtils] Initiating fetch for regular remote URL`);
             const response = await fetch(urlOrId);
             if (!response.ok) throw new Error("Fetch failed");
 
             const blob = await response.blob();
             const blobUrl = URL.createObjectURL(blob);
+            console.log(`[DownloadUtils] Fetch successful, triggering download from blob`);
             triggerDownload(blobUrl, filename);
             
             setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
@@ -61,22 +67,38 @@ export async function handleFileDownload(urlOrId: string, filename: string = "vi
         } catch (fetchError) {
             console.warn("[DownloadUtils] Fetch failed, attempting direct link download:", fetchError);
             // Last resort: Just try to open the URL directly
-            triggerDownload(urlOrId, filename);
+            window.location.assign(urlOrId);
             toast.success("Download initiated via direct link", { id: downloadToastId });
         }
         
     } catch (error) {
-        console.error('Download utility error:', error);
+        console.error('[DownloadUtils] Download utility error:', error);
         toast.error('Download failed. Please try again.', { id: downloadToastId });
     }
 }
 
 function triggerDownload(url: string, filename: string) {
-    const link = document.createElement('a');
-    link.style.display = 'none';
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    try {
+        const link = document.createElement('a');
+        link.style.display = 'none';
+        link.href = url;
+        link.download = filename;
+        // For external signed URLs, ensure it opens safely or navigates if download attribute is ignored
+        if (url.startsWith('http')) {
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+        }
+        document.body.appendChild(link);
+        link.click();
+        
+        // Use a small timeout before removing the link
+        setTimeout(() => {
+            if (document.body.contains(link)) {
+                document.body.removeChild(link);
+            }
+        }, 100);
+    } catch (e) {
+        console.error("Link click failed, falling back to location.assign", e);
+        window.location.assign(url);
+    }
 }

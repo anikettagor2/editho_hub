@@ -237,7 +237,9 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
     }, [selectedImagePreview, imageOverlayText]);
 
     const startDownload = async () => {
+        console.log("[Download Flow] startDownload triggered", { selectedRevisionId, projectId: project?.id });
         if (!selectedRevisionId || !project?.id) {
+            console.log("[Download Flow] Missing revision or project id");
             toast.error("No revision selected.");
             return;
         }
@@ -246,17 +248,21 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
         const loadingToast = toast.loading("Preparing secure download link...");
 
         try {
+            console.log("[Download Flow] Checking local memory for file");
             // 1. First check local memory for instant download
             const localFile = localFileManager.getFile(selectedRevisionId);
             if (localFile) {
+                console.log("[Download Flow] Local file found, downloading from memory");
                 toast.dismiss(loadingToast);
                 await handleFileDownload(selectedRevisionId, localFile.name);
                 await registerDownload(project.id, selectedRevisionId);
                 return;
             }
 
+            console.log("[Download Flow] Requesting download URL from server");
             // 2. If not in memory, get authorized URL and use utility to fetch & download
             const res = await registerDownload(project.id, selectedRevisionId);
+            console.log("[Download Flow] Server response received", res);
             toast.dismiss(loadingToast);
             
             if (!res.success || !res.downloadUrl) {
@@ -264,10 +270,11 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
             }
 
             const fileName = `revision_v${selectedRevision?.version || "final"}.mp4`;
+            console.log("[Download Flow] Proceeding to file download with URL");
             await handleFileDownload(res.downloadUrl, fileName);
 
         } catch (err: any) {
-            console.error("Download Error:", err);
+            console.error("[Download Flow] Download Error:", err);
             toast.dismiss(loadingToast);
             toast.error(err.message || "Failed to start download.");
         } finally {
@@ -276,14 +283,18 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
     };
 
     const handleDownloadClick = async () => {
+        console.log("[Download Flow] Download button clicked!");
+        console.log("[Download Flow] Context:", { isClient, isPaymentComplete, hasFeedback, selectedRevisionId });
         if (!project?.id || !selectedRevisionId) return;
         if (isClient) {
             if (!isPaymentComplete && !user?.payLater) {
+                console.log("[Download Flow] Pending payment, opening payment modal");
                 setPendingDownloadAfterFlow(true);
                 setIsPaymentModalOpen(true);
                 return;
             }
             if (!hasFeedback) {
+                console.log("[Download Flow] Pending feedback, opening feedback modal");
                 setPendingDownloadAfterFlow(true);
                 setIsFeedbackModalOpen(true);
                 return;
