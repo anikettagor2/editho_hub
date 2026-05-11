@@ -209,7 +209,7 @@ export async function registerDownload(projectId: string, revisionId: string) {
         let targetRevisionId = revisionId;
 
         // AUTO-RECOVERY: If the requested revision is empty, try to find the latest valid one for this project
-        if (!downloadUrl && !data.s3Key && !data.assetId) {
+        if (!downloadUrl && !data.s3Key && !data.assetId && !data.playbackId) {
             console.warn(`[registerDownload] Requested revision ${revisionId} is EMPTY. Attempting auto-recovery for Project: ${projectId}`);
             
             const allRevsSnap = await adminDb.collection('revisions')
@@ -218,7 +218,7 @@ export async function registerDownload(projectId: string, revisionId: string) {
             
             const validRevs = allRevsSnap.docs
                 .map(d => ({ id: d.id, ...d.data() } as Revision))
-                .filter(d => d.videoUrl || d.s3Key || d.assetId)
+                .filter(d => d.videoUrl || d.s3Key || d.assetId || d.playbackId)
                 .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
 
             if (validRevs.length > 0) {
