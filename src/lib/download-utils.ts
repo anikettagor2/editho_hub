@@ -37,39 +37,19 @@ export async function handleFileDownload(urlOrId: string, filename: string = "vi
             return;
         }
 
-        // 3. Remote URL fallback
-        console.log(`[DownloadUtils] Fetching remote file: ${urlOrId}`);
-
-        // If it's a signed URL (contains X-Goog-Signature or X-Amz-Signature), the server has already set response-content-disposition=attachment.
-        // We can safely trigger the download directly without loading the entire video into memory as a blob.
-        if (urlOrId.includes("X-Goog-Signature") || urlOrId.includes("GoogleAccessId") || urlOrId.includes("X-Amz-Signature")) {
-            console.log(`[DownloadUtils] Detected signed URL, using location.assign for direct download`);
-            // For signed URLs with Content-Disposition attachment, window.location.assign is the safest way to download without popup blockers blocking async clicks.
-            window.location.assign(urlOrId);
+        // For any external remote URL (http/https), use an anchor tag with target="_blank".
+        // This avoids memory limits with large files and avoids CORS issues.
+        // The URLs returned by the backend already have Content-Disposition: attachment.
+        if (urlOrId.startsWith("http://") || urlOrId.startsWith("https://")) {
+            console.log(`[DownloadUtils] Remote URL detected, using anchor tag navigation to bypass popup blockers and memory limits`);
+            triggerDirectNavigation(urlOrId, filename);
             toast.success("Download started!", { id: downloadToastId });
             return;
         }
 
-        toast.loading("Fetching file from storage...", { id: downloadToastId });
-
-        try {
-            console.log(`[DownloadUtils] Initiating fetch for regular remote URL`);
-            const response = await fetch(urlOrId);
-            if (!response.ok) throw new Error("Fetch failed");
-
-            const blob = await response.blob();
-            const blobUrl = URL.createObjectURL(blob);
-            console.log(`[DownloadUtils] Fetch successful, triggering download from blob`);
-            triggerDownload(blobUrl, filename);
-            
-            setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
-            toast.success("Download started!", { id: downloadToastId });
-        } catch (fetchError) {
-            console.warn("[DownloadUtils] Fetch failed, attempting direct link download:", fetchError);
-            // Last resort: Just try to open the URL directly
-            window.location.assign(urlOrId);
-            toast.success("Download initiated via direct link", { id: downloadToastId });
-        }
+        console.log(`[DownloadUtils] Unrecognized url format, attempting direct navigation anyway: ${urlOrId}`);
+        triggerDirectNavigation(urlOrId, filename);
+        toast.success("Download initiated", { id: downloadToastId });
         
     } catch (error) {
         console.error('[DownloadUtils] Download utility error:', error);
@@ -83,11 +63,6 @@ function triggerDownload(url: string, filename: string) {
         link.style.display = 'none';
         link.href = url;
         link.download = filename;
-        // For external signed URLs, ensure it opens safely or navigates if download attribute is ignored
-        if (url.startsWith('http')) {
-            link.target = '_blank';
-            link.rel = 'noopener noreferrer';
-        }
         document.body.appendChild(link);
         link.click();
         
@@ -96,9 +71,32 @@ function triggerDownload(url: string, filename: string) {
             if (document.body.contains(link)) {
                 document.body.removeChild(link);
             }
-        }, 100);
+        }, 500);
     } catch (e) {
-        console.error("Link click failed, falling back to location.assign", e);
+        console.error("[DownloadUtils] Link click failed, falling back to location.assign", e);
+        window.location.assign(url);
+    }
+}
+
+function triggerDirectNavigation(url: string, filename: string) {
+    try {
+        console.log(`[DownloadUtils] Triggering direct navigation with anchor tag for ${url}`);
+        const link = document.createElement('a');
+        link.style.display = 'none';
+        link.href = url;
+        link.download = filename;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        document.body.appendChild(link);
+        link.click();
+        
+        setTimeout(() => {
+            if (document.body.contains(link)) {
+                document.body.removeChild(link);
+            }
+        }, 500);
+    } catch (e) {
+        console.error("[DownloadUtils] Anchor click failed, falling back to location.assign", e);
         window.location.assign(url);
     }
 }
