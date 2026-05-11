@@ -6,8 +6,8 @@ export const s3Client = new S3Client({
     accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
   },
-  // Enable Transfer Acceleration for lightning fast uploads if enabled on the bucket
-  useAccelerateEndpoint: true,
+  // Enable Transfer Acceleration only if explicitly requested and enabled on the bucket
+  useAccelerateEndpoint: process.env.ENABLE_S3_ACCELERATE === 'true',
 });
 
 export const BUCKET_NAME = process.env.AWS_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME;
