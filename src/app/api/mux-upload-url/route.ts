@@ -19,7 +19,6 @@ export async function POST(req: Request) {
             new_asset_settings: {
                 playback_policy: ["public"],
                 passthrough: JSON.stringify(passthroughData),
-                mp4_support: 'none',
             },
             cors_origin: "*",
         });

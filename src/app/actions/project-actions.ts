@@ -27,6 +27,41 @@ const ASSET_PURGE_DELAY_MS = 24 * 60 * 60 * 1000;
  * @see registerDownload() - The ONLY function that should set status to 'completed'
  */
 
+function extractS3KeyFromUrl(url: string, bucketName: string | undefined): string | null {
+    if (!url || !bucketName) return null;
+    
+    // Check if it's an S3 URL
+    if (!url.includes(".s3.") && !url.includes("amazonaws.com")) return null;
+
+    try {
+        // Path-style: https://s3.amazonaws.com/bucket-name/key
+        // or https://s3.region.amazonaws.com/bucket-name/key
+        if (url.includes(`/${bucketName}/`)) {
+            const parts = url.split(`/${bucketName}/`);
+            if (parts.length > 1) {
+                return parts[1].split("?")[0];
+            }
+        }
+
+        // Virtual-hosted style: https://bucket-name.s3.region.amazonaws.com/key
+        const urlObj = new URL(url);
+        // If hostname starts with bucket name followed by a dot
+        if (urlObj.hostname.startsWith(`${bucketName}.`)) {
+            return urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
+        }
+        
+        // Fallback for custom domains or other variants if the key is the only thing in the path
+        if (urlObj.hostname.includes(bucketName)) {
+             return urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
+        }
+
+    } catch (e) {
+        console.error("[extractS3KeyFromUrl] Error parsing URL:", e);
+    }
+    
+    return null;
+}
+
 function extractStoragePathFromUrl(url?: string): string | null {
     if (!url) return null;
 
@@ -170,15 +205,76 @@ export async function registerDownload(projectId: string, revisionId: string) {
         }
 
         let downloadUrl = data.videoUrl || "";
+        let targetDocRef = docRef;
+        let targetRevisionId = revisionId;
+
+        // AUTO-RECOVERY: If the requested revision is empty, try to find the latest valid one for this project
+        if (!downloadUrl && !data.s3Key && !data.assetId) {
+            console.warn(`[registerDownload] Requested revision ${revisionId} is EMPTY. Attempting auto-recovery for Project: ${projectId}`);
+            
+            const allRevsSnap = await adminDb.collection('revisions')
+                .where('projectId', '==', projectId)
+                .get();
+            
+            const validRevs = allRevsSnap.docs
+                .map(d => ({ id: d.id, ...d.data() } as Revision))
+                .filter(d => d.videoUrl || d.s3Key || d.assetId)
+                .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+            if (validRevs.length > 0) {
+                const latestValid = validRevs[0];
+                console.log(`[registerDownload] Auto-recovered: Falling back to Revision ${latestValid.id} (V${latestValid.version})`);
+                downloadUrl = latestValid.videoUrl || "";
+                
+                // Switch context to the recovered revision
+                data.s3Key = latestValid.s3Key;
+                data.version = latestValid.version;
+                targetDocRef = adminDb.collection('revisions').doc(latestValid.id);
+                targetRevisionId = latestValid.id;
+                
+                const { addProjectLog } = await import("./admin-actions");
+                await addProjectLog(projectId, 'DATA_REPAIR', { uid: 'system', displayName: 'EditoHub System' }, `Client tried to download empty revision ${revisionId}. System auto-recovered by serving latest valid revision ${latestValid.id} (V${latestValid.version}).`);
+            } else {
+                console.error(`[registerDownload] GHOST PROJECT: No valid revisions found for project ${projectId}`);
+                return { 
+                    success: false, 
+                    error: "This project doesn't have any uploaded video files yet. Please contact your editor or support." 
+                };
+            }
+        }
 
         // If s3Key exists, dynamically generate a fresh S3 presigned URL 
         // This is necessary because the initial presigned URL expires after 1 hour.
-        if (data.s3Key && BUCKET_NAME) {
+        let s3Key = data.s3Key;
+
+        // Fallback: If s3Key is missing but videoUrl looks like an S3 URL, try to extract it
+        if (!s3Key && downloadUrl) {
+            const extractedKey = extractS3KeyFromUrl(downloadUrl, BUCKET_NAME);
+            if (extractedKey) {
+                s3Key = extractedKey;
+                console.warn(`[registerDownload] CRITICAL: s3Key was missing in database for revision ${targetRevisionId}. Successfully extracted from URL: ${s3Key}. Patching database record.`);
+                
+                // Repair the database record immediately
+                await targetDocRef.update({ 
+                    s3Key: extractedKey,
+                    updatedAt: now 
+                });
+
+                // Log this data inconsistency for admin review
+                const { addProjectLog } = await import("./admin-actions");
+                await addProjectLog(projectId, 'DATA_REPAIR', { uid: 'system', displayName: 'EditoHub System' }, `Missing s3Key recovered and PATCHED from videoUrl for revision ${targetRevisionId}. URL: ${downloadUrl}`);
+            }
+        }
+
+        if (s3Key && BUCKET_NAME) {
             try {
+                const safeProjectName = projectData.name ? projectData.name.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'Video';
+                const downloadFilename = `${safeProjectName}_V${data.version || 'Draft'}.mp4`;
+
                 const getCommand = new GetObjectCommand({
                     Bucket: BUCKET_NAME,
-                    Key: data.s3Key,
-                    ResponseContentDisposition: `attachment; filename="Video_Draft.mp4"`
+                    Key: s3Key,
+                    ResponseContentDisposition: `attachment; filename="${downloadFilename}"`
                 });
                 downloadUrl = await getSignedUrl(s3, getCommand, { expiresIn: 3600 });
             } catch (s3Err) {
@@ -193,12 +289,15 @@ export async function registerDownload(projectId: string, revisionId: string) {
 
         if (!downloadUrl) {
             console.error(`[registerDownload] No video file available for revision: ${revisionId}`);
-            return { success: false, error: "Video file not available for download from S3. Please contact support." };
+            return { success: false, error: "The video file for this revision is not available in our secure storage. Please contact support." };
         }
 
         // Generate a signed URL to enforce download behavior and bypass CORS, ONLY if it's a Firebase URL
         if (downloadUrl.includes('firebasestorage.googleapis.com')) {
-            const signedUrlRes = await getSignedDownloadUrl(downloadUrl);
+            const safeProjectName = projectData.name ? projectData.name.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'Video';
+            const downloadFilename = `${safeProjectName}_V${data.version || 'Draft'}.mp4`;
+            
+            const signedUrlRes = await getSignedDownloadUrl(downloadUrl, downloadFilename);
             if (signedUrlRes.success && signedUrlRes.url) {
                 downloadUrl = signedUrlRes.url;
             }
