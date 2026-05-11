@@ -7,6 +7,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { s3Client as s3, BUCKET_NAME } from '@/lib/s3';
+import { video } from '@/lib/mux';
 
 const ASSET_PURGE_DELAY_MS = 24 * 60 * 60 * 1000;
 
@@ -266,6 +267,23 @@ export async function registerDownload(projectId: string, revisionId: string) {
             }
         }
 
+        // DEEP RECOVERY: If s3Key is STILL missing but we have an assetId, try to fetch from Mux metadata
+        if (!s3Key && data.assetId) {
+            try {
+                const asset = await video.assets.retrieve(data.assetId);
+                if (asset.passthrough) {
+                    const pt = JSON.parse(asset.passthrough);
+                    if (pt.s3Key) {
+                        s3Key = pt.s3Key;
+                        console.log(`[registerDownload] Recovered s3Key from Mux metadata for ${targetRevisionId}: ${s3Key}`);
+                        await targetDocRef.update({ s3Key, updatedAt: now });
+                    }
+                }
+            } catch (muxErr) {
+                console.warn(`[registerDownload] Failed to recover s3Key from Mux:`, muxErr);
+            }
+        }
+
         if (s3Key && BUCKET_NAME) {
             try {
                 const safeProjectName = projectData.name ? projectData.name.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'Video';
@@ -452,5 +470,117 @@ export async function getSignedDownloadUrl(downloadUrl: string, fileName?: strin
     } catch (err: any) {
         console.error("Failed to generate signed URL:", err);
         return { success: false, error: err.message };
+    }
+}
+
+/**
+ * 🛠️ MUX HARDENING & REPAIR ACTIONS 🛠️
+ */
+
+/**
+ * Synchronizes a revision's metadata. 
+ * If it has an S3 asset but no Mux playbackId, it triggers ingestion.
+ */
+export async function syncRevisionMetadata(revisionId: string) {
+    console.log(`[syncRevisionMetadata] Hardening revision: ${revisionId}`);
+    try {
+        const revRef = adminDb.collection('revisions').doc(revisionId);
+        const snap = await revRef.get();
+        
+        if (!snap.exists) return { success: false, error: "Revision not found" };
+        
+        const data = snap.data() as Revision;
+        
+        // If we already have playbackId, we're good
+        if (data.playbackId) {
+            return { success: true, playbackId: data.playbackId, status: "ready" };
+        }
+
+        // Try to recover s3Key if missing
+        let s3Key = data.s3Key;
+        if (!s3Key && data.videoUrl) {
+            s3Key = extractS3KeyFromUrl(data.videoUrl, BUCKET_NAME) || undefined;
+            if (s3Key) {
+                await revRef.update({ s3Key, updatedAt: Date.now() });
+                console.log(`[syncRevisionMetadata] Recovered missing s3Key from URL for ${revisionId}`);
+            }
+        }
+
+        if (!s3Key) {
+            return { success: false, error: "No S3 asset found to ingest into Mux" };
+        }
+
+        // Generate a fresh presigned URL for Mux to ingest
+        const getCommand = new GetObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: s3Key,
+        });
+        const ingestUrl = await getSignedUrl(s3, getCommand, { expiresIn: 3600 });
+
+        // Trigger Mux Ingest
+        const passthrough = JSON.stringify({
+            pid: data.projectId,
+            rid: revisionId,
+            t: 'revision',
+            s3Key: s3Key
+        });
+
+        console.log(`[syncRevisionMetadata] Triggering Mux ingest for ${revisionId}...`);
+        try {
+            const asset = await video.assets.create({
+                input: [{ url: ingestUrl }],
+                playback_policy: ['public'],
+                passthrough
+            } as any);
+
+            // Update revision to show it's processing
+            await revRef.update({
+                assetId: asset.id,
+                status: 'active', // keep active while processing
+                updatedAt: Date.now()
+            });
+
+            return { 
+                success: true, 
+                status: "processing", 
+                assetId: asset.id 
+            };
+        } catch (muxErr: any) {
+            if (muxErr.message?.includes("Free plan is limited to 10 assets")) {
+                console.error(`[syncRevisionMetadata] MUX LIMIT REACHED for ${revisionId}`);
+                return { success: false, error: "Mux Free Plan limit reached (10 assets). Please upgrade your Mux account or delete old assets." };
+            }
+            throw muxErr;
+        }
+
+    } catch (error: any) {
+        console.error(`[syncRevisionMetadata] Failed for ${revisionId}:`, error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Repairs all revisions for a project that are missing Mux streams.
+ */
+export async function repairProjectMuxStreams(projectId: string) {
+    try {
+        const revsSnap = await adminDb.collection('revisions')
+            .where('projectId', '==', projectId)
+            .get();
+        
+        const results = [];
+        for (const doc of revsSnap.docs) {
+            const rev = doc.data() as Revision;
+            if (!rev.playbackId && (rev.videoUrl || rev.s3Key)) {
+                const res = await syncRevisionMetadata(doc.id);
+                results.push({ id: doc.id, ...res });
+            }
+        }
+
+        revalidatePath(`/dashboard/projects/${projectId}`);
+        return { success: true, repairedCount: results.length, details: results };
+    } catch (error: any) {
+        console.error(`[repairProjectMuxStreams] Error:`, error);
+        return { success: false, error: error.message };
     }
 }
