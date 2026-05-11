@@ -38,9 +38,9 @@ export async function handleFileDownload(urlOrId: string, filename: string = "vi
         // 3. Remote URL fallback
         console.log(`[DownloadUtils] Fetching remote file: ${urlOrId}`);
 
-        // If it's a signed URL (contains X-Goog-Signature), the server has already set response-content-disposition=attachment.
+        // If it's a signed URL (contains X-Goog-Signature or X-Amz-Signature), the server has already set response-content-disposition=attachment.
         // We can safely trigger the download directly without loading the entire video into memory as a blob.
-        if (urlOrId.includes("X-Goog-Signature") || urlOrId.includes("GoogleAccessId")) {
+        if (urlOrId.includes("X-Goog-Signature") || urlOrId.includes("GoogleAccessId") || urlOrId.includes("X-Amz-Signature")) {
             triggerDownload(urlOrId, filename);
             toast.success("Download started!", { id: downloadToastId });
             return;
