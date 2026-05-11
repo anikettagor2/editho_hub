@@ -4,8 +4,10 @@ import { adminDb, adminStorage } from "@/lib/firebase/admin";
 import { Project, Revision } from "@/types/schema";
 import { revalidatePath } from "next/cache";
 import { FieldValue } from "firebase-admin/firestore";
+import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { s3Client as s3, BUCKET_NAME } from '@/lib/s3';
 
-const DOWNLOAD_LIMIT = 10;
 const ASSET_PURGE_DELAY_MS = 24 * 60 * 60 * 1000;
 
 /**
@@ -132,21 +134,7 @@ export async function registerDownload(projectId: string, revisionId: string) {
         const projectData = projectSnap.data() as Project;
         const currentCount = data.downloadCount || 0;
 
-        // Fetch dynamic download limit from system settings
-        const settingsSnap = await adminDb.collection('settings').doc('system').get();
-        const settings = settingsSnap.data();
-        const limit = settings?.downloadLimit ?? DOWNLOAD_LIMIT;
-
-        console.log(`[registerDownload] Current count: ${currentCount}/${limit}`);
-
-        // If limit reached, ensure final videos are purged and block further downloads.
-        if (currentCount >= limit) {
-            console.warn(`[registerDownload] Limit reached for revision: ${revisionId}`);
-            if (!projectData.finalVideoPurged) {
-                await purgeProjectRevisionVideos(projectId);
-            }
-            return { success: false, error: "Download limit reached for this revision." };
-        }
+        console.log(`[registerDownload] Current count: ${currentCount} (Unlimited)`);
 
         const now = Date.now();
         const nextCount = currentCount + 1;
@@ -156,13 +144,16 @@ export async function registerDownload(projectId: string, revisionId: string) {
             downloadCount: nextCount
         });
 
+        const newStatus = (projectData.paymentStatus === 'full_paid' || projectData.downloadsUnlocked) ? 'completed' : 'completed_pending_payment';
         const projectUpdate: any = {
             clientHasDownloaded: true,
             downloadedAt: now,
             finalDownloadCount: nextCount,
-            status: projectData.paymentStatus === 'full_paid' ? 'completed' : 'completed_pending_payment',
+            status: newStatus,
             updatedAt: now,
         };
+
+        console.log(`[registerDownload] Updating project status to: ${newStatus}`);
 
         // First successful client download starts retention timer for project assets.
         if (!projectData.downloadRetentionStartedAt) {
@@ -178,31 +169,49 @@ export async function registerDownload(projectId: string, revisionId: string) {
             await purgeProjectAssets(projectId, projectData);
         }
 
-        // Return download URL
-        // Support both legacy Firebase Storage URLs and new Mux static renditions
         let downloadUrl = data.videoUrl || "";
 
-        // If it's a Mux asset (detected by playbackId or mux:// protocol in videoUrl)
-        if (data.playbackId && (!downloadUrl || downloadUrl.startsWith('mux://'))) {
-             // Use Mux high-quality static rendition for downloads
-             // Mux URL pattern for static renditions: https://stream.mux.com/{playbackId}/high.mp4
-             downloadUrl = `https://stream.mux.com/${data.playbackId}/high.mp4`;
-             console.log(`[registerDownload] Routing to Mux Static Rendition: ${downloadUrl}`);
+        // If s3Key exists, dynamically generate a fresh S3 presigned URL 
+        // This is necessary because the initial presigned URL expires after 1 hour.
+        if (data.s3Key && BUCKET_NAME) {
+            try {
+                const getCommand = new GetObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: data.s3Key,
+                    ResponseContentDisposition: `attachment; filename="Video_Draft.mp4"`
+                });
+                downloadUrl = await getSignedUrl(s3, getCommand, { expiresIn: 3600 });
+            } catch (s3Err) {
+                console.error("[registerDownload] Error generating S3 presigned URL:", s3Err);
+            }
+        }
+
+        // Mux does not support MP4 distribution, strictly prevent Mux URLs
+        if (downloadUrl && downloadUrl.includes("stream.mux.com")) {
+            downloadUrl = "";
         }
 
         if (!downloadUrl) {
             console.error(`[registerDownload] No video file available for revision: ${revisionId}`);
-            console.warn(`[registerDownload] Missing both videoUrl and playbackId`);
-            return { success: false, error: "Video file not available for download. Please contact support." };
+            return { success: false, error: "Video file not available for download from S3. Please contact support." };
         }
 
-        // On final allowed download, purge all revision videos to keep only metadata/history.
-        if (nextCount >= limit && !projectData.finalVideoPurged) {
-            await purgeProjectRevisionVideos(projectId);
+        // Generate a signed URL to enforce download behavior and bypass CORS, ONLY if it's a Firebase URL
+        if (downloadUrl.includes('firebasestorage.googleapis.com')) {
+            const signedUrlRes = await getSignedDownloadUrl(downloadUrl);
+            if (signedUrlRes.success && signedUrlRes.url) {
+                downloadUrl = signedUrlRes.url;
+            }
         }
 
         revalidatePath(`/dashboard/projects/${projectId}`);
-        return { success: true, count: nextCount, remaining: Math.max(0, limit - nextCount), downloadUrl };
+        return { 
+            success: true, 
+            count: nextCount, 
+            remaining: "unlimited", 
+            downloadUrl,
+            status: newStatus 
+        };
 
     } catch (error: any) {
         console.error("[registerDownload] Fatal error:", error);
@@ -236,7 +245,7 @@ export async function unlockProjectDownloads(projectId: string, userId: string) 
         }
 
         await adminDb.collection('projects').doc(projectId).update({
-            status: 'completed',
+            // status: 'completed', // Triggered exclusively by registerDownload
             downloadsUnlocked: true,
             downloadUnlockRequested: false,
             notes: FieldValue.arrayUnion(`Downloads unlocked by ${userData?.email} (${userData?.role}) at ${new Date().toISOString()}`)
@@ -252,7 +261,7 @@ export async function unlockProjectDownloads(projectId: string, userId: string) 
         }
 
         const { addProjectLog } = await import("./admin-actions");
-        await addProjectLog(projectId, 'COMPLETED', { uid: userId, displayName: userData?.displayName || 'PM/Admin' }, 'Downloads unlocked. Project successfully marked as completed.');
+        await addProjectLog(projectId, 'UNLOCKED', { uid: userId, displayName: userData?.displayName || 'PM/Admin' }, 'Downloads unlocked by Admin/PM override. Project will be marked as completed once the client initiates a download.');
 
         revalidatePath(`/dashboard/projects/${projectId}`);
         return { success: true };

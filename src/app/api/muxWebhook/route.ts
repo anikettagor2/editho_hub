@@ -45,11 +45,18 @@ export async function POST(request: NextRequest) {
                 }
             }
             
-            const { projectId, revisionId, type: uploadType } = metadata as {
-                projectId?: string;
-                revisionId?: string;
-                type?: string;
-            };
+            const metadataRaw = metadata as any;
+            const projectId = metadataRaw.projectId || metadataRaw.pid;
+            const revisionId = metadataRaw.revisionId || metadataRaw.rid;
+            const uploadType = metadataRaw.type || metadataRaw.t;
+            const s3Key = metadataRaw.s3Key;
+            
+            console.log(`[MuxWebhook] Metadata extracted:`, { 
+                projectId, 
+                revisionId, 
+                uploadType, 
+                hasS3Key: !!s3Key 
+            });
 
             if (playbackId) {
                 if (uploadType === "revision" && revisionId) {
@@ -58,15 +65,18 @@ export async function POST(request: NextRequest) {
                         hlsUrl: `https://stream.mux.com/${playbackId}.m3u8`,
                         status: "ready",
                         updatedAt: Date.now(),
+                        ...(s3Key ? { s3Key } : {}),
                     }, { merge: true });
 
                     // Persist on both revisionId and upload_id keyed job docs
-                    const jobUpdate = {
+                    const jobUpdate: any = {
                         status: "ready",
                         playbackId,
                         hlsUrl: `https://stream.mux.com/${playbackId}.m3u8`,
                         updatedAt: Date.now(),
                     };
+                    if (s3Key) jobUpdate.s3Key = s3Key;
+
                     await adminDb.collection("video_jobs").doc(revisionId).set(jobUpdate, { merge: true });
                     if (asset.upload_id) {
                         await adminDb.collection("video_jobs").doc(asset.upload_id).set(jobUpdate, { merge: true });
@@ -109,13 +119,16 @@ export async function POST(request: NextRequest) {
                 } catch { /* ignore */ }
             }
             
-            const { revisionId } = metadata as { revisionId?: string };
+            const metadataRaw = metadata as any;
+            const revisionId = metadataRaw.revisionId || metadataRaw.rid;
+            const s3Key = metadataRaw.s3Key;
             const uploadId = asset.upload_id || (type === "video.upload.completed" ? asset.id : null);
 
-            const jobUpdate = {
+            const jobUpdate: any = {
                 status: "processing",
                 updatedAt: Date.now(),
             };
+            if (s3Key) jobUpdate.s3Key = s3Key;
 
             if (revisionId) {
                 await adminDb.collection("video_jobs").doc(revisionId).set(jobUpdate, { merge: true });

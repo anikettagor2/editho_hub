@@ -1,5 +1,6 @@
 import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { storage } from "@/lib/firebase/config";
+import { storage, db } from "@/lib/firebase/config";
+import { doc, updateDoc } from "firebase/firestore";
 import Uppy from '@uppy/core';
 import AwsS3Multipart from '@uppy/aws-s3';
 
@@ -202,13 +203,46 @@ export class UploadService {
             method: 'POST',
             body: JSON.stringify({ action: 'complete', uploadId, key, parts }),
           });
-          const { location } = await response.json();
+          const { location, key: s3Key } = await response.json();
           
-          const passthrough = JSON.stringify({
-            projectId: options.projectId,
-            revisionId: options.revisionId,
-            type: options.type,
-          });
+          // CRITICAL: Persist the s3Key to Firestore IMMEDIATELY.
+          // Don't wait for Mux webhook as the passthrough has a 100-character limit
+          // and might fail if filenames are long.
+          if (options.revisionId) {
+            try {
+              const revisionRef = doc(db, "revisions", options.revisionId);
+              const jobRef = doc(db, "video_jobs", options.revisionId);
+              
+              const updateData = { 
+                s3Key: s3Key,
+                videoUrl: location 
+              };
+
+              await Promise.all([
+                updateDoc(revisionRef, updateData),
+                updateDoc(jobRef, updateData)
+              ]);
+              
+              console.log(`[UploadService] Persisted s3Key and videoUrl to both revision and job docs: ${options.revisionId}`);
+            } catch (fsError) {
+              console.error("[UploadService] Failed to persist S3 metadata to Firestore:", fsError);
+            }
+          }
+
+          // Use shorter keys for passthrough to stay under Mux's 100-char limit
+          const passthroughData: any = {
+            pid: options.projectId,
+            rid: options.revisionId,
+            t: options.type,
+          };
+          
+          // Only include s3Key if it fits (Mux has a 100-char limit for passthrough)
+          // We already persisted it to Firestore, but including it here provides a second path for sync.
+          if (s3Key && (JSON.stringify(passthroughData).length + s3Key.length + 10) < 100) {
+            passthroughData.s3Key = s3Key;
+          }
+          
+          const passthrough = JSON.stringify(passthroughData);
 
           const ingestResponse = await fetch('/api/ingest', {
             method: 'POST',

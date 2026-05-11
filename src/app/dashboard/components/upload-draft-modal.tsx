@@ -3,6 +3,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/lib/context/auth-context";
 import { db } from "@/lib/firebase/config";
+import { localFileManager } from "@/lib/local-file-manager";
 import { collection, query, where, getDocs, orderBy, limit, doc, setDoc } from "firebase/firestore";
 import { UploadService, UploadProgress } from "@/lib/services/upload-service";
 import { Revision, VideoJob } from "@/types/schema";
@@ -32,7 +33,7 @@ interface UploadDraftModalProps {
     projectId: string;
     projectName: string;
     onClose: () => void;
-    onSuccess?: () => void;
+    onSuccess?: (revisionId: string, file: File) => void;
 }
 
 export function UploadDraftModal({
@@ -152,6 +153,7 @@ export function UploadDraftModal({
 
             toast.success("Draft uploaded! Processing on Mux...");
             
+            const uploadedFile = file;
             // Reset form
             setFile(null);
             setPreviewUrl(null);
@@ -159,7 +161,10 @@ export function UploadDraftModal({
             setIsUploading(false);
             setUploadProg(null);
 
-            onSuccess?.();
+            // Register file for local download
+            localFileManager.registerFile(revisionId, uploadedFile);
+
+            onSuccess?.(revisionId, uploadedFile);
             setTimeout(() => onClose(), 500);
         } catch (err: unknown) {
             if (err instanceof Error && err.name !== "AbortError") {

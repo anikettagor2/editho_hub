@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/context/auth-context";
 import { db } from "@/lib/firebase/config";
+import { localFileManager } from "@/lib/local-file-manager";
 import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, getDocs, limit, setDoc } from "firebase/firestore";
 import { Project, Revision, VideoJob } from "@/types/schema";
 import { cn } from "@/lib/utils";
@@ -227,6 +228,10 @@ export function EditorDashboardV2() {
             });
 
             await handleRevisionUploaded(projectId);
+            
+            // Register for local download
+            localFileManager.registerFile(revisionId, uploadFile);
+            
             toast.success("Revision uploaded successfully!");
             setIsUploadModalOpen(false);
             setUploadFile(null);

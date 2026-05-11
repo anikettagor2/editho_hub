@@ -20,10 +20,13 @@ import {
     Send,
     Image as ImageIcon,
     MessageCircle,
+    Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { handleNewComment } from "@/app/actions/notification-actions";
+import { registerDownload } from "@/app/actions/project-actions";
+import { handleFileDownload } from "@/lib/download-utils";
 import { VideoPlayer } from "@/components/video-player";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -87,6 +90,7 @@ export default function GuestReviewPageClient({ revisionId }: GuestReviewPageCli
 
     const [savingComment, setSavingComment] = useState(false);
     const [allRevisions, setAllRevisions] = useState<RevisionData[]>([]);
+    const [isDownloading, setIsDownloading] = useState(false);
 
     // Initial seek from URL param
     useEffect(() => {
@@ -234,6 +238,32 @@ export default function GuestReviewPageClient({ revisionId }: GuestReviewPageCli
         }
     };
 
+    const handleDownloadVideo = async () => {
+        if (!revision || isDownloading) return;
+
+        setIsDownloading(true);
+        try {
+            // registerDownload triggers status updates and returns the presigned URL
+            const result = await registerDownload(revision.projectId, revision.id);
+            
+            if (result.success && result.downloadUrl) {
+                const fileName = project?.name 
+                    ? `${project.name.replace(/\s+/g, '_')}_v${revision.version || 1}.mp4`
+                    : `video_revision_${revision.id}.mp4`;
+                
+                await handleFileDownload(result.downloadUrl, fileName);
+                toast.success("Download started successfully!");
+            } else {
+                toast.error(result.error || "Failed to prepare video for download.");
+            }
+        } catch (err) {
+            console.error("Download error:", err);
+            toast.error("Could not start download. Please try again later.");
+        } finally {
+            setIsDownloading(false);
+        }
+    };
+
     // ── Loading ───────────────────────────────────────────────────────────────
     if (loading) {
         return (
@@ -312,18 +342,36 @@ export default function GuestReviewPageClient({ revisionId }: GuestReviewPageCli
     return (
         <div className="min-h-screen bg-[#0a0a0a] text-foreground">
             <div className="container mx-auto px-4 py-6 max-w-7xl">
-                {/* Header */}
-                <div className="mb-6">
-                    <h1 className="text-2xl font-bold tracking-tight">
-                        Review:{" "}
-                        <span className="text-foreground">{project?.name || "Video Review"}</span>
-                        {project?.clientName && (
-                            <span className="ml-3 text-base font-normal text-muted-foreground">({project.clientName})</span>
+                <div className="mb-6 flex flex-col md:flex-row md:items-end justify-between gap-4">
+                    <div>
+                        <h1 className="text-2xl font-bold tracking-tight">
+                            Review:{" "}
+                            <span className="text-foreground">{project?.name || "Video Review"}</span>
+                            {project?.clientName && (
+                                <span className="ml-3 text-base font-normal text-muted-foreground">({project.clientName})</span>
+                            )}
+                        </h1>
+                        <p className="text-sm text-muted-foreground mt-1">
+                            Guest preview · you can watch and comment on this video
+                        </p>
+                    </div>
+
+                    <button
+                        onClick={handleDownloadVideo}
+                        disabled={isDownloading}
+                        className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold uppercase tracking-widest transition-all ${
+                            isDownloading 
+                                ? "bg-muted text-muted-foreground cursor-not-allowed" 
+                                : "bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.98] shadow-lg shadow-primary/20"
+                        }`}
+                    >
+                        {isDownloading ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                            <Download className="h-4 w-4" />
                         )}
-                    </h1>
-                    <p className="text-sm text-muted-foreground mt-1">
-                        Guest preview · you can watch and comment on this video
-                    </p>
+                        {isDownloading ? "Preparing..." : "Download Original"}
+                    </button>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">

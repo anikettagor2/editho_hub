@@ -7,6 +7,7 @@ import { Modal } from "@/components/ui/modal";
 import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/lib/context/auth-context";
 import { addDoc, collection, doc, getDocs, onSnapshot, query, updateDoc, where, deleteDoc, limit, orderBy } from "firebase/firestore";
+import { localFileManager } from "@/lib/local-file-manager";
 import { Loader2, MessageSquare, Share2, Copy, Download, Star, X, Send, Image as ImageIcon, Clock, Users, Play, Film } from "lucide-react";
 import { toast } from "sonner";
 import { registerDownload, submitEditorRating } from "@/app/actions/project-actions";
@@ -15,6 +16,7 @@ import { PaymentButton } from "@/components/payment-button";
 import { uploadCommentImage } from "@/lib/firebase/storage-utils";
 import { warmVideoInMemory } from "@/lib/video-preload";
 import { VideoPlayer } from "@/components/video-player";
+import { handleFileDownload } from "@/lib/download-utils";
 import { safeJsonParse, cn } from "@/lib/utils";
 
 
@@ -154,7 +156,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
     const [duration, setDuration] = useState(0);
 
     // Payment & Feedback state
-    const [isDownloading, setIsDownloading] = useState(false);
+
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
     const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
@@ -234,69 +236,32 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
     }, [selectedImagePreview, imageOverlayText]);
 
     const startDownload = async () => {
-        if (!project?.id || !selectedRevisionId || !selectedRevision) return;
-        setIsDownloading(true);
+        if (!selectedRevisionId || !project?.id) {
+            toast.error("No revision selected.");
+            return;
+        }
+
         try {
-            // Register the download for tracking
+            // 1. First check local memory for instant download
+            const localFile = localFileManager.getFile(selectedRevisionId);
+            if (localFile) {
+                await handleFileDownload(selectedRevisionId, localFile.name);
+                await registerDownload(project.id, selectedRevisionId);
+                return;
+            }
+
+            // 2. If not in memory, get authorized URL and use utility to fetch & download
             const res = await registerDownload(project.id, selectedRevisionId);
             if (!res.success || !res.downloadUrl) {
-                toast.error(res.error || "Failed to start download.");
-                setIsDownloading(false);
-                return;
+                throw new Error(res.error || "Could not retrieve download URL.");
             }
 
-            const rawUrl = res.downloadUrl;
-            const isMux = rawUrl.includes('stream.mux.com');
-            const isFirebase = rawUrl.includes('firebasestorage.googleapis.com');
+            const fileName = `revision_v${selectedRevision?.version || "final"}.mp4`;
+            await handleFileDownload(res.downloadUrl, fileName);
 
-            if (!isMux && !isFirebase) {
-                toast.error("Invalid download URL. Please try again.");
-                setIsDownloading(false);
-                return;
-            }
-
-            let finalDownloadUrl = rawUrl;
-
-            // Handle Firebase Storage specific download parameters
-            if (isFirebase && !finalDownloadUrl.includes('alt=media')) {
-                finalDownloadUrl = `${finalDownloadUrl}${finalDownloadUrl.includes('?') ? '&' : '?'}alt=media`;
-            }
-
-            // Trigger the download
-            try {
-                const response = await fetch(finalDownloadUrl);
-                if (!response.ok) throw new Error('Failed to fetch file for download.');
-                
-                const blob = await response.blob();
-                const url = window.URL.createObjectURL(blob);
-                const link = document.createElement('a');
-                link.href = url;
-                
-                // Set descriptive filename
-                const extension = isMux ? 'mp4' : 'mp4'; // Default to mp4
-                link.download = `${project.name || 'video'}_v${selectedRevision.version || 1}.${extension}`;
-                
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-                window.URL.revokeObjectURL(url);
-                
-                toast.success("Download started.");
-            } catch (fetchError) {
-                console.error("Fetch download error:", fetchError);
-                // Fallback for Mux if blob fetch fails (CORS etc)
-                if (isMux) {
-                    window.open(finalDownloadUrl, '_blank');
-                    toast.success("Opening download in new tab...");
-                } else {
-                    throw fetchError;
-                }
-            }
-        } catch (error) {
-            console.error("Download error:", error);
-            toast.error("An error occurred while downloading.");
-        } finally {
-            setIsDownloading(false);
+        } catch (err: any) {
+            console.error("Download Error:", err);
+            toast.error(err.message || "Failed to start download.");
         }
     };
 
@@ -583,10 +548,10 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
                         )}
                         <button
                             onClick={handleDownloadClick}
-                            disabled={isDownloading || !selectedRevisionId}
+                            disabled={!selectedRevisionId}
                             className="inline-flex items-center gap-2 h-9 px-5 rounded-xl bg-primary text-primary-foreground text-[11px] font-bold uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all shadow-xl shadow-primary/10 disabled:opacity-50"
                         >
-                            {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                            <Download className="h-4 w-4" />
                             Download
                         </button>
                     </div>
@@ -834,9 +799,8 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
                     onClose={() =>
                         setOpenDraftModals((prev) => prev.filter((m) => m.id !== modal.id))
                     }
-                    onSuccess={() => {
+                    onSuccess={(revisionId) => {
                         setOpenDraftModals((prev) => prev.filter((m) => m.id !== modal.id));
-                        // Optionally, refresh revisions here if needed
                     }}
                 />
             ))}

@@ -43,6 +43,7 @@ import { Button } from "@/components/ui/button";
 import { cn, safeJsonParse } from "@/lib/utils";
 import { toast } from "sonner";
 import { assignEditor, getAllUsers, respondToAssignment } from "@/app/actions/admin-actions";
+import { handleFileDownload } from "@/lib/download-utils";
 import { unlockProjectDownloads, requestDownloadUnlock, registerDownload, submitEditorRating, getSignedDownloadUrl } from "@/app/actions/project-actions";
 import { handleProjectCompleted, handleEditorRatingSubmitted } from "@/app/actions/notification-actions";
 import { User, ProjectAssignmentStatus } from "@/types/schema";
@@ -152,48 +153,15 @@ export default function ProjectDetailsPage() {
         }
     };
 
-    const handleDirectDownload = async (url: string, fileName?: string) => {
-        setIsDownloading(true);
+    /**
+     * Proxied download through our unified /api/download route.
+     * This solves CORS issues and browser download blocking.
+     */
+    const handleDirectDownload = async (url: string, filename: string) => {
         try {
-            // Always use the API for Firebase Storage files
-            if (url.includes("firebasestorage.googleapis.com")) {
-                const response = await fetch("/api/download", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ url, fileName }),
-                });
-                if (response.ok) {
-                    const blob = await response.blob();
-                    const blobUrl = URL.createObjectURL(blob);
-                    const link = document.createElement("a");
-                    link.href = blobUrl;
-                    link.download = fileName || "download";
-                    document.body.appendChild(link);
-                    link.click();
-                    link.remove();
-                    URL.revokeObjectURL(blobUrl);
-                    setIsDownloading(false);
-                    return;
-                } else {
-                    // Show error if API fails
-                    const errorData = await safeJsonParse(response).catch(() => ({ error: 'Unknown error' }));
-                    throw new Error(errorData.error || `HTTP ${response.status}`);
-                }
-            } else {
-                // For non-Firebase files, fallback to direct download
-                const link = document.createElement("a");
-                link.href = url;
-                link.download = fileName || "download";
-                document.body.appendChild(link);
-                link.click();
-                link.remove();
-                setIsDownloading(false);
-                return;
-            }
-        } catch (error) {
-            setIsDownloading(false);
-            const message = error instanceof Error ? error.message : String(error);
-            alert("Download failed: " + message);
+            await handleFileDownload(url, filename);
+        } catch (error: any) {
+            toast.error(error.message || 'Download initialization failed.');
         }
     };
 
@@ -352,17 +320,20 @@ export default function ProjectDetailsPage() {
         try {
             const res = await registerDownload(id as string, revisionId);
             if (res.success && res.downloadUrl) {
-                await handleDirectDownload(
+                // Trigger the actual file download
+                await handleFileDownload(
                     res.downloadUrl,
                     `${project?.name || 'video'}_v${revisions.find(r => r.id === revisionId)?.version || 1}.mp4`
                 );
-                toast.success('Download initiated.');
-                await updateDoc(doc(db, 'projects', id as string), {
-                    clientHasDownloaded: true,
-                    downloadUnlockedAt: Date.now(),
-                    status: 'completed',
-                });
-                setProject(prev => prev ? ({ ...prev, clientHasDownloaded: true, status: 'completed' }) : null);
+                
+                // Update local state based on authoritative server response
+                if (res.status) {
+                    setProject(prev => prev ? ({ 
+                        ...prev, 
+                        clientHasDownloaded: true, 
+                        status: res.status as any
+                    }) : null);
+                }
             } else {
                 toast.error(res.error || 'Download error.');
             }
@@ -1034,7 +1005,7 @@ export default function ProjectDetailsPage() {
                                     {isClient ? (
                                         (() => {
                                             const hasRemainingBalance = (project?.totalCost || 0) > (project?.amountPaid || 0);
-                                            const needsPayment = project?.paymentStatus !== 'full_paid' || hasRemainingBalance;
+                                            const needsPayment = (project?.paymentStatus !== 'full_paid' || hasRemainingBalance) && !project?.downloadsUnlocked;
                                             
                                             return (
                                                 <button
@@ -1284,7 +1255,7 @@ export default function ProjectDetailsPage() {
                                                 const res = await unlockProjectDownloads(id as string, user.uid);
                                                 if (res.success) {
                                                     toast.success("Gates authorized.");
-                                                    setProject(prev => prev ? ({ ...prev, paymentStatus: 'full_paid', status: 'completed' }) : null);
+                                                    setProject(prev => prev ? ({ ...prev, downloadsUnlocked: true, downloadUnlockRequested: false }) : null);
                                                 } else {
                                                     toast.error(res.error);
                                                 }
@@ -1450,7 +1421,7 @@ export default function ProjectDetailsPage() {
                                                         </button>
                                                     )}
                                                     <button
-                                                        onClick={() => handleDirectDownload(file.url, file.name)}
+                                                        onClick={() => handleFileDownload(file.url, file.name)}
                                                         className="h-8 w-8 rounded-lg bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                                         disabled={project.assignmentStatus === 'pending' && !isClient}
                                                         title={project.assignmentStatus === 'pending' && !isClient ? "Accept project to download" : ""}
@@ -1493,7 +1464,7 @@ export default function ProjectDetailsPage() {
                                                         Preview
                                                     </button>
                                                     <button 
-                                                        onClick={() => handleDirectDownload(script.url, script.name)}
+                                                        onClick={() => handleFileDownload(script.url, script.name)}
                                                         className="h-8 w-8 rounded-lg bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
                                                         disabled={project.assignmentStatus === 'pending' && !isClient}
                                                         title={project.assignmentStatus === 'pending' && !isClient ? "Accept project to download" : ""}

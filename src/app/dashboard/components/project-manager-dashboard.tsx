@@ -77,6 +77,7 @@ import { VideoPlayer } from "@/components/video-player";
 import { ReviewSystemModal } from "./review-system-modal";
 import { preloadVideosIntoMemory } from "@/lib/video-preload";
 import { IndicatorCard } from "@/components/ui/indicator-card";
+import { handleFileDownload } from "@/lib/download-utils";
 
 
 function isVideoFile(file: any) {
@@ -426,26 +427,9 @@ export function ProjectManagerDashboard() {
 
     const handleDirectDownload = async (url: string, fileName?: string) => {
         try {
-            const response = await fetch(url);
-            if (!response.ok) throw new Error("Failed to fetch file");
-
-            const blob = await response.blob();
-            const blobUrl = window.URL.createObjectURL(blob);
-            const anchor = document.createElement("a");
-            anchor.href = blobUrl;
-            anchor.download = fileName || "download";
-            document.body.appendChild(anchor);
-            anchor.click();
-            anchor.remove();
-            window.URL.revokeObjectURL(blobUrl);
-        } catch {
-            const anchor = document.createElement("a");
-            anchor.href = url;
-            anchor.download = fileName || "download";
-            anchor.target = "_blank";
-            document.body.appendChild(anchor);
-            anchor.click();
-            anchor.remove();
+            await handleFileDownload(url, fileName || "download");
+        } catch (error: any) {
+            toast.error(error.message || "Download initialization failed.");
         }
     };
 

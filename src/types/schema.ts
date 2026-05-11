@@ -170,6 +170,7 @@ export interface Revision {
     uploadedBy: string; // User UID
     createdAt: number;
     playbackId?: string; // Mux playback ID
+    s3Key?: string; // Original S3 object key
     downloadCount?: number; // Track downloads by client for limits
     videoDeletedAt?: number; // Track when revision video object was deleted by lifecycle policy
 }

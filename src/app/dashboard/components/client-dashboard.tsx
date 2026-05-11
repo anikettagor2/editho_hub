@@ -25,6 +25,7 @@ import { ReviewSystemModal } from "./review-system-modal";
 import { preloadVideosIntoMemory } from "@/lib/video-preload";
 import { IndicatorCard } from "@/components/ui/indicator-card";
 import { VideoPlayer } from "@/components/video-player";
+import { handleFileDownload } from "@/lib/download-utils";
 
 
 const CLIENT_VIDEO_TYPE_ALIASES: Record<string, string[]> = {
@@ -327,18 +328,9 @@ export function ClientDashboard() {
     // Helper
     const triggerDirectDownload = async (url: string, fileName?: string) => {
         try {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error("fetch failed");
-            const blob = await res.blob();
-            const blobUrl = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = blobUrl; a.download = fileName || "download";
-            document.body.appendChild(a); a.click(); a.remove();
-            window.URL.revokeObjectURL(blobUrl);
-        } catch {
-            const a = document.createElement("a");
-            a.href = url; a.download = fileName || "download"; a.target = "_blank";
-            document.body.appendChild(a); a.click(); a.remove();
+            await handleFileDownload(url, fileName || "download");
+        } catch (error: any) {
+            toast.error(error.message || "Download initialization failed.");
         }
     };
 

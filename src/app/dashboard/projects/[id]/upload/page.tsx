@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAuth } from "@/lib/context/auth-context";
 import { db } from "@/lib/firebase/config";
-import { collection, query, where, getDocs, doc, setDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, doc, setDoc, updateDoc } from "firebase/firestore";
 import { UploadService, UploadProgress } from "@/lib/services/upload-service";
 import { Revision, VideoJob } from "@/types/schema";
 import { Label } from "@/components/ui/label";
@@ -61,7 +61,7 @@ export default function UploadRevisionPage() {
             }
         }).use(AwsS3Multipart, {
             limit: 64, // Absolute maximum concurrency for lightning fast speed
-            getChunkSize: (file) => 50 * 1024 * 1024, // 50MB chunks for extreme throughput
+            getChunkSize: (file: any) => 50 * 1024 * 1024, // 50MB chunks for extreme throughput
             shouldUseMultipart: true,
             retryDelays: [0, 1000, 3000, 5000],
             createMultipartUpload: async (file) => {
@@ -127,13 +127,23 @@ export default function UploadRevisionPage() {
                     method: 'POST',
                     body: JSON.stringify({ action: 'complete', uploadId, key, parts }),
                 });
-                const { location } = await response.json();
+                const { location: s3Location, key: s3Key } = await response.json();
+                console.log('Upload complete:', { s3Location, s3Key });
                 
                 const passthrough = file.meta.passthrough;
+                const passthroughData = JSON.parse(passthrough);
                 
+                if (passthroughData.revisionId) {
+                    await updateDoc(doc(db, "revisions", passthroughData.revisionId), {
+                        s3Key: s3Key,
+                        videoUrl: s3Location
+                    });
+                }
+                
+                // Trigger Mux ingestion using the S3 URL
                 const ingestResponse = await fetch('/api/ingest', {
                     method: 'POST',
-                    body: JSON.stringify({ url: location, passthrough }),
+                    body: JSON.stringify({ url: s3Location, passthrough }),
                 });
                 const ingestData = await ingestResponse.json();
                 
@@ -141,7 +151,7 @@ export default function UploadRevisionPage() {
                     throw new Error(`Ingest failed: ${ingestData.error}`);
                 }
                 
-                return { location, muxAssetId: ingestData.id };
+                return { location, muxAssetId: ingestData.id, key };
             },
         })
     );

@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { 
-  S3Client, 
   CreateMultipartUploadCommand, 
   UploadPartCommand, 
   CompleteMultipartUploadCommand,
@@ -9,24 +8,15 @@ import {
   GetObjectCommand
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { s3Client as s3, BUCKET_NAME } from '@/lib/s3';
 
-const s3 = new S3Client({
-  region: process.env.AWS_REGION || 'us-east-1',
-  credentials: {
-    accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-  },
-  // Enable Transfer Acceleration for lightning fast uploads if enabled on the bucket
-  useAccelerateEndpoint: true,
-});
 
 export async function POST(req: Request) {
   try {
     const { filename, type, action, uploadId, key, parts } = await req.json();
-    const BUCKET_NAME = process.env.AWS_BUCKET_NAME || process.env.AWS_S3_BUCKET_NAME;
     
     if (!BUCKET_NAME) {
-      throw new Error("AWS_BUCKET_NAME environment variable is not set");
+        return NextResponse.json({ error: "AWS_BUCKET_NAME environment variable is not set" }, { status: 500 });
     }
 
     // 1. Create Multipart Upload
@@ -65,7 +55,10 @@ export async function POST(req: Request) {
       });
       const s3Url = await getSignedUrl(s3, getCommand, { expiresIn: 3600 });
       
-      return NextResponse.json({ location: s3Url });
+      return NextResponse.json({ 
+        location: s3Url,
+        key: key
+      });
     }
 
     // 3. Abort Multipart Upload
