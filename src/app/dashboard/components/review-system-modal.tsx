@@ -161,6 +161,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
     const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
     const [pendingDownloadAfterFlow, setPendingDownloadAfterFlow] = useState(false);
+    const [isDownloading, setIsDownloading] = useState(false);
     const [editorRating, setEditorRating] = useState(0);
     const [editorReview, setEditorReview] = useState("");
     
@@ -241,10 +242,14 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
             return;
         }
 
+        setIsDownloading(true);
+        const loadingToast = toast.loading("Preparing secure download link...");
+
         try {
             // 1. First check local memory for instant download
             const localFile = localFileManager.getFile(selectedRevisionId);
             if (localFile) {
+                toast.dismiss(loadingToast);
                 await handleFileDownload(selectedRevisionId, localFile.name);
                 await registerDownload(project.id, selectedRevisionId);
                 return;
@@ -252,6 +257,8 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
 
             // 2. If not in memory, get authorized URL and use utility to fetch & download
             const res = await registerDownload(project.id, selectedRevisionId);
+            toast.dismiss(loadingToast);
+            
             if (!res.success || !res.downloadUrl) {
                 throw new Error(res.error || "Could not retrieve download URL.");
             }
@@ -261,7 +268,10 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
 
         } catch (err: any) {
             console.error("Download Error:", err);
+            toast.dismiss(loadingToast);
             toast.error(err.message || "Failed to start download.");
+        } finally {
+            setIsDownloading(false);
         }
     };
 
@@ -548,11 +558,11 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
                         )}
                         <button
                             onClick={handleDownloadClick}
-                            disabled={!selectedRevisionId}
+                            disabled={!selectedRevisionId || isDownloading}
                             className="inline-flex items-center gap-2 h-9 px-5 rounded-xl bg-primary text-primary-foreground text-[11px] font-bold uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all shadow-xl shadow-primary/10 disabled:opacity-50"
                         >
-                            <Download className="h-4 w-4" />
-                            Download
+                            {isDownloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+                            {isDownloading ? "Preparing..." : "Download"}
                         </button>
                     </div>
                 </div>
