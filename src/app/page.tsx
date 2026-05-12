@@ -2,48 +2,31 @@
 
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
-import { LenisProvider } from "@/components/home/lenis-provider";
-import { Hero } from "@/components/home/hero";
-import { StickyScroll } from "@/components/home/sticky-scroll";
-import { BeforeAfter } from "@/components/home/before-after";
-import { ParallaxGallery } from "@/components/home/parallax-gallery";
-import { ScrollText } from "@/components/home/scroll-text";
+import { MarketingHero } from "@/components/home/marketing-hero";
+import { ProcessSection } from "@/components/home/process-section";
+import { ComparisonSection } from "@/components/home/comparison-section";
+import { PricingSection } from "@/components/home/pricing-section";
+import { FAQSection } from "@/components/home/faq-section";
 import { FuturisticCTA } from "@/components/futuristic-cta";
-import { CustomCursor } from "@/components/home/custom-cursor";
-import { ImmersiveBackground } from "@/components/home/immersive-background";
-import { EditingTimeline } from "@/components/home/editing-timeline";
 
 export default function Home() {
   return (
-    <LenisProvider>
-      <main className="premium-light-bg text-zinc-900 overflow-x-hidden selection:bg-primary selection:text-white relative">
-        <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-linear-to-b from-white/60 to-transparent z-0" />
-        <CustomCursor />
-        <ImmersiveBackground />
-        <Navbar />
+    <main className="bg-white text-zinc-900 overflow-x-hidden selection:bg-blue-600 selection:text-white relative font-sans">
+      <Navbar />
 
-        <Hero />
+      <MarketingHero />
+      
+      <ProcessSection />
+      
+      <ComparisonSection />
+      
+      <PricingSection />
+      
+      <FAQSection />
 
-        <div className="premium-light-divider" />
-        <ScrollText />
+      <FuturisticCTA />
 
-        <div className="premium-light-divider" />
-        <StickyScroll />
-
-        <div className="premium-light-divider" />
-        <EditingTimeline />
-
-        <div className="premium-light-divider" />
-        <BeforeAfter />
-
-        <div className="premium-light-divider" />
-        <ParallaxGallery />
-
-        <div className="premium-light-divider" />
-        <FuturisticCTA />
-
-        <Footer />
-      </main>
-    </LenisProvider>
+      <Footer />
+    </main>
   );
 }

@@ -7,7 +7,7 @@ import { ArrowRight, MessageCircle, Clock, Shield, Users } from "lucide-react";
 
 export function FuturisticCTA() {
   return (
-    <section className="py-24 md:py-32 relative overflow-hidden bg-[#f8f6f2]">
+    <section className="py-24 md:py-32 relative overflow-hidden bg-[#F0F9FF]">
       <div className="max-w-7xl mx-auto px-6">
         {/* Main CTA Card */}
         <div className="relative rounded-3xl p-8 md:p-16 overflow-hidden bg-linear-to-br from-white to-[#fbfaf7] border border-black/10 shadow-[0_25px_80px_rgba(15,23,42,0.12)]">
