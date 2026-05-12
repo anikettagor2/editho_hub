@@ -38,20 +38,30 @@ export function Navbar() {
       <div className="fixed top-8 left-8 z-150 pointer-events-auto">
         <Link href="/" className="flex items-center gap-3 group">
           {logoUrl ? (
-            <div className="relative h-12 w-48">
+            <div className="relative h-14 w-56">
               <Image src={logoUrl} alt="Logo" fill className="object-contain object-left" />
             </div>
           ) : (
-            <div className="flex items-center gap-2">
-              <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center font-bold text-xl text-white shadow-lg shadow-primary/20">E</div>
-              <span className="text-2xl font-black text-zinc-900 tracking-tighter">EditoHub</span>
+            <div className="flex items-center gap-3">
+              <div className="w-14 h-14 rounded-2xl bg-primary flex items-center justify-center font-bold text-2xl text-white shadow-lg shadow-primary/20 transition-transform group-hover:scale-105 group-hover:rotate-3">E</div>
+              <span className="text-3xl font-black text-zinc-900 tracking-tighter">EditoHub</span>
             </div>
           )}
         </Link>
       </div>
 
-      {/* Floating Pill Navbar */}
-      <div className="fixed top-8 left-0 right-0 z-100 flex justify-center px-6 pointer-events-none">
+      {/* Mobile Menu Trigger - Fixed Top Right */}
+      <div className="fixed top-8 right-8 z-150 md:hidden pointer-events-auto">
+        <button 
+          onClick={() => setIsOpen(true)}
+          className="w-12 h-12 rounded-2xl bg-white border border-black/10 flex items-center justify-center text-zinc-900 shadow-lg shadow-black/5 hover:bg-zinc-50 transition-all"
+        >
+          <Menu className="h-6 w-6" />
+        </button>
+      </div>
+
+      {/* Floating Pill Navbar - Desktop Only */}
+      <div className="fixed top-8 left-0 right-0 z-100 hidden md:flex justify-center px-6 pointer-events-none">
         <motion.nav
           initial={{ y: -100, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -91,14 +101,6 @@ export function Navbar() {
                 </button>
               </Link>
             )}
-            
-            {/* Mobile Menu Trigger */}
-            <button 
-              onClick={() => setIsOpen(true)}
-              className="md:hidden text-zinc-900 p-1"
-            >
-              <Menu className="h-5 w-5" />
-            </button>
           </div>
         </motion.nav>
       </div>
@@ -118,34 +120,59 @@ export function Navbar() {
               animate={{ x: 0 }}
               exit={{ x: "100%" }}
               transition={{ type: "spring", damping: 25, stiffness: 200 }}
-              className="fixed top-0 right-0 bottom-0 w-[80%] bg-white z-210 p-12 flex flex-col md:hidden border-l border-black/10"
+              className="fixed top-0 right-0 bottom-0 w-[85%] sm:w-[400px] bg-white z-210 p-10 flex flex-col md:hidden border-l border-black/10"
             >
               <button 
                 onClick={() => setIsOpen(false)}
-                className="self-end h-12 w-12 rounded-full border border-black/10 flex items-center justify-center text-zinc-900 mb-20"
+                className="self-end h-12 w-12 rounded-2xl border border-black/10 flex items-center justify-center text-zinc-900 mb-12 hover:bg-zinc-50 transition-colors"
               >
                 <X className="h-6 w-6" />
               </button>
 
+              {/* Auth Buttons at Top for Mobile */}
+              <div className="flex flex-col gap-4 mb-12">
+                {user ? (
+                  <Link href="/dashboard" onClick={() => setIsOpen(false)}>
+                    <button className="w-full py-4 bg-primary text-white font-bold rounded-2xl shadow-lg shadow-primary/20">
+                      Go to Dashboard
+                    </button>
+                  </Link>
+                ) : (
+                  <>
+                    <Link href="/login" onClick={() => setIsOpen(false)}>
+                      <button className="w-full py-4 bg-zinc-100 text-zinc-900 font-bold rounded-2xl hover:bg-zinc-200 transition-all">
+                        Log In
+                      </button>
+                    </Link>
+                    <Link href="/signup" onClick={() => setIsOpen(false)}>
+                      <button className="w-full py-4 bg-primary text-white font-bold rounded-2xl hover:brightness-110 transition-all shadow-lg shadow-primary/20">
+                        Sign Up
+                      </button>
+                    </Link>
+                  </>
+                )}
+              </div>
+
+              {/* Navigation Links */}
               <div className="space-y-6">
+                <span className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] block mb-4">Navigation</span>
                 {navLinks.map((link) => (
                   <Link
                     key={link.name}
                     href={link.href}
                     onClick={() => setIsOpen(false)}
-                    className="block text-2xl font-semibold text-zinc-600 hover:text-zinc-900 transition-colors"
+                    className={cn(
+                      "block text-3xl font-black tracking-tighter transition-all hover:translate-x-2",
+                      pathname === link.href ? "text-primary" : "text-zinc-400 hover:text-zinc-900"
+                    )}
                   >
                     {link.name}
                   </Link>
                 ))}
               </div>
 
-              <div className="mt-auto">
-                <Link href="/login" onClick={() => setIsOpen(false)}>
-                  <button className="w-full py-4 bg-primary text-white font-semibold text-sm rounded-xl">
-                    Get Started
-                  </button>
-                </Link>
+              <div className="mt-auto pt-10 border-t border-zinc-100">
+                <p className="text-zinc-400 text-sm font-medium">© {new Date().getFullYear()} EditoHub</p>
               </div>
             </motion.div>
           </>

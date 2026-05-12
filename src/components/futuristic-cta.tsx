@@ -71,7 +71,7 @@ export function FuturisticCTA() {
               initial={{ opacity: 0, x: 20 }}
               whileInView={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.8, delay: 0.2 }}
-              className="grid grid-cols-2 gap-4"
+              className="flex flex-col gap-4"
             >
               <FeatureCard 
                 icon={<Clock className="w-5 h-5" />}

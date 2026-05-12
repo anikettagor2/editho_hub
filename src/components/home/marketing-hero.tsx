@@ -9,7 +9,7 @@ export function MarketingHero() {
     const { user } = useAuth();
 
     return (
-        <section className="relative pt-32 pb-20 md:pt-48 md:pb-32 overflow-hidden bg-[#E6F4FF]">
+        <section className="relative min-h-screen flex items-center pt-32 pb-20 overflow-hidden premium-light-bg">
             {/* Abstract Background Shapes */}
             <div className="absolute top-0 right-0 -translate-y-1/4 translate-x-1/4 w-[500px] h-[500px] bg-blue-400/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute bottom-0 left-0 translate-y-1/4 -translate-x-1/4 w-[400px] h-[400px] bg-indigo-400/10 rounded-full blur-3xl pointer-events-none" />
