@@ -40,7 +40,9 @@ import {
     Settings,
     LogOut,
     Plus,
-    Play
+    Play,
+    PlusSquare,
+    CheckCircle
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -53,47 +55,61 @@ import { Textarea } from "@/components/ui/textarea";
 import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_GB } from "@/lib/constants";
 import { handleRevisionUploaded } from "@/app/actions/notification-actions";
 import { useVideoTranscodeStatus } from "@/hooks/use-video-transcode-status";
+import { respondToAssignment } from "@/app/actions/admin-actions";
 
 // --- Components ---
 
 function StatusBadge({ status }: { status: string }) {
     const colors = {
         active: "bg-blue-500/10 text-blue-500 border-blue-500/20",
+        in_production: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
         in_review: "bg-amber-500/10 text-amber-500 border-amber-500/20",
         completed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
         approved: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
         completed_pending_payment: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+        editor_assigned: "bg-sky-500/10 text-sky-500 border-sky-500/20",
+        editor_not_assigned: "bg-rose-500/10 text-rose-500 border-rose-500/20",
     } as any;
 
     const label = status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     
     return (
-        <span className={cn("px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border", colors[status] || "bg-muted text-muted-foreground")}>
+        <span className={cn("px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm transition-all hover:brightness-110", colors[status] || "bg-muted text-muted-foreground")}>
             {label}
         </span>
     );
 }
 
-function StatCard({ icon: Icon, label, value, subValue, trend }: any) {
+function StatCard({ icon: Icon, label, value, subValue, trend, variant = "default" }: any) {
     return (
         <motion.div 
-            whileHover={{ y: -5 }}
-            className="p-6 rounded-3xl bg-card border border-border/50 shadow-xl shadow-black/5 relative overflow-hidden group"
+            whileHover={{ y: -5, scale: 1.02 }}
+            className={cn(
+                "p-6 rounded-[32px] bg-card border border-border/50 shadow-xl shadow-black/5 relative overflow-hidden group transition-all",
+                variant === "primary" && "bg-primary/5 border-primary/20"
+            )}
         >
-            <div className="absolute top-0 right-0 p-8 opacity-[0.03] group-hover:opacity-[0.05] transition-opacity">
-                <Icon size={80} />
+            <div className="absolute -top-4 -right-4 p-8 opacity-[0.03] group-hover:opacity-[0.08] transition-all group-hover:rotate-12 group-hover:scale-110">
+                <Icon size={120} />
             </div>
-            <div className="flex items-center gap-4 mb-4">
-                <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <Icon size={24} />
+            <div className="relative z-10 space-y-4">
+                <div className="flex items-center gap-4">
+                    <div className={cn(
+                        "h-12 w-12 rounded-2xl flex items-center justify-center transition-transform group-hover:rotate-3",
+                        variant === "primary" ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-primary/10 text-primary"
+                    )}>
+                        <Icon size={24} />
+                    </div>
+                    <div className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">{label}</div>
                 </div>
-                <div className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{label}</div>
+                <div>
+                    <div className="text-3xl font-black text-foreground tracking-tighter flex items-baseline gap-2">
+                        {value}
+                        {trend && <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">{trend}</span>}
+                    </div>
+                    {subValue && <div className="text-xs font-bold text-muted-foreground mt-1 opacity-70">{subValue}</div>}
+                </div>
             </div>
-            <div className="flex items-baseline gap-2">
-                <div className="text-3xl font-black text-foreground tracking-tight">{value}</div>
-                {trend && <div className="text-xs font-bold text-emerald-500">{trend}</div>}
-            </div>
-            {subValue && <div className="text-sm text-muted-foreground mt-1">{subValue}</div>}
         </motion.div>
     );
 }
@@ -109,6 +125,7 @@ export function EditorDashboardV2() {
     const [projectRevisions, setProjectRevisions] = useState<Record<string, any>>({});
     const [activeTab, setActiveTab] = useState<'projects' | 'finance'>('projects');
     const [searchQuery, setSearchQuery] = useState("");
+    const [isResponding, setIsResponding] = useState<string | null>(null); // projectId
     
     // Review/Modal States
     const [reviewProject, setReviewProject] = useState<Project | null>(null);
@@ -124,6 +141,22 @@ export function EditorDashboardV2() {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProg, setUploadProg] = useState<UploadProgress | null>(null);
     const abortRef = useRef<(() => void) | null>(null);
+
+    const handleRespond = async (projectId: string, response: 'accepted' | 'rejected', reason?: string) => {
+        try {
+            setIsResponding(projectId);
+            const res = await respondToAssignment(projectId, response, reason);
+            if (res.success) {
+                toast.success(response === 'accepted' ? "Project accepted!" : "Project declined.");
+            } else {
+                toast.error(res.error || "Failed to respond to assignment.");
+            }
+        } catch (err) {
+            toast.error("An error occurred.");
+        } finally {
+            setIsResponding(null);
+        }
+    };
 
     useEffect(() => {
         if (!user) return;
@@ -291,15 +324,15 @@ export function EditorDashboardV2() {
                         <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/20">
                             <Film size={20} />
                         </div>
-                        <h1 className="text-xl font-black tracking-tight text-foreground">Editor Dashboard</h1>
+                        <h1 className="text-xl font-black tracking-tight text-foreground hidden sm:block">Editor Dashboard</h1>
                     </div>
 
                     <div className="flex items-center gap-6">
                         {/* Status Toggle */}
-                        <div className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 border border-border/50">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 border border-border/50">
                             <div className={cn("h-2 w-2 rounded-full", userData?.availabilityStatus === 'online' ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground")} />
                             <select 
-                                className="bg-transparent text-[10px] font-bold uppercase tracking-widest outline-none cursor-pointer"
+                                className="bg-transparent text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer"
                                 value={userData?.availabilityStatus || 'offline'}
                                 onChange={(e) => updateDoc(doc(db, "users", user!.uid), { availabilityStatus: e.target.value })}
                             >
@@ -310,11 +343,7 @@ export function EditorDashboardV2() {
                         </div>
 
                         <div className="flex items-center gap-3">
-                            <div className="text-right hidden sm:block">
-                                <p className="text-xs font-bold text-foreground">{user?.displayName}</p>
-                                <p className="text-[10px] text-muted-foreground uppercase tracking-widest">Master Editor</p>
-                            </div>
-                            <div className="h-10 w-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-bold">
+                            <div className="h-10 w-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-black shadow-inner">
                                 {user?.displayName?.charAt(0)}
                             </div>
                         </div>
@@ -325,10 +354,10 @@ export function EditorDashboardV2() {
             <main className="max-w-7xl mx-auto px-6 pt-10 space-y-10">
                 {/* --- Stats Overview --- */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <StatCard icon={Gauge} label="Active Projects" value={projects.filter(p => p.status === 'active').length} trend="+2 this week" />
-                    <StatCard icon={CheckCircle2} label="Completed" value={earnings.length} trend="+12 total" />
-                    <StatCard icon={Banknote} label="Paid Earnings" value={`₹${totalPaid.toLocaleString()}`} trend="Withdrawal Ready" />
-                    <StatCard icon={Wallet} label="Pending Payment" value={`₹${pendingEarnings.toLocaleString()}`} subValue="Awaiting client approval" />
+                    <StatCard icon={Gauge} label="Active Projects" value={projects.filter(p => ['active', 'in_production', 'in_review'].includes(p.status)).length} trend="+2 new" variant="primary" />
+                    <StatCard icon={CheckCircle2} label="Completed" value={earnings.length} trend="All Time" />
+                    <StatCard icon={Banknote} label="Paid Earnings" value={`₹${totalPaid.toLocaleString()}`} subValue="Successfully settled" />
+                    <StatCard icon={Wallet} label="Pending" value={`₹${pendingEarnings.toLocaleString()}`} subValue="Awaiting client settlement" />
                 </div>
 
                 {/* --- Project Controls --- */}
@@ -365,7 +394,7 @@ export function EditorDashboardV2() {
                     {activeTab === 'projects' ? (
                         <motion.div 
                             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-                            className="grid grid-cols-1 lg:grid-cols-2 gap-6"
+                            className="grid grid-cols-1 xl:grid-cols-2 gap-8"
                         >
                             {filteredProjects.map((project, idx) => (
                                 <ProjectCard 
@@ -377,55 +406,29 @@ export function EditorDashboardV2() {
                                     onUpload={() => { setUploadProject(project); setIsUploadModalOpen(true); }}
                                     onReview={() => setReviewProject(project)}
                                     onAssets={() => setSelectedProjectAssets(project)}
+                                    onRespond={handleRespond}
+                                    isResponding={isResponding === project.id}
                                 />
                             ))}
                         </motion.div>
                     ) : (
                         <motion.div 
                             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-                            className="bg-card border border-border/50 rounded-[32px] overflow-hidden shadow-2xl"
+                            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
                         >
-                            <table className="w-full text-left">
-                                <thead className="bg-muted/30 border-b border-border/50">
-                                    <tr>
-                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Project Name</th>
-                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Editor Price</th>
-                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Payment Status</th>
-                                        <th className="px-8 py-5 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Completion Date</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="divide-y divide-border/30">
-                                    {earnings.map((p) => (
-                                        <tr key={p.id} className="hover:bg-muted/10 transition-colors group">
-                                            <td className="px-8 py-6">
-                                                <p className="text-sm font-bold text-foreground">{p.name}</p>
-                                                <p className="text-[10px] text-muted-foreground mt-0.5">ID: {p.id.slice(0, 8)}</p>
-                                            </td>
-                                            <td className="px-8 py-6 font-black text-foreground">₹{p.editorPrice?.toLocaleString()}</td>
-                                            <td className="px-8 py-6">
-                                                {p.editorPaid ? (
-                                                    <span className="flex items-center gap-1.5 text-emerald-500 font-bold text-xs">
-                                                        <CheckCircle2 size={14} /> Paid
-                                                    </span>
-                                                ) : (
-                                                    <span className="flex items-center gap-1.5 text-amber-500 font-bold text-xs">
-                                                        <Clock size={14} /> Pending
-                                                    </span>
-                                                )}
-                                            </td>
-                                            <td className="px-8 py-6 text-sm text-muted-foreground">
-                                                {p.updatedAt ? new Date(p.updatedAt).toLocaleDateString() : 'N/A'}
-                                            </td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                            {earnings.map((p) => (
+                                <FinanceCard key={p.id} project={p} />
+                            ))}
                             {earnings.length === 0 && (
-                                <div className="py-20 text-center space-y-4">
-                                    <div className="h-16 w-16 bg-muted/30 rounded-full flex items-center justify-center mx-auto text-muted-foreground">
-                                        <Banknote size={32} />
+                                <div className="col-span-full py-32 text-center space-y-6">
+                                    <div className="h-24 w-24 bg-muted/20 rounded-2xl flex items-center justify-center mx-auto text-muted-foreground relative">
+                                        <div className="absolute inset-0 bg-primary/5 rounded-full animate-ping opacity-20" />
+                                        <Banknote size={40} className="relative z-10" />
                                     </div>
-                                    <p className="text-sm text-muted-foreground">No financial records found yet.</p>
+                                    <div className="space-y-2">
+                                        <h3 className="text-lg font-black text-foreground">No earnings yet</h3>
+                                        <p className="text-sm text-muted-foreground max-w-xs mx-auto">Once you complete projects and they are approved, your financial records will appear here.</p>
+                                    </div>
                                 </div>
                             )}
                         </motion.div>
@@ -438,7 +441,7 @@ export function EditorDashboardV2() {
                 isOpen={!!reviewProject} 
                 onClose={() => setReviewProject(null)} 
                 project={reviewProject as any} 
-                allowUploadDraft={true}
+                allowUploadDraft={reviewProject?.assignmentStatus === 'accepted'}
             />
 
             <AnimatePresence>
@@ -470,60 +473,175 @@ export function EditorDashboardV2() {
 
 // --- Subcomponents ---
 
-function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets }: any) {
+function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets, onRespond, isResponding }: any) {
+    const [showDeclineReason, setShowDeclineReason] = useState(false);
+    const [reason, setReason] = useState("");
+    const [timeLeft, setTimeLeft] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (project.assignmentStatus !== 'pending' || !project.assignmentExpiresAt) {
+            setTimeLeft(null);
+            return;
+        }
+
+        const interval = setInterval(() => {
+            const now = Date.now();
+            const diff = project.assignmentExpiresAt - now;
+            if (diff <= 0) {
+                setTimeLeft("EXPIRED");
+                clearInterval(interval);
+            } else {
+                const minutes = Math.floor(diff / 60000);
+                const seconds = Math.floor((diff % 60000) / 1000);
+                setTimeLeft(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [project.assignmentStatus, project.assignmentExpiresAt]);
+
+    const isPending = project.assignmentStatus === 'pending';
+    const isAccepted = project.assignmentStatus === 'accepted';
+
     return (
         <motion.div 
-            whileHover={{ y: -4 }}
-            className="group bg-card border border-border/50 rounded-[32px] p-6 shadow-xl shadow-black/5 hover:shadow-2xl hover:shadow-primary/5 transition-all space-y-6"
+            whileHover={{ y: -6 }}
+            className={cn(
+                "group bg-card border border-border/50 rounded-2xl overflow-hidden shadow-2xl shadow-black/5 hover:shadow-primary/10 transition-all flex flex-col relative",
+                isPending && "ring-4 ring-primary/30 bg-primary/[0.03] animate-pulse-subtle"
+            )}
         >
-            <div className="flex items-start justify-between">
-                <div className="space-y-2">
-                    <StatusBadge status={project.status} />
-                    <h3 className="text-lg font-black text-foreground group-hover:text-primary transition-colors">{project.name}</h3>
-                    <div className="flex items-center gap-4 text-[10px] text-muted-foreground uppercase tracking-widest font-bold">
-                        <span className="flex items-center gap-1.5"><Clock size={12} /> {new Date(project.createdAt).toLocaleDateString()}</span>
-                        <span className="flex items-center gap-1.5"><User size={12} /> {pm?.displayName || "System"}</span>
+            {/* Top Bar for status/timer */}
+            <div className="flex items-center justify-between px-8 py-4 bg-muted/20 border-b border-border/50">
+                <StatusBadge status={project.status} />
+                {isPending && timeLeft && (
+                    <div className="flex items-center gap-2 text-primary font-black text-[10px] uppercase tracking-widest">
+                        <Timer size={14} className={cn(timeLeft === 'EXPIRED' ? 'text-rose-500' : 'animate-pulse')} />
+                        {timeLeft === 'EXPIRED' ? 'INVITATION EXPIRED' : `EXPIRES IN ${timeLeft}`}
                     </div>
-                </div>
-                <div className="flex flex-col items-end gap-2">
-                    <div className="text-xs font-black text-foreground">₹{project.editorPrice?.toLocaleString()}</div>
-                    <div className="text-[9px] text-muted-foreground uppercase tracking-tighter">Assigned Rate</div>
-                </div>
+                )}
+                {!isPending && project.deadline && (
+                    <div className="flex items-center gap-2 text-rose-500 font-black text-[10px] uppercase tracking-widest">
+                        <Clock size={14} />
+                        Due {new Date(project.deadline).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                    </div>
+                )}
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
-                <div className="p-4 rounded-2xl bg-muted/20 border border-border/40 space-y-1">
-                    <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Latest Revision</div>
-                    <div className="text-xs font-bold text-foreground">
-                        {latestRevision ? `Version ${latestRevision.version}` : "No drafts yet"}
+            <div className="p-8 flex-1 space-y-8">
+                {/* Header Section */}
+                <div className="flex items-start justify-between gap-6">
+                    <div className="space-y-2 flex-1">
+                        <h3 className="text-2xl font-black text-foreground group-hover:text-primary transition-colors tracking-tight leading-tight line-clamp-1">
+                            {project.name}
+                        </h3>
+                        <div className="flex flex-wrap items-center gap-4 text-[10px] text-muted-foreground uppercase tracking-widest font-black opacity-60">
+                            <span className="flex items-center gap-1.5"><User size={12} className="text-primary" /> {pm?.displayName || "System Manager"}</span>
+                            <span className="flex items-center gap-1.5"><Users size={12} className="text-primary" /> {project.clientName || "Direct Client"}</span>
+                        </div>
+                    </div>
+                    <div className="text-right">
+                        <div className="text-2xl font-black text-primary tracking-tighter">₹{project.editorPrice?.toLocaleString()}</div>
+                        <div className="text-[9px] text-muted-foreground uppercase tracking-widest font-black opacity-50">Payout</div>
                     </div>
                 </div>
-                <div className="p-4 rounded-2xl bg-muted/20 border border-border/40 space-y-1">
-                    <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Client Contact</div>
-                    <div className="text-xs font-bold text-foreground truncate">{project.clientName || "Protected"}</div>
-                </div>
-            </div>
 
-            <div className="flex items-center gap-3 pt-2">
-                <button 
-                    onClick={onReview}
-                    className="flex-1 h-12 rounded-2xl bg-primary text-primary-foreground font-bold text-xs shadow-lg shadow-primary/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
-                >
-                    <MessageCircle size={16} /> Open Action Center
-                </button>
-                <button 
-                    onClick={onAssets}
-                    className="h-12 px-6 rounded-2xl bg-muted/50 border border-border/50 text-foreground font-bold text-xs hover:bg-muted active:scale-95 transition-all flex items-center justify-center gap-2"
-                >
-                    <Layers size={16} /> Assets
-                </button>
-                <button 
-                    onClick={onUpload}
-                    className="h-12 w-12 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20 active:scale-95 transition-all flex items-center justify-center"
-                    title="Upload New Draft"
-                >
-                    <Plus size={20} />
-                </button>
+                {/* Progress/Activity Section */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="p-4 rounded-xl bg-muted/40 border border-border/40 space-y-1">
+                        <div className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.1em]">Last Activity</div>
+                        <div className="text-sm font-bold text-foreground truncate">
+                            {latestRevision ? `Draft ${latestRevision.version}` : "No Drafts Uploaded"}
+                        </div>
+                    </div>
+                    <div className="p-4 rounded-xl bg-muted/40 border border-border/40 space-y-1">
+                        <div className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.1em]">Created On</div>
+                        <div className="text-sm font-bold text-foreground">
+                            {new Date(project.createdAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
+                        </div>
+                    </div>
+                </div>
+
+                {/* Action Section */}
+                {isPending ? (
+                    <div className="space-y-4 pt-2">
+                        {showDeclineReason ? (
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+                                <Textarea 
+                                    placeholder="Briefly explain why you are declining..."
+                                    className="min-h-[100px] text-sm rounded-xl bg-background border-border/50 focus:border-primary/50 shadow-inner p-4"
+                                    value={reason}
+                                    onChange={e => setReason(e.target.value)}
+                                />
+                                <div className="flex gap-3">
+                                    <button 
+                                        onClick={() => setShowDeclineReason(false)}
+                                        className="flex-1 h-12 rounded-xl bg-muted text-foreground font-black text-xs hover:bg-muted/80 transition-all"
+                                    >
+                                        Back
+                                    </button>
+                                    <button 
+                                        disabled={!reason.trim() || isResponding}
+                                        onClick={() => onRespond(project.id, 'rejected', reason)}
+                                        className="flex-[2] h-12 rounded-xl bg-destructive text-destructive-foreground font-black text-xs hover:brightness-110 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        {isResponding ? <Loader2 className="animate-spin" size={18} /> : "Confirm Decline"}
+                                    </button>
+                                </div>
+                            </motion.div>
+                        ) : (
+                            <div className="flex items-center gap-3">
+                                <button 
+                                    disabled={isResponding}
+                                    onClick={() => onRespond(project.id, 'accepted')}
+                                    className="flex-[3] h-16 rounded-xl bg-emerald-500 text-white font-black text-sm shadow-xl shadow-emerald-500/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-3 group/btn"
+                                >
+                                    {isResponding ? <Loader2 className="animate-spin" size={20} /> : (
+                                        <>
+                                            <CheckCircle2 size={20} className="group-hover:scale-110 transition-transform" /> 
+                                            Accept Project
+                                        </>
+                                    )}
+                                </button>
+                                <button 
+                                    disabled={isResponding}
+                                    onClick={() => setShowDeclineReason(true)}
+                                    className="flex-1 h-16 rounded-xl bg-muted/50 border border-border/50 text-muted-foreground font-black text-xs hover:bg-muted active:scale-95 transition-all"
+                                >
+                                    Decline
+                                </button>
+                            </div>
+                        )}
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-3 pt-2">
+                        {latestRevision && (
+                            <button 
+                                onClick={onReview}
+                                className="flex-[3] h-14 rounded-xl bg-primary text-primary-foreground font-black text-xs shadow-xl shadow-primary/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-3"
+                            >
+                                <MessageCircle size={18} /> 
+                                Review
+                            </button>
+                        )}
+                        <button 
+                            onClick={onAssets}
+                            className="h-14 w-14 rounded-xl bg-muted/50 border border-border/50 text-foreground flex items-center justify-center hover:bg-muted active:scale-95 transition-all"
+                            title="Project Assets"
+                        >
+                            <Layers size={18} />
+                        </button>
+                        {isAccepted && (
+                            <button 
+                                onClick={onUpload}
+                                className="h-14 w-14 rounded-xl bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center"
+                                title="Upload New Draft"
+                            >
+                                <Plus size={24} />
+                            </button>
+                        )}
+                    </div>
+                )}
             </div>
         </motion.div>
     );
@@ -540,7 +658,7 @@ function AssetModal({ project, onClose, onPreview }: any) {
         >
             <motion.div 
                 initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-                className="w-full max-w-5xl bg-card border border-border/50 rounded-[40px] shadow-3xl overflow-hidden flex flex-col max-h-[80vh]"
+                className="w-full max-w-5xl bg-card border border-border/50 rounded-2xl shadow-3xl overflow-hidden flex flex-col max-h-[80vh]"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="p-8 border-b border-border/50 flex items-center justify-between">
@@ -562,13 +680,37 @@ function AssetModal({ project, onClose, onPreview }: any) {
     );
 }
 
+function FinanceCard({ project }: any) {
+    return (
+        <div className="bg-card border border-border/50 rounded-xl p-6 flex flex-col gap-4 shadow-sm hover:shadow-md transition-all">
+            <div className="flex items-center justify-between">
+                <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                    <Banknote size={24} />
+                </div>
+                <div className="text-right">
+                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Earnings</p>
+                    <p className="text-xl font-black text-foreground">₹{project.payout || "0"}</p>
+                </div>
+            </div>
+            <div className="space-y-1">
+                <h4 className="font-bold text-foreground truncate">{project.name}</h4>
+                <p className="text-xs text-muted-foreground">Completed on {new Date(project.updatedAt).toLocaleDateString()}</p>
+            </div>
+            <div className="pt-2 border-t border-border/30 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-emerald-500 uppercase">Paid</span>
+                <span className="text-[10px] font-bold text-muted-foreground uppercase">{project.category}</span>
+            </div>
+        </div>
+    );
+}
+
 
 function AssetItem({ asset, onPreview }: any) {
     const isVideo = /\.(mp4|webm|mov|avi|mkv)$/i.test(asset.name) || asset.type?.startsWith('video/');
     const transcode = useVideoTranscodeStatus(asset.url || "", asset.name || "");
 
     return (
-        <div className="group border border-border/50 rounded-[24px] overflow-hidden bg-muted/10 hover:bg-muted/20 transition-all flex flex-col">
+        <div className="group border border-border/50 rounded-xl overflow-hidden bg-muted/10 hover:bg-muted/20 transition-all flex flex-col">
             <div className="aspect-video bg-black relative overflow-hidden flex items-center justify-center">
                 {isVideo ? (
                     <>
@@ -619,7 +761,7 @@ function UploadModal({ project, onClose, file, onFileChange, description, setDes
         >
             <motion.div 
                 initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-                className="w-full max-w-2xl bg-card border border-border/50 rounded-[40px] shadow-3xl overflow-hidden p-10 space-y-8"
+                className="w-full max-w-2xl bg-card border border-border/50 rounded-2xl shadow-3xl overflow-hidden p-10 space-y-8"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="text-center space-y-2">
@@ -631,7 +773,7 @@ function UploadModal({ project, onClose, file, onFileChange, description, setDes
                     <div className="space-y-6">
                         <div className="space-y-4">
                             <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Select Video File</Label>
-                            <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-border/50 rounded-[32px] cursor-pointer hover:bg-muted/30 hover:border-primary/50 transition-all group overflow-hidden relative">
+                            <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed border-border/50 rounded-xl cursor-pointer hover:bg-muted/30 hover:border-primary/50 transition-all group overflow-hidden relative">
                                 {previewUrl ? (
                                     <video src={previewUrl} className="absolute inset-0 w-full h-full object-cover opacity-40" />
                                 ) : (
@@ -654,8 +796,8 @@ function UploadModal({ project, onClose, file, onFileChange, description, setDes
                         <div className="space-y-4">
                             <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Work Summary / Patch Notes</Label>
                             <Textarea 
-                                placeholder="What changes were made in this version?"
-                                className="min-h-[120px] rounded-[24px] bg-muted/30 border-border/50 focus:border-primary/50"
+                                placeholder="What changes were made in this draft?"
+                                className="min-h-[120px] rounded-xl bg-muted/30 border-border/50 focus:border-primary/50"
                                 value={description}
                                 onChange={e => setDescription(e.target.value)}
                             />

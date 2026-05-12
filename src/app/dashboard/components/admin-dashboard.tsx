@@ -110,6 +110,7 @@ import {
 import { AdminOverviewGraphs } from "./admin-overview-graphs";
 import { AdminPerformanceTab } from "./admin-performance";
 import { ClientDocuments } from "./client-documents";
+import { downloadCSV, formatProjectForExport, formatUserForExport } from "@/lib/export-utils";
 
 import { IndicatorCard } from "@/components/ui/indicator-card";
 
@@ -1499,73 +1500,158 @@ export function AdminDashboard() {
 
           <div className="flex items-center gap-3">
             {activeTab === "projects" && (
-              <div className="flex bg-muted/50 border border-border rounded-lg p-1 flex-wrap">
-                {[
-                  { key: "all", label: "All" },
-                  { key: "active", label: "Editing" },
-                  { key: "in_review", label: "In Review" },
-                  { key: "pending", label: "Pending" },
-                  { key: "completed", label: "Completed" },
-                  { key: "pay_later", label: "Pay Later" },
-                  { key: "payment_pending", label: "Payment Due" },
-                ].map((f) => (
-                  <button
-                    key={f.key}
-                    onClick={() => setProjectFilter(f.key as any)}
-                    className={cn(
-                      "px-3 py-1 text-[9px] font-bold uppercase tracking-widest rounded transition-all",
-                      projectFilter === f.key
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {f.label}
-                  </button>
-                ))}
-              </div>
+              <>
+                {/* Desktop Filter Bar */}
+                <div className="hidden lg:flex bg-muted/50 border border-border rounded-lg p-1 flex-wrap">
+                  {[
+                    { key: "all", label: "All" },
+                    { key: "active", label: "Editing" },
+                    { key: "in_review", label: "In Review" },
+                    { key: "pending", label: "Pending" },
+                    { key: "completed", label: "Completed" },
+                    { key: "pay_later", label: "Pay Later" },
+                    { key: "payment_pending", label: "Payment Due" },
+                  ].map((f) => (
+                    <button
+                      key={f.key}
+                      onClick={() => setProjectFilter(f.key as any)}
+                      className={cn(
+                        "px-3 py-1 text-[9px] font-bold uppercase tracking-widest rounded transition-all",
+                        projectFilter === f.key
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {f.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Mobile Dropdown */}
+                <div className="lg:hidden">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="h-10 px-4 rounded-xl border border-border bg-muted/50 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all flex items-center gap-2">
+                        <Filter className="h-3.5 w-3.5" />
+                        {([
+                          { key: "all", label: "All" },
+                          { key: "active", label: "Editing" },
+                          { key: "in_review", label: "In Review" },
+                          { key: "pending", label: "Pending" },
+                          { key: "completed", label: "Completed" },
+                          { key: "pay_later", label: "Pay Later" },
+                          { key: "payment_pending", label: "Payment Due" },
+                        ].find(f => f.key === projectFilter)?.label) || "Filter"}
+                        <ChevronDown className="h-3 w-3 ml-1 opacity-50" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-56 bg-background/95 backdrop-blur-xl border-border/50 rounded-2xl p-2 z-[150]">
+                      <DropdownMenuLabel className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-3 py-2">Filter Projects</DropdownMenuLabel>
+                      <DropdownMenuSeparator className="bg-border/50 my-1" />
+                      {[
+                        { key: "all", label: "All" },
+                        { key: "active", label: "Editing" },
+                        { key: "in_review", label: "In Review" },
+                        { key: "pending", label: "Pending" },
+                        { key: "completed", label: "Completed" },
+                        { key: "pay_later", label: "Pay Later" },
+                        { key: "payment_pending", label: "Payment Due" },
+                      ].map((f) => (
+                        <DropdownMenuItem
+                          key={f.key}
+                          onClick={() => setProjectFilter(f.key as any)}
+                          className={cn(
+                            "flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer mb-0.5 last:mb-0",
+                            projectFilter === f.key ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                          )}
+                        >
+                          {f.label}
+                          {projectFilter === f.key && <CheckCircle2 className="h-3.5 w-3.5" />}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-10 rounded-xl border-border bg-muted/50 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all flex items-center gap-2"
+                  onClick={() => {
+                    const data = filteredProjects.map(formatProjectForExport);
+                    downloadCSV(data, `projects-export-${new Date().toISOString().split('T')[0]}`);
+                  }}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export CSV
+                </Button>
+              </>
             )}
             {activeTab === "users" && (
-              <div className="flex bg-muted/50 border border-border rounded-lg p-1">
-                {["all", "admin", "editor", "client"].map((r) => (
-                  <button
-                    key={r}
-                    onClick={() => setSearchQuery(r === "all" ? "" : r)}
-                    className={cn(
-                      "px-3 py-1 text-[9px] font-bold uppercase tracking-widest rounded transition-all",
-                      searchQuery === r || (r === "all" && searchQuery === "")
-                        ? "bg-background text-foreground shadow-sm"
-                        : "text-muted-foreground hover:text-foreground",
-                    )}
-                  >
-                    {r}
-                  </button>
-                ))}
-              </div>
+              <>
+                {/* Desktop Filter Bar */}
+                <div className="hidden lg:flex bg-muted/50 border border-border rounded-lg p-1">
+                  {["all", "admin", "editor", "client"].map((r) => (
+                    <button
+                      key={r}
+                      onClick={() => setSearchQuery(r === "all" ? "" : r)}
+                      className={cn(
+                        "px-3 py-1 text-[9px] font-bold uppercase tracking-widest rounded transition-all",
+                        searchQuery === r || (r === "all" && searchQuery === "")
+                          ? "bg-background text-foreground shadow-sm"
+                          : "text-muted-foreground hover:text-foreground",
+                      )}
+                    >
+                      {r}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Mobile Dropdown */}
+                <div className="lg:hidden">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button className="h-10 px-4 rounded-xl border border-border bg-muted/50 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all flex items-center gap-2">
+                        <Users className="h-3.5 w-3.5" />
+                        {searchQuery === "" ? "All Roles" : searchQuery.toUpperCase()}
+                        <ChevronDown className="h-3 w-3 ml-1 opacity-50" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48 bg-background/95 backdrop-blur-xl border-border/50 rounded-2xl p-2 z-[150]">
+                      <DropdownMenuLabel className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-3 py-2">Filter Roles</DropdownMenuLabel>
+                      <DropdownMenuSeparator className="bg-border/50 my-1" />
+                      {["all", "admin", "editor", "client"].map((r) => (
+                        <DropdownMenuItem
+                          key={r}
+                          onClick={() => setSearchQuery(r === "all" ? "" : r)}
+                          className={cn(
+                            "flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer mb-0.5 last:mb-0",
+                            searchQuery === r || (r === "all" && searchQuery === "") ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                          )}
+                        >
+                          {r.toUpperCase()}
+                          {(searchQuery === r || (r === "all" && searchQuery === "")) && <CheckCircle2 className="h-3.5 w-3.5" />}
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-10 rounded-xl border-border bg-muted/50 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all flex items-center gap-2"
+                  onClick={() => {
+                    const data = filteredUsers.map(formatUserForExport);
+                    downloadCSV(data, `users-export-${new Date().toISOString().split('T')[0]}`);
+                  }}
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Export CSV
+                </Button>
+              </>
             )}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <button className="h-10 px-4 rounded-lg border border-border bg-muted/50 text-[11px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all flex items-center gap-2">
-                  <Filter className="h-3.5 w-3.5" />
-                  Export Data
-                  <ChevronDown className="h-3 w-3 ml-1 opacity-50" />
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent
-                align="end"
-                className="w-52 bg-card border-border p-1.5 rounded-xl shadow-2xl"
-              >
-                <DropdownMenuLabel className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest px-3 py-2">
-                  Download Options
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator className="my-1 bg-card" />
-                <DropdownMenuItem className="p-2.5 text-xs text-foreground/80 hover:text-foreground hover:bg-card transition-colors cursor-pointer rounded-lg">
-                  Export as JSON
-                </DropdownMenuItem>
-                <DropdownMenuItem className="p-2.5 text-xs text-foreground/80 hover:text-foreground hover:bg-card transition-colors cursor-pointer rounded-lg">
-                  Export as CSV
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+
           </div>
         </div>
 

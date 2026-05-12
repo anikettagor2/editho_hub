@@ -119,7 +119,7 @@ function getVideoSource(revision: RevisionDoc | null | undefined): { playbackId?
     };
 }
 
-export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = false, guestName, defaultRevisionId }: ReviewSystemModalProps) {
+export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, guestPreview = false, guestName, defaultRevisionId }: ReviewSystemModalProps) {
     // Track multiple open upload modals
     const [openDraftModals, setOpenDraftModals] = useState<Array<{ id: string }>>([]);
     const { user } = useAuth();
@@ -269,7 +269,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
                 throw new Error(res.error || "Could not retrieve download URL.");
             }
 
-            const fileName = `revision_v${selectedRevision?.version || "final"}.mp4`;
+            const fileName = `draft_v${selectedRevision?.version || "final"}.mp4`;
             console.log("[Download Flow] Proceeding to file download with URL");
             await handleFileDownload(res.downloadUrl, fileName);
 
@@ -525,12 +525,12 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
     }, [isOpen, selectedRevisionId]);
 
     const uiContent = (
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 h-full min-h-0">
+        <div className="flex flex-col lg:grid lg:grid-cols-12 gap-4 lg:gap-6 h-full min-h-0">
             {/* Left Column: Video and Versions */}
-            <div className="lg:col-span-8 flex flex-col gap-4 overflow-y-auto pr-2 pb-6">
-                <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-muted/10 p-3 rounded-2xl border border-border/50">
-                    <div className="flex items-center gap-4 w-full md:w-auto overflow-x-auto no-scrollbar">
-                        <span className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1 shrink-0">Versions</span>
+            <div className="flex-1 lg:col-span-8 flex flex-col gap-3 lg:gap-4 overflow-y-auto lg:pr-2 pb-4 lg:pb-6 no-scrollbar min-h-0">
+                <div className="flex items-center justify-between gap-3 bg-muted/10 p-2 lg:p-3 rounded-2xl border border-border/50">
+                    <div className="flex items-center gap-3 w-full md:w-auto overflow-x-auto no-scrollbar">
+
                         {/* Version Switcher with Arrows */}
                         <div className="flex items-center gap-1.5 bg-background/50 p-1 rounded-xl border border-border/50 shadow-sm shrink-0">
                             <button
@@ -539,14 +539,12 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
                                     if (idx < revisions.length - 1) setSelectedRevisionId(revisions[idx + 1].id);
                                 }}
                                 disabled={revisions.findIndex(r => r.id === selectedRevisionId) >= revisions.length - 1}
-                                className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:hover:bg-transparent transition-all active:scale-90"
-                                title="Older Version"
+                                className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-20 transition-all active:scale-90"
                             >
                                 <ChevronLeft size={16} />
                             </button>
                             
-                            <div className="flex flex-col items-center px-3 border-x border-border/50 min-w-[80px]">
-                                <span className="text-[8px] font-black uppercase tracking-widest text-primary leading-none mb-0.5">Version</span>
+                            <div className="flex flex-col items-center px-3 border-x border-border/50 min-w-[60px]">
                                 <span className="text-xs font-black text-foreground tabular-nums">v{selectedRevision?.version || "?"}</span>
                             </div>
 
@@ -556,90 +554,68 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
                                     if (idx > 0) setSelectedRevisionId(revisions[idx - 1].id);
                                 }}
                                 disabled={revisions.findIndex(r => r.id === selectedRevisionId) <= 0}
-                                className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:hover:bg-transparent transition-all active:scale-90"
-                                title="Newer Version"
+                                className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-20 transition-all active:scale-90"
                             >
                                 <ChevronRight size={16} />
                             </button>
                         </div>
-
-                        {/* Quick Version List - Scrollable */}
-                        <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
-                            {revisions.map((rev) => (
-                                <button
-                                    key={rev.id}
-                                    onClick={() => setSelectedRevisionId(rev.id)}
-                                    className={cn(
-                                        "h-7 px-2.5 rounded-lg text-[9px] font-black uppercase tracking-tighter transition-all shrink-0 border",
-                                        selectedRevisionId === rev.id 
-                                            ? "bg-primary/10 border-primary/30 text-primary" 
-                                            : "bg-background/50 border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted"
-                                    )}
-                                >
-                                    v{rev.version}
-                                </button>
-                            ))}
-                        </div>
                     </div>
 
-                    <div className="flex items-center gap-3 w-full md:w-auto justify-end border-t md:border-t-0 md:border-l border-border/50 pt-3 md:pt-0 md:pl-4 shrink-0">
-                        {isClient && !isPaymentComplete && user?.payLater && (
-                            <div className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-600 font-bold uppercase tracking-widest text-[9px]">
-                                <Star size={10} fill="currentColor" /> Pay Later
-                            </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                        {allowUploadDraft && (
+                            <button
+                                onClick={() => setOpenDraftModals(prev => [...prev, { id: `draft-${Date.now()}` }])}
+                                className="h-9 w-9 rounded-xl bg-emerald-500/10 text-emerald-500 flex items-center justify-center hover:bg-emerald-500/20 transition-all"
+                                title="Upload Draft"
+                            >
+                                <Film size={18} />
+                            </button>
                         )}
+                        <button
+                            onClick={() => {
+                                const url = `${(process.env.NEXT_PUBLIC_SHORT_LINK_BASE_URL || "https://previewvideo.online").replace(/\/+$/, "")}/r/${selectedRevisionId}`;
+                                navigator.clipboard.writeText(url);
+                                toast.success("Link copied!");
+                            }}
+                            className="h-9 w-9 rounded-xl bg-muted/50 border border-border/50 text-muted-foreground hover:text-foreground flex items-center justify-center transition-all"
+                            title="Copy External Review Link"
+                        >
+                            <Share2 size={18} />
+                        </button>
                         <button
                             onClick={handleDownloadClick}
                             disabled={!selectedRevisionId || isDownloading}
-                            className="flex-1 md:flex-none h-10 px-6 rounded-xl bg-primary text-primary-foreground text-[10px] font-black uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all shadow-xl shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2.5 group"
+                            className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center hover:bg-primary/20 transition-all disabled:opacity-50"
+                            title="Secure Download"
                         >
                             {isDownloading ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                <Loader2 className="h-4 w-4 animate-spin" />
                             ) : (
-                                <Download size={14} className="group-hover:-translate-y-0.5 transition-transform" />
+                                <Download size={18} />
                             )}
-                            {isDownloading ? "Preparing..." : "Secure Download"}
                         </button>
                     </div>
                 </div>
 
                 <div 
-                    className="relative rounded-2xl border border-border/50 bg-black overflow-hidden shadow-2xl aspect-video group/video"
+                    className="relative rounded-2xl border border-border/50 bg-black overflow-hidden shadow-2xl max-h-[50vh] md:max-h-[60vh] lg:max-h-[65vh] group/video"
                     data-watermark-name={project?.clientName || project?.name}
                 >
 
                     <VideoPlayer
                         playbackId={videoInfo.playbackId}
                         videoPath={videoInfo.videoUrl}
-                        title={`Revision v${selectedRevision?.version}`}
+                        title={`Draft v${selectedRevision?.version}`}
                         onTimeUpdate={setCurrentTime}
                         onLoadedMetadata={setDuration}
-                        className="w-full h-full"
+                        className="w-full h-full object-contain"
                     />
                 </div>
 
-                <div className="p-4 rounded-2xl bg-muted/20 border border-border/50 flex items-center justify-between">
-                    <div className="space-y-1">
-                        <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground flex items-center gap-1.5">
-                            <Share2 className="h-3 w-3" /> External Review Link
-                        </div>
-                        <div className="text-[10px] text-muted-foreground/70">Clients can review and comment without logging in.</div>
-                    </div>
-                    <button
-                        onClick={() => {
-                            const url = `${(process.env.NEXT_PUBLIC_SHORT_LINK_BASE_URL || "https://previewvideo.online").replace(/\/+$/, "")}/r/${selectedRevisionId}`;
-                            navigator.clipboard.writeText(url);
-                            toast.success("Link copied!");
-                        }}
-                        className="h-8 px-4 rounded-lg bg-background border border-border text-[10px] font-bold uppercase tracking-wider hover:bg-muted transition-colors active:scale-95"
-                    >
-                        Copy Link
-                    </button>
-                </div>
             </div>
 
             {/* Right Column: Comments */}
-            <div className="lg:col-span-4 flex flex-col gap-4 h-[70vh] lg:h-auto min-h-0">
+            <div className="lg:col-span-4 flex flex-col gap-4 h-[350px] lg:h-auto min-h-0 border-t lg:border-t-0 lg:border-l border-border/50 pt-4 lg:pt-0 lg:pl-4">
                 <div className="flex gap-1 p-1 bg-muted/40 rounded-xl border border-border/50">
                     <button
                         onClick={() => setActiveTab('timeline')}
@@ -833,8 +809,9 @@ export function ReviewSystemModal({ isOpen, onClose, project, guestPreview = fal
                 onClose={onClose}
                 title={`Review // ${project?.name || "System"}`}
                 maxWidth="max-w-7xl"
+                className="w-[98%] sm:w-full h-[95vh] sm:h-[90vh] overflow-hidden flex flex-col p-3 md:p-6"
             >
-                <div className="mt-6">
+                <div className="mt-4 md:mt-6 flex-1 overflow-hidden">
                     {uiContent}
                 </div>
             </Modal>

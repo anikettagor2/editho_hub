@@ -38,7 +38,7 @@ export function Navbar() {
       <div className="fixed top-8 left-8 z-150 pointer-events-auto">
         <Link href="/" className="flex items-center gap-3 group">
           {logoUrl ? (
-            <div className="relative h-14 w-56">
+            <div className="relative h-20 w-72">
               <Image src={logoUrl} alt="Logo" fill className="object-contain object-left" />
             </div>
           ) : (

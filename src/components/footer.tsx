@@ -14,7 +14,7 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-12">
           {/* Brand */}
           <div className="space-y-6 premium-light-surface rounded-2xl p-6">
-            <Link href="/" className="block relative h-12 w-48 mb-2 rounded-xl overflow-hidden">
+            <Link href="/" className="block relative h-16 w-64 mb-2 rounded-xl overflow-hidden">
                {logoUrl ? (
                  <Image 
                     src={logoUrl} 
@@ -23,7 +23,7 @@ export function Footer() {
                     className="object-contain object-left"
                  />
                ) : (
-                 <div className="relative h-12 w-48 flex items-center">
+                 <div className="relative h-16 w-64 flex items-center">
                    <Image 
                       src="/logo.png" 
                       alt="EditoHub Logo" 
