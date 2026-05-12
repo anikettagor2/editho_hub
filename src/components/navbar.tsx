@@ -34,6 +34,22 @@ export function Navbar() {
 
   return (
     <>
+      {/* Brand Logo - Fixed Top Left */}
+      <div className="fixed top-8 left-8 z-150 pointer-events-auto">
+        <Link href="/" className="flex items-center gap-3 group">
+          {logoUrl ? (
+            <div className="relative h-10 w-40">
+              <Image src={logoUrl} alt="Logo" fill className="object-contain object-left" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center font-bold text-lg text-white shadow-lg shadow-primary/20">E</div>
+              <span className="text-xl font-black text-zinc-900 tracking-tighter">EditoHub</span>
+            </div>
+          )}
+        </Link>
+      </div>
+
       {/* Floating Pill Navbar */}
       <div className="fixed top-8 left-0 right-0 z-100 flex justify-center px-6 pointer-events-none">
         <motion.nav
@@ -44,20 +60,6 @@ export function Navbar() {
             scrolled ? "shadow-[0_20px_40px_rgba(15,23,42,0.12)] border-black/15" : "bg-white/60 border-black/5"
           )}
         >
-          {/* Logo Section */}
-          <Link href="/" className="flex items-center gap-2 group mr-4">
-             {logoUrl ? (
-               <div className="relative h-6 w-24">
-                 <Image src={logoUrl} alt="Logo" fill className="object-contain" />
-               </div>
-             ) : (
-                <div className="flex items-center gap-2">
-                    <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center font-bold text-sm text-white">E</div>
-                  <span className="text-sm font-semibold text-zinc-900">EditoHub</span>
-                </div>
-             )}
-          </Link>
-
           {/* Nav Links */}
           <div className="hidden md:flex items-center gap-6 h-full">
             {navLinks.map((link) => (
