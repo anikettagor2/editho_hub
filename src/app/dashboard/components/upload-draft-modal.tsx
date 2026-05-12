@@ -90,6 +90,8 @@ export function UploadDraftModal({
             return;
         }
 
+        let revisionId: string | null = null;
+
         try {
             // 1. Get the next version number
             const q = query(
@@ -106,7 +108,7 @@ export function UploadDraftModal({
             }
 
             const revisionRef = doc(collection(db, "revisions"));
-            const revisionId = revisionRef.id;
+            revisionId = revisionRef.id;
 
             // 2. Create the Revision document
             const newRevision: Revision = {
@@ -177,16 +179,18 @@ export function UploadDraftModal({
             }
 
             // CLEANUP: Delete the records since the upload didn't finish
-            try {
-                const revisionRef = doc(db, "revisions", revisionId);
-                const jobRef = doc(db, "video_jobs", revisionId);
-                await Promise.all([
-                    deleteDoc(revisionRef),
-                    deleteDoc(jobRef)
-                ]);
-                console.log("[Cleanup] Successfully removed failed/aborted upload records.");
-            } catch (cleanupErr) {
-                console.error("[Cleanup] Failed to remove records:", cleanupErr);
+            if (revisionId) {
+                try {
+                    const revisionRef = doc(db, "revisions", revisionId);
+                    const jobRef = doc(db, "video_jobs", revisionId);
+                    await Promise.all([
+                        deleteDoc(revisionRef),
+                        deleteDoc(jobRef)
+                    ]);
+                    console.log("[Cleanup] Successfully removed failed/aborted upload records.");
+                } catch (cleanupErr) {
+                    console.error("[Cleanup] Failed to remove records:", cleanupErr);
+                }
             }
 
             setIsUploading(false);
