@@ -18,7 +18,7 @@ interface VideoPlayerProps {
     onError?: (error: Error) => void;
     onLoadedMetadata?: (duration: number) => void;
     onEnded?: () => void;
-    watermark?: string; // Client/project name to display as watermark
+
     primaryColor?: string;
     accentColor?: string;
     startTime?: number;
@@ -49,7 +49,7 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
         thumbnailUrl,
         title,
         className,
-        watermark,
+
         primaryColor = "#3b82f6",
         accentColor = "#3b82f6",
         startTime = 0,
@@ -242,26 +242,8 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
                 )
             )}
 
-            {/* Premium Watermark Overlay */}
-            {watermark && !hasError && (
-                <div className="absolute inset-0 z-10 flex items-center justify-center pointer-events-none select-none overflow-hidden">
-                    <div className="grid grid-cols-3 grid-rows-3 w-full h-full opacity-[0.03]">
-                        {Array.from({ length: 9 }).map((_, i) => (
-                            <div key={i} className="flex items-center justify-center rotate-[-30deg]">
-                                <span className="text-xl md:text-2xl font-black text-white uppercase tracking-[0.3em] whitespace-nowrap">
-                                    {watermark}
-                                </span>
-                            </div>
-                        ))}
-                    </div>
-                    {/* Centered Main Watermark */}
-                    <div className="text-center opacity-10 hover:opacity-20 transition-opacity duration-700">
-                        <span className="text-4xl md:text-7xl font-black text-white uppercase tracking-[0.2em] drop-shadow-[0_0_30px_rgba(255,255,255,0.1)]">
-                            {watermark}
-                        </span>
-                    </div>
-                </div>
-            )}
+            {/* Global Watermark is now handled by GlobalVideoWatermark component via layout */}
+
             
             {/* Custom Play Overlay for Premium Feel */}
             {!isLoading && !hasError && (

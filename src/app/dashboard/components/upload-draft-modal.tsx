@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { useAuth } from "@/lib/context/auth-context";
 import { db } from "@/lib/firebase/config";
 import { localFileManager } from "@/lib/local-file-manager";
-import { collection, query, where, getDocs, orderBy, limit, doc, setDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, orderBy, limit, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { UploadService, UploadProgress } from "@/lib/services/upload-service";
 import { Revision, VideoJob } from "@/types/schema";
 import { Textarea } from "@/components/ui/textarea";
@@ -167,10 +167,28 @@ export function UploadDraftModal({
             onSuccess?.(revisionId, uploadedFile);
             setTimeout(() => onClose(), 500);
         } catch (err: unknown) {
-            if (err instanceof Error && err.name !== "AbortError") {
+            const isAbort = err instanceof Error && (err.name === "AbortError" || err.message?.includes("abort"));
+            
+            if (!isAbort) {
                 console.error("Upload failed:", err);
                 toast.error("Upload failed. Please try again.");
+            } else {
+                console.log("Upload aborted by user.");
             }
+
+            // CLEANUP: Delete the records since the upload didn't finish
+            try {
+                const revisionRef = doc(db, "revisions", revisionId);
+                const jobRef = doc(db, "video_jobs", revisionId);
+                await Promise.all([
+                    deleteDoc(revisionRef),
+                    deleteDoc(jobRef)
+                ]);
+                console.log("[Cleanup] Successfully removed failed/aborted upload records.");
+            } catch (cleanupErr) {
+                console.error("[Cleanup] Failed to remove records:", cleanupErr);
+            }
+
             setIsUploading(false);
             setUploadProg(null);
         }

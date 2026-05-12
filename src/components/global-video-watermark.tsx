@@ -18,14 +18,30 @@ function sanitizeWatermarkText(value?: string | null) {
 }
 
 function resolveWatermarkText(video: HTMLVideoElement) {
+  // Helper to find closest across shadow boundaries
+  const getClosest = (el: HTMLElement | null, selector: string) => {
+    while (el) {
+      const found = el.closest(selector);
+      if (found) return found;
+      const root = el.getRootNode();
+      if (root instanceof ShadowRoot) {
+        el = root.host as HTMLElement;
+      } else {
+        break;
+      }
+    }
+    return null;
+  };
+
   // 1. Body-level override (set imperatively by the review page once project loads)
   const fromBody = sanitizeWatermarkText(document.body.dataset.watermarkName || document.body.dataset.clientName);
   if (fromBody) return fromBody;
 
   // 2. Closest ancestor with data-watermark-name (wrapper div)
+  const container = getClosest(video, "[data-watermark-name], [data-client-name]");
   const fromContainer = sanitizeWatermarkText(
-    video.closest("[data-watermark-name]")?.getAttribute("data-watermark-name") ||
-    video.closest("[data-client-name]")?.getAttribute("data-client-name")
+    container?.getAttribute("data-watermark-name") ||
+    container?.getAttribute("data-client-name")
   );
   if (fromContainer && fromContainer !== "Client Review") return fromContainer;
 
@@ -46,27 +62,70 @@ function resolveWatermarkText(video: HTMLVideoElement) {
 }
 
 function createWatermarkNode(text: string, isFullscreen: boolean) {
-  const node = document.createElement("div");
-  node.textContent = text;
-  node.style.position = isFullscreen ? "fixed" : "absolute";
-  node.style.left = "50%";
-  node.style.top = "50%";
-  node.style.transform = "translate(-50%, -50%)";
-  node.style.opacity = "0.24";
-  node.style.color = "#ffffff";
-  node.style.fontWeight = "700";
-  node.style.letterSpacing = "0.08em";
-  node.style.textTransform = "uppercase";
-  node.style.fontSize = "clamp(10px, 1.2vw, 18px)";
-  node.style.textShadow = "0 1px 2px rgba(0,0,0,0.35)";
-  node.style.pointerEvents = "none";
-  node.style.userSelect = "none";
-  node.style.webkitUserSelect = "none";
-  node.style.zIndex = isFullscreen ? "2147483646" : "20";
-  node.style.whiteSpace = "nowrap";
-  node.style.display = isFullscreen ? "none" : "block";
-  return node;
+  const container = document.createElement("div");
+  container.style.position = isFullscreen ? "fixed" : "absolute";
+  container.style.inset = "0";
+  container.style.display = "flex";
+  container.style.alignItems = "center";
+  container.style.justifyContent = "center";
+  container.style.pointerEvents = "none";
+  container.style.userSelect = "none";
+  container.style.overflow = "hidden";
+  container.style.zIndex = isFullscreen ? "2147483646" : "20";
+  container.style.opacity = isFullscreen ? "0" : "1"; // Will be toggled on fullscreen
+
+  // 1. Grid Background
+  const grid = document.createElement("div");
+  grid.style.display = "grid";
+  grid.style.gridTemplateColumns = "repeat(3, 1fr)";
+  grid.style.gridTemplateRows = "repeat(3, 1fr)";
+  grid.style.width = "100%";
+  grid.style.height = "100%";
+  grid.style.opacity = "0.03";
+
+  for (let i = 0; i < 9; i++) {
+    const cell = document.createElement("div");
+    cell.style.display = "flex";
+    cell.style.alignItems = "center";
+    cell.style.justifyContent = "center";
+    cell.style.transform = "rotate(-30deg)";
+    
+    const span = document.createElement("span");
+    span.className = "watermark-text-instance";
+    span.textContent = text;
+    span.style.color = "#ffffff";
+    span.style.fontWeight = "900";
+    span.style.textTransform = "uppercase";
+    span.style.letterSpacing = "0.3em";
+    span.style.whiteSpace = "nowrap";
+    span.style.fontSize = "clamp(12px, 1.5vw, 24px)";
+    
+    cell.appendChild(span);
+    grid.appendChild(cell);
+  }
+  container.appendChild(grid);
+
+  // 2. Centered Main Watermark
+  const center = document.createElement("div");
+  center.style.position = "absolute";
+  center.style.opacity = "0.08";
+  
+  const mainSpan = document.createElement("span");
+  mainSpan.className = "watermark-text-instance";
+  mainSpan.textContent = text;
+  mainSpan.style.color = "#ffffff";
+  mainSpan.style.fontWeight = "900";
+  mainSpan.style.textTransform = "uppercase";
+  mainSpan.style.letterSpacing = "0.2em";
+  mainSpan.style.fontSize = "clamp(24px, 5vw, 72px)";
+  mainSpan.style.filter = "drop-shadow(0 0 30px rgba(255,255,255,0.1))";
+  
+  center.appendChild(mainSpan);
+  container.appendChild(center);
+
+  return container;
 }
+
 
 export function GlobalVideoWatermark() {
   useEffect(() => {
@@ -77,7 +136,10 @@ export function GlobalVideoWatermark() {
     const setupVideo = (video: HTMLVideoElement) => {
       if (states.has(video)) return;
 
-      const wrapper = video.parentElement;
+      // If video is in shadow DOM, we append the overlay to the host element
+      // to avoid styles being encapsulated and to keep it on top of the player's UI.
+      const root = video.getRootNode();
+      const wrapper = root instanceof ShadowRoot ? (root.host as HTMLElement) : video.parentElement;
       if (!wrapper) return;
 
       if (window.getComputedStyle(wrapper).position === "static") {
@@ -152,10 +214,16 @@ export function GlobalVideoWatermark() {
     const updateVideoWatermarks = () => {
       for (const [video, state] of states.entries()) {
         const newText = resolveWatermarkText(video);
-        if (state.overlay.textContent !== newText) {
-          state.overlay.textContent = newText;
-          state.fullscreenOverlay.textContent = newText;
-        }
+        
+        // Update all text instances in normal overlay
+        state.overlay.querySelectorAll(".watermark-text-instance").forEach(el => {
+          if (el.textContent !== newText) el.textContent = newText;
+        });
+        
+        // Update all text instances in fullscreen overlay
+        state.fullscreenOverlay.querySelectorAll(".watermark-text-instance").forEach(el => {
+          if (el.textContent !== newText) el.textContent = newText;
+        });
       }
     };
 
@@ -171,11 +239,22 @@ export function GlobalVideoWatermark() {
     };
 
     const scanVideos = () => {
-      const videos = Array.from(document.querySelectorAll("video"));
-      videos.forEach((video) => setupVideo(video as HTMLVideoElement));
+      const videos: HTMLVideoElement[] = Array.from(document.querySelectorAll("video"));
+      
+      // Support for MuxPlayer and other web components with shadow DOM
+      document.querySelectorAll("*").forEach(el => {
+        if (el.shadowRoot) {
+          const shadowVideo = el.shadowRoot.querySelector("video");
+          if (shadowVideo) videos.push(shadowVideo as HTMLVideoElement);
+        }
+      });
+
+      videos.forEach((video) => setupVideo(video));
 
       for (const existingVideo of Array.from(states.keys())) {
-        if (!document.body.contains(existingVideo)) {
+        // For shadow DOM videos, they might not be "in" document.body directly in terms of .contains()
+        // if we check the video element itself. We check if it's still connected.
+        if (!existingVideo.isConnected) {
           teardownVideo(existingVideo);
         }
       }

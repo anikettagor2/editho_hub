@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/context/auth-context";
 import { db } from "@/lib/firebase/config";
 import { localFileManager } from "@/lib/local-file-manager";
-import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, getDocs, limit, setDoc } from "firebase/firestore";
+import { collection, query, where, orderBy, onSnapshot, doc, updateDoc, getDocs, limit, setDoc, deleteDoc } from "firebase/firestore";
 import { Project, Revision, VideoJob } from "@/types/schema";
 import { cn } from "@/lib/utils";
 import { 
@@ -193,6 +193,8 @@ export function EditorDashboardV2() {
         setIsUploading(true);
         setUploadProg(null);
 
+        let createdRevisionId: string | null = null;
+        
         try {
             const projectId = uploadProject.id;
             const revisionsRef = collection(db, "revisions");
@@ -204,7 +206,12 @@ export function EditorDashboardV2() {
             }
 
             const revisionId = doc(revisionsRef).id;
-            await setDoc(doc(revisionsRef, revisionId), {
+            createdRevisionId = revisionId; // Store for cleanup if needed
+            const revisionRef = doc(db, "revisions", revisionId);
+            const jobRef = doc(db, "video_jobs", revisionId);
+
+            // Create initial records
+            await setDoc(revisionRef, {
                 id: revisionId,
                 projectId,
                 version: nextVersion,
@@ -215,7 +222,7 @@ export function EditorDashboardV2() {
                 description: uploadDescription,
             });
 
-            await setDoc(doc(db, "video_jobs", revisionId), {
+            await setDoc(jobRef, {
                 id: revisionId, projectId, revisionId, status: "uploading", createdAt: Date.now(), updatedAt: Date.now()
             });
 
@@ -239,10 +246,32 @@ export function EditorDashboardV2() {
             if (uploadPreviewUrl) URL.revokeObjectURL(uploadPreviewUrl);
             setUploadPreviewUrl(null);
         } catch (err) {
-            console.error("Upload failed:", err);
-            toast.error("Upload failed. Check your connection.");
+            const isAbort = err instanceof Error && (err.name === "AbortError" || err.message?.includes("abort"));
+            
+            if (!isAbort) {
+                console.error("Upload failed:", err);
+                toast.error("Upload failed. Please try again.");
+            } else {
+                console.log("Upload aborted by user.");
+            }
+
+            // CLEANUP: Delete the records since the upload didn't finish
+            if (createdRevisionId) {
+                try {
+                    const revisionRef = doc(db, "revisions", createdRevisionId);
+                    const jobRef = doc(db, "video_jobs", createdRevisionId);
+                    await Promise.all([
+                        deleteDoc(revisionRef),
+                        deleteDoc(jobRef)
+                    ]);
+                    console.log("[Cleanup] Successfully removed failed/aborted upload records.");
+                } catch (cleanupErr) {
+                    console.error("[Cleanup] Failed to remove records during cleanup:", cleanupErr);
+                }
+            }
         } finally {
             setIsUploading(false);
+            abortRef.current = null;
         }
     };
 
@@ -532,6 +561,7 @@ function AssetModal({ project, onClose, onPreview }: any) {
         </motion.div>
     );
 }
+
 
 function AssetItem({ asset, onPreview }: any) {
     const isVideo = /\.(mp4|webm|mov|avi|mkv)$/i.test(asset.name) || asset.type?.startsWith('video/');

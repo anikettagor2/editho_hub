@@ -146,8 +146,8 @@ export class UploadService {
         allowMultipleUploadBatches: false,
         debug: false,
       }).use(AwsS3Multipart, {
-        limit: 50, // Ultra-high concurrency for lightning fast speed
-        getChunkSize: (file) => 40 * 1024 * 1024, // 40MB chunks for massive throughput on high bandwidth
+        limit: 20, // Optimal concurrency for high-speed parallel streams
+        getChunkSize: (file) => 10 * 1024 * 1024, // 10MB chunks to maximize parallel pipe saturation
         shouldUseMultipart: true,
         retryDelays: [0, 1000, 3000, 5000],
         createMultipartUpload: async (f) => {

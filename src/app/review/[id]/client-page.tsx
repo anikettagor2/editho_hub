@@ -21,6 +21,8 @@ import {
     Image as ImageIcon,
     MessageCircle,
     Download,
+    ChevronLeft,
+    ChevronRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -355,49 +357,88 @@ export default function GuestReviewPageClient({ revisionId }: GuestReviewPageCli
                             Guest preview · you can watch and comment on this video
                         </p>
                     </div>
-
-                    <button
-                        onClick={handleDownloadVideo}
-                        disabled={isDownloading}
-                        className={`flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl font-bold uppercase tracking-widest transition-all ${
-                            isDownloading 
-                                ? "bg-muted text-muted-foreground cursor-not-allowed" 
-                                : "bg-primary text-primary-foreground hover:brightness-110 active:scale-[0.98] shadow-lg shadow-primary/20"
-                        }`}
-                    >
-                        {isDownloading ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                            <Download className="h-4 w-4" />
-                        )}
-                        {isDownloading ? "Preparing..." : "Download Original"}
-                    </button>
                 </div>
 
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                     {/* Left: Video + timeline */}
                     <div className="lg:col-span-8 space-y-4">
                         {/* Version selector */}
-                        <div className="flex items-center gap-3">
-                            <span className="text-sm text-muted-foreground font-bold uppercase tracking-widest">Revisions</span>
-                            <div className="flex flex-wrap gap-2">
-                                {allRevisions.map((rev) => (
+                        <div className="flex flex-col md:flex-row items-center justify-between gap-4 bg-muted/10 p-3 rounded-2xl border border-border/50">
+                            <div className="flex items-center gap-4 w-full md:w-auto overflow-x-auto no-scrollbar">
+                                <span className="text-[10px] font-black text-white/40 uppercase tracking-[0.2em] ml-1 shrink-0">Versions</span>
+                                {/* Version Switcher with Arrows */}
+                                <div className="flex items-center gap-1.5 bg-background/50 p-1 rounded-xl border border-border/50 shadow-sm shrink-0">
                                     <button
-                                        key={rev.id}
                                         onClick={() => {
-                                            if (rev.id !== revision.id) {
-                                                window.location.href = `/review/${rev.id}?guest=${guestName}`;
+                                            const idx = allRevisions.findIndex(r => r.id === revision.id);
+                                            if (idx < allRevisions.length - 1) {
+                                                const nextRev = allRevisions[idx + 1];
+                                                window.location.href = `/review/${nextRev.id}?guest=${guestName}`;
                                             }
                                         }}
-                                        className={`px-3 py-1 rounded-lg text-sm font-bold border transition-all ${
-                                            rev.id === revision.id
-                                                ? "bg-primary border-primary text-primary-foreground shadow-lg shadow-primary/20 scale-105"
-                                                : "bg-muted/40 border-white/5 text-muted-foreground hover:bg-muted/60 hover:text-white"
-                                        }`}
+                                        disabled={allRevisions.findIndex(r => r.id === revision.id) >= allRevisions.length - 1}
+                                        className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:hover:bg-transparent transition-all active:scale-90"
+                                        title="Older Version"
                                     >
-                                        v{rev.version || "1"}
+                                        <ChevronLeft size={16} />
                                     </button>
-                                ))}
+                                    
+                                    <div className="flex flex-col items-center px-3 border-x border-border/50 min-w-[80px]">
+                                        <span className="text-[8px] font-black uppercase tracking-widest text-primary leading-none mb-0.5">Version</span>
+                                        <span className="text-xs font-black text-foreground tabular-nums">v{revision?.version || "?"}</span>
+                                    </div>
+
+                                    <button
+                                        onClick={() => {
+                                            const idx = allRevisions.findIndex(r => r.id === revision.id);
+                                            if (idx > 0) {
+                                                const prevRev = allRevisions[idx - 1];
+                                                window.location.href = `/review/${prevRev.id}?guest=${guestName}`;
+                                            }
+                                        }}
+                                        disabled={allRevisions.findIndex(r => r.id === revision.id) <= 0}
+                                        className="h-8 w-8 rounded-lg hover:bg-muted flex items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-20 disabled:hover:bg-transparent transition-all active:scale-90"
+                                        title="Newer Version"
+                                    >
+                                        <ChevronRight size={16} />
+                                    </button>
+                                </div>
+
+                                {/* Quick Version List - Scrollable on mobile/tablet */}
+                                <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar">
+                                    {allRevisions.map((rev) => (
+                                        <button
+                                            key={rev.id}
+                                            onClick={() => {
+                                                if (rev.id !== revision.id) {
+                                                    window.location.href = `/review/${rev.id}?guest=${guestName}`;
+                                                }
+                                            }}
+                                            className={`h-7 px-2.5 rounded-lg text-[9px] font-black uppercase tracking-tighter transition-all shrink-0 border ${
+                                                revision.id === rev.id 
+                                                    ? "bg-primary/10 border-primary/30 text-primary" 
+                                                    : "bg-background/50 border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted"
+                                            }`}
+                                        >
+                                            v{rev.version}
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-3 w-full md:w-auto justify-end border-t md:border-t-0 md:border-l border-border/50 pt-3 md:pt-0 md:pl-4 shrink-0">
+                                <button
+                                    onClick={handleDownloadVideo}
+                                    disabled={isDownloading}
+                                    className="flex-1 md:flex-none h-10 px-6 rounded-xl bg-primary text-primary-foreground text-[10px] font-black uppercase tracking-widest hover:brightness-110 active:scale-95 transition-all shadow-xl shadow-primary/20 disabled:opacity-50 flex items-center justify-center gap-2.5 group"
+                                >
+                                    {isDownloading ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                        <Download size={14} className="group-hover:-translate-y-0.5 transition-transform" />
+                                    )}
+                                    {isDownloading ? "Preparing..." : "Secure Download"}
+                                </button>
                             </div>
                         </div>
 
@@ -411,7 +452,6 @@ export default function GuestReviewPageClient({ revisionId }: GuestReviewPageCli
                                 playbackId={revision.playbackId}
                                 videoPath={revision.videoUrl || revision.hlsUrl}
                                 title={videoTitle}
-                                watermark={project?.clientName || project?.name}
                                 metadata={{
                                     video_id: revision.id,
                                     video_title: videoTitle,
