@@ -78,7 +78,7 @@ export function Footer() {
               <FooterLink href="/about">About Us</FooterLink>
               <FooterLink href="/portfolio">Portfolio</FooterLink>
               <FooterLink href="#">Careers</FooterLink>
-              <FooterLink href="#">Contact</FooterLink>
+              <FooterLink href="https://wa.me/919096563651">Contact</FooterLink>
             </ul>
           </div>
         </div>

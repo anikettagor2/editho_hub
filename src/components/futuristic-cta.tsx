@@ -57,7 +57,7 @@ export function FuturisticCTA() {
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
                   </button>
                 </Link>
-                <Link href="/about">
+                <Link href="https://wa.me/919096563651" target="_blank">
                   <button className="flex items-center justify-center gap-3 px-8 py-4 bg-white border border-black/10 text-zinc-900 font-semibold rounded-xl hover:bg-zinc-50 transition-all w-full sm:w-auto shadow-sm hover:shadow-md">
                     <MessageCircle className="w-4 h-4" />
                     Talk to Us

@@ -19,8 +19,6 @@ export default function Home() {
       
       <ProcessSection />
 
-      <EditingTimeline />
-      
       <ComparisonSection />
       
       <PricingSection />
@@ -28,6 +26,8 @@ export default function Home() {
       <FAQSection />
 
       <FuturisticCTA />
+
+      <EditingTimeline />
 
       <Footer />
     </main>
