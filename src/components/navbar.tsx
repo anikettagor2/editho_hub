@@ -38,13 +38,13 @@ export function Navbar() {
       <div className="fixed top-8 left-8 z-150 pointer-events-auto">
         <Link href="/" className="flex items-center gap-3 group">
           {logoUrl ? (
-            <div className="relative h-10 w-40">
+            <div className="relative h-12 w-48">
               <Image src={logoUrl} alt="Logo" fill className="object-contain object-left" />
             </div>
           ) : (
             <div className="flex items-center gap-2">
-              <div className="w-10 h-10 rounded-xl bg-primary flex items-center justify-center font-bold text-lg text-white shadow-lg shadow-primary/20">E</div>
-              <span className="text-xl font-black text-zinc-900 tracking-tighter">EditoHub</span>
+              <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center font-bold text-xl text-white shadow-lg shadow-primary/20">E</div>
+              <span className="text-2xl font-black text-zinc-900 tracking-tighter">EditoHub</span>
             </div>
           )}
         </Link>
