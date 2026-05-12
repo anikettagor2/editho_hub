@@ -1,3 +1,4 @@
+import { Project, User } from "@/types/schema";
 
 export function downloadCSV(data: any[], filename: string) {
   if (data.length === 0) return;
@@ -27,8 +28,8 @@ export function downloadCSV(data: any[], filename: string) {
   document.body.removeChild(link);
 }
 
-export function formatProjectForExport(projects: any[]) {
-  return projects.map(p => ({
+export function formatProjectForExport(p: Project) {
+  return {
     'Project ID': p.id,
     'Name': p.name,
     'Client': p.clientName || p.brand || 'N/A',
@@ -42,11 +43,11 @@ export function formatProjectForExport(projects: any[]) {
     'Assigned Editor ID': p.assignedEditorId || 'Unassigned',
     'Created At': p.createdAt ? new Date(p.createdAt).toLocaleString() : 'N/A',
     'Completed At': p.completedAt ? new Date(p.completedAt).toLocaleString() : 'N/A'
-  }));
+  };
 }
 
-export function formatUserForExport(users: any[]) {
-  return users.map(u => ({
+export function formatUserForExport(u: User) {
+  return {
     'UID': u.uid,
     'Display Name': u.displayName || 'N/A',
     'Email': u.email || 'N/A',
@@ -55,5 +56,5 @@ export function formatUserForExport(users: any[]) {
     'Phone': u.phoneNumber || u.whatsappNumber || 'N/A',
     'Company': u.companyName || 'N/A',
     'Created At': u.createdAt ? new Date(u.createdAt).toLocaleString() : 'N/A'
-  }));
+  };
 }
