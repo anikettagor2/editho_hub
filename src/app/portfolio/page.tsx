@@ -3,68 +3,120 @@
 import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { LenisProvider } from "@/components/home/lenis-provider";
-import { CustomCursor } from "@/components/home/custom-cursor";
-import { ImmersiveBackground } from "@/components/home/immersive-background";
-import { ParallaxGallery } from "@/components/home/parallax-gallery";
-import { BeforeAfter } from "@/components/home/before-after";
 import { motion } from "framer-motion";
+import Image from "next/image";
 
 export default function PortfolioPage() {
   return (
     <LenisProvider>
-      <main className="bg-black text-white overflow-x-hidden selection:bg-primary selection:text-white">
-        <CustomCursor />
-        <ImmersiveBackground />
+      <main className="bg-white text-zinc-900 overflow-x-hidden selection:bg-primary/20 selection:text-primary">
         <Navbar />
         
         {/* Portfolio Hero */}
-        <section className="relative min-h-[70vh] flex items-center justify-center pt-32 px-6">
+        <section className="relative min-h-[60vh] flex items-center justify-center pt-32 pb-20 px-6 bg-zinc-50/50">
+            <div className="absolute inset-0 bg-[radial-gradient(#0066FF08_1px,transparent_1px)] [background-size:32px_32px] opacity-50" />
             <div className="relative z-10 max-w-7xl mx-auto text-center">
                 <motion.div
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ duration: 0.8 }}
-                    className="premium-header mb-6 text-primary"
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                    className="text-primary font-bold text-sm uppercase tracking-[0.2em] mb-6"
                 >
-                    Archive
+                    Case Studies
                 </motion.div>
                 <motion.h1 
-                    initial={{ opacity: 0, y: 30 }}
+                    initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.2 }}
-                    className="text-7xl md:text-9xl font-black uppercase tracking-tighter leading-none mb-8"
+                    className="text-5xl md:text-8xl font-black text-zinc-900 leading-tight tracking-tight mb-8"
                 >
-                    Director's <br />
-                    <span className="italic text-primary">Lookbook</span>
+                    Our Work in <br />
+                    <span className="text-primary italic">Action</span>
                 </motion.h1>
                 <motion.p 
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.4 }}
-                    className="text-zinc-500 text-xl md:text-2xl max-w-2xl mx-auto font-medium"
+                    transition={{ delay: 0.3 }}
+                    className="text-zinc-600 text-lg md:text-xl max-w-2xl mx-auto font-medium leading-relaxed"
                 >
-                    A collection of high-impact visuals and storytelling sequences that defined new eras for our clients.
+                    A curated selection of high-impact video projects that helped our clients achieve massive growth and engagement.
                 </motion.p>
             </div>
         </section>
 
-        {/* Portfolio Content */}
-        <ParallaxGallery />
-        
-        <div className="py-20 text-center">
-            <div className="h-[1px] w-32 bg-white/10 mx-auto" />
-        </div>
-
-        <section className="py-20">
-            <div className="max-w-7xl mx-auto px-6 mb-20 text-center">
-                <h2 className="text-4xl md:text-6xl font-black uppercase text-white tracking-widest leading-none mb-4">The Magic <span className="text-primary italic">Between</span> Frames</h2>
-                <p className="text-zinc-500 text-lg">Swipe to see the transformation of raw footage.</p>
+        {/* Portfolio Grid */}
+        <section className="py-32 px-6">
+            <div className="max-w-7xl mx-auto">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+                    <PortfolioItem 
+                        title="Hyper-Growth SaaS" 
+                        category="Commercial"
+                        image="https://images.unsplash.com/photo-1498050108023-c5249f4df085?q=80&w=2072"
+                        index={1}
+                    />
+                    <PortfolioItem 
+                        title="Luxe Real Estate" 
+                        category="Cinematic Tour"
+                        image="https://images.unsplash.com/photo-1512917774080-9991f1c4c750?q=80&w=2070"
+                        index={2}
+                    />
+                    <PortfolioItem 
+                        title="Fintech Revolution" 
+                        category="Explainer"
+                        image="https://images.unsplash.com/photo-1551288049-bebda4e38f71?q=80&w=2070"
+                        index={3}
+                    />
+                    <PortfolioItem 
+                        title="Lifestyle Brand" 
+                        category="Social Campaign"
+                        image="https://images.unsplash.com/photo-1523275335684-37898b6baf30?q=80&w=2099"
+                        index={4}
+                    />
+                </div>
             </div>
-            <BeforeAfter />
+        </section>
+        
+        {/* Simple Call to Action */}
+        <section className="py-32 px-6 border-t border-zinc-100">
+            <div className="max-w-4xl mx-auto text-center space-y-10">
+                <h2 className="text-4xl md:text-6xl font-bold text-zinc-900 tracking-tight">Let's create your next <span className="text-primary">masterpiece</span>.</h2>
+                <p className="text-zinc-600 text-xl">We handle the technical heavy lifting, you handle the vision.</p>
+                <div className="flex justify-center">
+                    <button className="px-12 py-6 bg-primary text-white font-bold rounded-full hover:brightness-110 transition-all shadow-2xl shadow-primary/30 text-lg">
+                        Start Your Project
+                    </button>
+                </div>
+            </div>
         </section>
 
         <Footer />
       </main>
     </LenisProvider>
   );
+}
+
+function PortfolioItem({ title, category, image, index }: { title: string, category: string, image: string, index: number }) {
+    return (
+        <motion.div 
+            initial={{ opacity: 0, y: 30 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: index * 0.1 }}
+            className="group cursor-pointer"
+        >
+            <div className="relative aspect-video rounded-3xl overflow-hidden mb-6 shadow-xl shadow-zinc-200">
+                <Image 
+                    src={image} 
+                    alt={title} 
+                    fill 
+                    className="object-cover group-hover:scale-105 transition-transform duration-700"
+                />
+                <div className="absolute inset-0 bg-primary/0 group-hover:bg-primary/10 transition-colors" />
+            </div>
+            <div className="space-y-1">
+                <span className="text-primary text-xs font-bold uppercase tracking-widest">{category}</span>
+                <h3 className="text-2xl font-bold text-zinc-900 group-hover:text-primary transition-colors">{title}</h3>
+            </div>
+        </motion.div>
+    );
 }

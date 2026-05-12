@@ -10,9 +10,7 @@ import { ImmersiveBackground } from "@/components/home/immersive-background";
 export default function AboutPage() {
   return (
     <LenisProvider>
-      <main className="bg-black text-white overflow-x-hidden selection:bg-primary selection:text-white">
-        <CustomCursor />
-        <ImmersiveBackground />
+      <main className="bg-white text-zinc-900 overflow-x-hidden selection:bg-primary/20 selection:text-primary">
         <Navbar />
         <AboutContent />
         <Footer />

@@ -7,14 +7,14 @@ import Link from "next/link";
 const plans = [
     {
         name: "Standard",
-        price: "499",
+        price: "Custom",
         desc: "Perfect for social media creators",
         features: ["1 Active Project", "48hr Turnaround", "Infinite Revisions", "Standard Watermarking", "Dashboard Access"],
         color: "blue"
     },
     {
         name: "Pro",
-        price: "999",
+        price: "Custom",
         desc: "For growing YouTube channels",
         features: ["3 Active Projects", "24hr Turnaround", "Priority Support", "Custom Branding", "Collaboration Tools"],
         popular: true,
@@ -60,9 +60,7 @@ export function PricingSection() {
                             </div>
 
                             <div className="mb-8 flex items-baseline gap-1">
-                                <span className="text-4xl font-black text-zinc-900">{plan.price === "Custom" ? "" : "$"}</span>
-                                <span className="text-6xl font-black text-zinc-900">{plan.price}</span>
-                                {plan.price !== "Custom" && <span className="text-zinc-500 font-bold">/mo</span>}
+                                <span className="text-5xl font-black text-zinc-900">{plan.price}</span>
                             </div>
 
                             <div className="space-y-4 mb-10 flex-grow">

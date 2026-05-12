@@ -4,6 +4,7 @@ import { Navbar } from "@/components/navbar";
 import { Footer } from "@/components/footer";
 import { MarketingHero } from "@/components/home/marketing-hero";
 import { ProcessSection } from "@/components/home/process-section";
+import { EditingTimeline } from "@/components/home/editing-timeline";
 import { ComparisonSection } from "@/components/home/comparison-section";
 import { PricingSection } from "@/components/home/pricing-section";
 import { FAQSection } from "@/components/home/faq-section";
@@ -17,6 +18,8 @@ export default function Home() {
       <MarketingHero />
       
       <ProcessSection />
+
+      <EditingTimeline />
       
       <ComparisonSection />
       
