@@ -8,8 +8,8 @@ export function SmoothScroll() {
   const pathname = usePathname();
 
   useEffect(() => {
-    // Disable smooth scroll on dashboard since it uses its own internal scrolling container
-    if (!pathname || pathname.startsWith('/dashboard')) return;
+    // Disable smooth scroll on app surfaces that use internal scrolling containers.
+    if (!pathname || pathname.startsWith('/dashboard') || pathname.startsWith('/review') || pathname.startsWith('/r/')) return;
 
     const lenis = new Lenis({
       duration: 1.2,

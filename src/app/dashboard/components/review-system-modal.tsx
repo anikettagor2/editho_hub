@@ -71,15 +71,7 @@ type CommentDoc = {
     createdAt?: number;
     replies?: ReplyDoc[];
     isDirectConnection?: boolean;
-};
-
-type PendingComment = {
-    id: string;
-    content: string;
-    timestamp: number;
-    isDirectConnection: boolean;
-    imageFile?: File;
-    imagePreview?: string;
+    notificationSubmitted?: boolean;
 };
 
 interface ReviewSystemModalProps {
@@ -125,10 +117,12 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     const { user } = useAuth();
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const videoPlayerRef = useRef<any>(null);
+    const reviewShellRef = useRef<HTMLDivElement | null>(null);
     const isClient = user?.role === "client";
     const isAdmin = user?.role === "admin";
     const isStaff = ["manager", "sales_executive", "project_manager"].includes(user?.role || "") || isAdmin;
     const isEditor = user?.role === "editor";
+    const isGuestReviewer = guestPreview && !user;
 
     // Tab state
     const [activeTab, setActiveTab] = useState<'timeline' | 'direct'>('timeline');
@@ -147,10 +141,13 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     const [selectedImagePreview, setSelectedImagePreview] = useState<string>("");
     const [imageOverlayText, setImageOverlayText] = useState<string>("");
     const [annotatedImagePreview, setAnnotatedImagePreview] = useState<string>("");
-    const [pendingComments, setPendingComments] = useState<PendingComment[]>([]);
     const [uploadingImage, setUploadingImage] = useState(false);
     const [savingComment, setSavingComment] = useState(false);
+    const [submittingCommentId, setSubmittingCommentId] = useState<string | null>(null);
+    const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+    const [editingCommentText, setEditingCommentText] = useState("");
     const [replyingTo, setReplyingTo] = useState<string | null>(null);
+    const [topPaneHeight, setTopPaneHeight] = useState(0);
 
     // Video state
     const [currentTime, setCurrentTime] = useState(0);
@@ -184,6 +181,47 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         [revisions, selectedRevisionId]
     );
 
+    useEffect(() => {
+        if (!guestPreview) return;
+
+        const preventContextMenu = (e: MouseEvent) => e.preventDefault();
+        const preventDevtoolsKeys = (e: KeyboardEvent) => {
+            const key = e.key.toLowerCase();
+            if (
+                e.key === "F12" ||
+                (e.ctrlKey && e.shiftKey && ["i", "j", "c"].includes(key)) ||
+                (e.metaKey && e.altKey && ["i", "j", "c"].includes(key)) ||
+                (e.ctrlKey && key === "u") ||
+                (e.metaKey && e.altKey && key === "u")
+            ) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+        };
+
+        document.addEventListener("contextmenu", preventContextMenu);
+        window.addEventListener("keydown", preventDevtoolsKeys, true);
+
+        return () => {
+            document.removeEventListener("contextmenu", preventContextMenu);
+            window.removeEventListener("keydown", preventDevtoolsKeys, true);
+        };
+    }, [guestPreview]);
+
+    useEffect(() => {
+        const setDefaultPaneHeight = () => {
+            if (typeof window === "undefined") return;
+            setTopPaneHeight((current) => {
+                if (current > 0) return current;
+                return Math.round(Math.min(Math.max(window.innerHeight * 0.52, 300), window.innerHeight - 260));
+            });
+        };
+
+        setDefaultPaneHeight();
+        window.addEventListener("resize", setDefaultPaneHeight);
+        return () => window.removeEventListener("resize", setDefaultPaneHeight);
+    }, []);
+
 
     const videoInfo = useMemo(() => getVideoSource(selectedRevision), [selectedRevision]);
 
@@ -194,7 +232,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     };
 
     const seekToCommentTime = (timestamp: number) => {
-        if (activeTab !== 'timeline' || timestamp <= 0) return;
+        if (timestamp < 0) return;
         const player = videoPlayerRef.current;
         if (!player) return;
         player.currentTime = timestamp;
@@ -352,93 +390,165 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         }
     };
 
-    const buildDraftComment = async (): Promise<PendingComment | null> => {
+    const persistCurrentDraftComment = async (options?: { silent?: boolean }) => {
+        if (!project?.id || !selectedRevisionId || savingComment) return false;
+        
         const content = newComment.trim();
-        if (!content && !selectedImage) return null;
-        let finalImageFile = selectedImage;
-        let finalImagePreview = selectedImagePreview;
-        if (selectedImage && imageOverlayText.trim() && selectedImagePreview) {
-            try {
-                const annotatedDataUrl = await drawTextOnImage(selectedImagePreview, imageOverlayText);
-                const response = await fetch(annotatedDataUrl);
-                const blob = await response.blob();
-                finalImageFile = new File([blob], selectedImage.name, { type: 'image/jpeg' });
-                finalImagePreview = annotatedDataUrl;
-            } catch (error) {
-                console.error('Failed to apply text overlay:', error);
-            }
+        if (!content && !selectedImage) {
+            if (!options?.silent) toast.error("Write a comment or upload an image.");
+            return false;
         }
-        return {
-            id: `queued-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            content,
-            timestamp: activeTab === 'timeline' ? currentTime : 0,
-            isDirectConnection: activeTab === 'direct',
-            imageFile: finalImageFile || undefined,
-            imagePreview: finalImagePreview || undefined,
-        };
-    };
 
-    const handleQueueComment = async () => {
-        if (!project?.id || !selectedRevisionId) return;
-        const draft = await buildDraftComment();
-        if (!draft) {
-            toast.error("Write a comment or upload an image.");
-            return;
-        }
-        setPendingComments((prev) => [...prev, draft]);
-        setNewComment("");
-        clearImageSelection();
-        toast.success(`Comment queued${draft.isDirectConnection ? " (Direct)" : ` at ${formatTime(draft.timestamp)}`}`);
-    };
-
-    const handleSendQueuedComments = async () => {
-        if (!project?.id || !selectedRevisionId) return;
-        const draft = await buildDraftComment();
-        const commentsToSend = [...pendingComments, ...(draft ? [draft] : [])];
-        if (commentsToSend.length === 0) {
-            toast.error("Add at least one comment to send.");
-            return;
-        }
         setSavingComment(true);
         try {
-            const failedQueue: PendingComment[] = [];
-            let sentCount = 0;
-            for (const queued of commentsToSend) {
-                let imageUrl = "";
-                if (queued.imageFile) {
-                    setUploadingImage(true);
-                    imageUrl = await uploadCommentImage(queued.imageFile, project.id, selectedRevisionId);
-                    setUploadingImage(false);
-                }
+            let imageUrl = "";
+            let finalImageFile = selectedImage;
+
+            if (selectedImage && imageOverlayText.trim() && selectedImagePreview) {
                 try {
-                    await addDoc(collection(db, "comments"), {
-                        projectId: project.id,
-                        revisionId: selectedRevisionId,
-                        userId: user?.uid || "guest",
-                        userName: user?.displayName || guestName || "User",
-                        userRole: (user as any)?.role || "guest",
-                        content: queued.content,
-                        imageUrl: imageUrl || null,
-                        timestamp: queued.timestamp,
-                        createdAt: Date.now(),
-                        status: "open",
-                        replies: [],
-                        isDirectConnection: queued.isDirectConnection,
-                    });
-                    await handleNewComment(project.id, user?.uid || "guest", user?.displayName || guestName || "User", (user as any)?.role || "guest", queued.content, selectedRevisionId);
-                    if (queued.imagePreview) URL.revokeObjectURL(queued.imagePreview);
-                    sentCount += 1;
-                } catch (commentError) {
-                    failedQueue.push(queued);
+                    const annotatedDataUrl = await drawTextOnImage(selectedImagePreview, imageOverlayText);
+                    const response = await fetch(annotatedDataUrl);
+                    const blob = await response.blob();
+                    finalImageFile = new File([blob], selectedImage.name, { type: 'image/jpeg' });
+                } catch (error) {
+                    console.error('Failed to apply text overlay:', error);
                 }
             }
+
+            if (finalImageFile) {
+                setUploadingImage(true);
+                imageUrl = await uploadCommentImage(finalImageFile, project.id, selectedRevisionId);
+                setUploadingImage(false);
+            }
+
+            await addDoc(collection(db, "comments"), {
+                projectId: project.id,
+                revisionId: selectedRevisionId,
+                userId: user?.uid || "guest",
+                userName: user?.displayName || guestName || "User",
+                userRole: (user as any)?.role || "guest",
+                content: content,
+                imageUrl: imageUrl || null,
+                timestamp: activeTab === 'timeline' ? currentTime : 0,
+                createdAt: Date.now(),
+                status: "open",
+                replies: [],
+                isDirectConnection: activeTab === 'direct',
+                notificationSubmitted: false,
+            });
+
             setNewComment("");
             clearImageSelection();
-            setPendingComments(failedQueue);
-            if (sentCount > 0) toast.success(`${sentCount} sent.`);
+            if (!options?.silent) toast.success("Comment visible in review. Submit it to send WhatsApp.");
+            return true;
+        } catch (error) {
+            console.error("Comment send error:", error);
+            if (!options?.silent) toast.error("Failed to send comment.");
+            return false;
         } finally {
             setUploadingImage(false);
             setSavingComment(false);
+        }
+    };
+
+    const handleSendComment = async () => {
+        await persistCurrentDraftComment();
+    };
+
+    const handleCloseReview = async () => {
+        if (newComment.trim() || selectedImage) {
+            await persistCurrentDraftComment({ silent: true });
+        }
+        onClose();
+    };
+
+    const handleResizeStart = (event: React.PointerEvent<HTMLButtonElement>) => {
+        if (!reviewShellRef.current) return;
+        if (window.matchMedia("(min-width: 768px)").matches) return;
+
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+
+        const shellRect = reviewShellRef.current.getBoundingClientRect();
+
+        const handlePointerMove = (moveEvent: PointerEvent) => {
+            if (!reviewShellRef.current) return;
+            const shellHeight = reviewShellRef.current.getBoundingClientRect().height;
+            const minHeight = Math.min(390, Math.max(330, shellHeight * 0.48));
+            const maxHeight = Math.max(minHeight, shellHeight - 300);
+            const nextHeight = moveEvent.clientY - shellRect.top;
+            setTopPaneHeight(Math.round(Math.min(Math.max(nextHeight, minHeight), maxHeight)));
+        };
+
+        const handlePointerUp = () => {
+            window.removeEventListener("pointermove", handlePointerMove);
+            window.removeEventListener("pointerup", handlePointerUp);
+        };
+
+        window.addEventListener("pointermove", handlePointerMove);
+        window.addEventListener("pointerup", handlePointerUp);
+    };
+
+    const canModifyComment = (comment: CommentDoc) => {
+        if (user?.uid === comment.userId || isAdmin || isStaff) return true;
+        return isGuestReviewer && comment.userRole === "guest" && comment.userName === `${guestName} (Guest)`;
+    };
+
+    const canSubmitCommentNotification = (comment: CommentDoc) => {
+        if (user?.uid && comment.userId === user.uid) return true;
+        return isGuestReviewer && comment.userRole === "guest" && comment.userName === `${guestName} (Guest)`;
+    };
+
+    const startEditingComment = (comment: CommentDoc) => {
+        setEditingCommentId(comment.id);
+        setEditingCommentText(comment.content || "");
+        setReplyingTo(null);
+    };
+
+    const handleUpdateComment = async (commentId: string) => {
+        const nextContent = editingCommentText.trim();
+        if (!nextContent) {
+            toast.error("Comment cannot be empty.");
+            return;
+        }
+        try {
+            await updateDoc(doc(db, "comments", commentId), {
+                content: nextContent,
+                editedAt: Date.now(),
+                notificationSubmitted: false,
+            });
+            setEditingCommentId(null);
+            setEditingCommentText("");
+            toast.success("Comment updated. Submit again to notify.");
+        } catch (error) {
+            console.error("Comment edit error:", error);
+            toast.error("Failed to edit comment.");
+        }
+    };
+
+    const handleSubmitCommentNotification = async (comment: CommentDoc) => {
+        if (!project?.id || !selectedRevisionId) return;
+        setSubmittingCommentId(comment.id);
+        try {
+            const res = await handleNewComment(
+                project.id,
+                comment.userId || user?.uid || "guest",
+                comment.userName || user?.displayName || guestName || "User",
+                comment.userRole === "guest" ? "client" : (comment.userRole || (user as any)?.role || "guest"),
+                comment.content || "Image comment",
+                selectedRevisionId
+            );
+            if (!res.success) throw new Error(res.error || "WhatsApp notification failed.");
+            await updateDoc(doc(db, "comments", comment.id), {
+                notificationSubmitted: true,
+                notificationSubmittedAt: Date.now(),
+            });
+            toast.success("WhatsApp notification submitted.");
+        } catch (error: any) {
+            console.error("Comment notification submit error:", error);
+            toast.error(error.message || "Failed to submit notification.");
+        } finally {
+            setSubmittingCommentId(null);
         }
     };
 
@@ -540,11 +650,22 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     }, [isOpen, selectedRevisionId]);
 
     const activeComments = activeTab === 'timeline' ? comments : directConnections;
+    const timelineComments = useMemo(
+        () => comments.filter((comment) => comment.timestamp >= 0 && duration > 0),
+        [comments, duration]
+    );
 
     const uiContent = (
-        <div className="flex h-full min-h-0 flex-col gap-0 bg-[#07080d] text-zinc-100 lg:grid lg:grid-cols-12 lg:gap-6 lg:bg-transparent">
+        <div
+            ref={reviewShellRef}
+            className="flex h-full min-h-0 flex-col gap-0 bg-[#07080d] text-zinc-100 lg:grid lg:grid-cols-12 lg:gap-6 lg:bg-transparent"
+        >
             {/* Left Column: Video and Versions */}
-            <div className="flex shrink-0 flex-col gap-0 lg:col-span-8 lg:min-h-0 lg:flex-1 lg:gap-4 lg:overflow-y-auto lg:pr-2 lg:pb-6 lg:no-scrollbar">
+            <div
+                data-lenis-prevent
+                className="flex h-[var(--review-top-height)] shrink-0 flex-col gap-0 overflow-hidden md:h-auto lg:col-span-8 lg:min-h-0 lg:flex-1 lg:gap-4 lg:overflow-y-auto lg:pr-2 lg:pb-6 lg:no-scrollbar"
+                style={{ "--review-top-height": `${topPaneHeight || 420}px` } as React.CSSProperties}
+            >
                 <div className="flex items-center justify-between gap-3 bg-[#171925] px-4 py-3 lg:rounded-2xl lg:border lg:border-border/50 lg:bg-muted/10 lg:p-3">
                     <div className="flex min-w-0 items-center gap-2 text-xs font-bold text-zinc-400 lg:hidden">
                         <Users className="h-4 w-4 shrink-0" />
@@ -605,18 +726,20 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         >
                             <Share2 size={18} />
                         </button>
-                        <button
-                            onClick={handleDownloadClick}
-                            disabled={!selectedRevisionId || isDownloading}
-                            className="hidden h-9 w-9 rounded-xl bg-primary/10 text-primary lg:flex items-center justify-center hover:bg-primary/20 transition-all disabled:opacity-50"
-                            title="Secure Download"
-                        >
-                            {isDownloading ? (
-                                <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                                <Download size={18} />
-                            )}
-                        </button>
+                        {!guestPreview && (
+                            <button
+                                onClick={handleDownloadClick}
+                                disabled={!selectedRevisionId || isDownloading}
+                                className="hidden h-9 w-9 rounded-xl bg-primary/10 text-primary lg:flex items-center justify-center hover:bg-primary/20 transition-all disabled:opacity-50"
+                                title="Secure Download"
+                            >
+                                {isDownloading ? (
+                                    <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Download size={18} />
+                                )}
+                            </button>
+                        )}
                         <button
                             onClick={() => {
                                 const url = `${(process.env.NEXT_PUBLIC_SHORT_LINK_BASE_URL || "https://previewvideo.online").replace(/\/+$/, "")}/r/${selectedRevisionId}`;
@@ -628,30 +751,34 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         >
                             <Share2 size={15} />
                         </button>
-                        <button
-                            onClick={handleDownloadClick}
-                            disabled={!selectedRevisionId || isDownloading}
-                            className="flex h-7 w-7 items-center justify-center rounded bg-[#2f80ff]/15 text-[#7fb2ff] transition-all disabled:opacity-50 lg:hidden"
-                            title="Secure Download"
-                        >
-                            {isDownloading ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                                <Download size={15} />
-                            )}
-                        </button>
-                        <button
-                            onClick={onClose}
-                            className="flex h-7 w-7 items-center justify-center rounded bg-white/5 text-zinc-300 transition-all hover:bg-white/10 hover:text-white lg:hidden"
-                            title="Close review"
-                        >
-                            <X size={15} />
-                        </button>
+                        {!guestPreview && (
+                            <>
+                                <button
+                                    onClick={handleDownloadClick}
+                                    disabled={!selectedRevisionId || isDownloading}
+                                    className="flex h-7 w-7 items-center justify-center rounded bg-[#2f80ff]/15 text-[#7fb2ff] transition-all disabled:opacity-50 lg:hidden"
+                                    title="Secure Download"
+                                >
+                                    {isDownloading ? (
+                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                    ) : (
+                                        <Download size={15} />
+                                    )}
+                                </button>
+                                <button
+                                    onClick={() => void handleCloseReview()}
+                                    className="flex h-7 w-7 items-center justify-center rounded bg-white/5 text-zinc-300 transition-all hover:bg-white/10 hover:text-white lg:hidden"
+                                    title="Close review"
+                                >
+                                    <X size={15} />
+                                </button>
+                            </>
+                        )}
                     </div>
                 </div>
 
                 <div
-                    className="relative flex h-[36vh] min-h-[250px] max-h-[390px] items-center justify-center overflow-hidden bg-black shadow-none group/video lg:h-auto lg:min-h-0 lg:rounded-2xl lg:border lg:border-border/50 lg:shadow-2xl lg:max-h-[65vh]"
+                    className="group/video relative flex min-h-[190px] flex-1 items-center justify-center overflow-hidden bg-black shadow-none md:h-[36vh] md:min-h-[250px] md:max-h-[390px] md:flex-none lg:h-auto lg:min-h-0 lg:max-h-[65vh] lg:rounded-2xl lg:border lg:border-border/50 lg:shadow-2xl"
                     data-watermark-name={project?.clientName || project?.name}
                 >
                     <VideoPlayer
@@ -668,11 +795,63 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         className="h-full w-full border-0 shadow-none"
                     />
                 </div>
+
+                <div className="space-y-3 bg-[#07080d] px-5 py-4 lg:rounded-2xl lg:border lg:border-border/50 lg:bg-muted/10">
+                    <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-[#9cb0d0]">
+                        <Clock className="h-4 w-4 text-zinc-500" />
+                        <span>Timeline - {formatTime(currentTime)} / {formatTime(duration)}</span>
+                    </div>
+                    <div className="relative h-6">
+                        <div
+                            className="absolute left-0 right-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-[#263147]"
+                            role="presentation"
+                        />
+                        {duration > 0 && (
+                            <div
+                                className="absolute left-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-[#3857ff]/45"
+                                style={{ width: `${Math.min(100, Math.max(0, (currentTime / duration) * 100))}%` }}
+                            />
+                        )}
+                        {timelineComments.map((comment) => {
+                            const left = duration > 0 ? Math.min(100, Math.max(0, (comment.timestamp / duration) * 100)) : 0;
+                            const isNearPlayhead = Math.abs(comment.timestamp - currentTime) < 0.75;
+                            return (
+                                <button
+                                    key={comment.id}
+                                    type="button"
+                                    onClick={() => seekToCommentTime(comment.timestamp)}
+                                    className={cn(
+                                        "absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#07080d] shadow-[0_0_0_2px_rgba(7,8,13,0.7)] transition-all hover:h-4 hover:w-4 hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-white/40",
+                                        isNearPlayhead ? "bg-emerald-400" : "bg-[#6d79ff]"
+                                    )}
+                                    style={{ left: `${left}%` }}
+                                    title={`${formatTime(comment.timestamp)} - ${comment.userName || "Comment"}`}
+                                    aria-label={`Jump to comment at ${formatTime(comment.timestamp)}`}
+                                />
+                            );
+                        })}
+                        {duration > 0 && (
+                            <div
+                                className="absolute top-1/2 h-4 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.75)]"
+                                style={{ left: `${Math.min(100, Math.max(0, (currentTime / duration) * 100))}%` }}
+                                aria-hidden="true"
+                            />
+                        )}
+                    </div>
+                </div>
             </div>
 
             {/* Right Column: Comments */}
             <div className="flex min-h-0 flex-1 flex-col gap-3 border-t border-[#262a3a] bg-[#11131e] px-4 py-4 lg:col-span-4 lg:h-auto lg:border-t-0 lg:border-l lg:border-border/50 lg:bg-transparent lg:p-0 lg:pl-4">
-                <div className="h-1 w-12 rounded-full bg-[#6b5cff] mx-auto lg:hidden" />
+                <button
+                    type="button"
+                    onPointerDown={handleResizeStart}
+                    className="mx-auto -mt-1 flex h-5 w-24 touch-none cursor-ns-resize items-center justify-center rounded-full text-[#8b72ff] transition-colors hover:text-[#a996ff] active:text-white md:hidden"
+                    aria-label="Resize video area"
+                    title="Drag to resize video area"
+                >
+                    <span className="h-1 w-12 rounded-full bg-current" />
+                </button>
                 <div className="flex gap-1 rounded-lg bg-[#222436] p-1 lg:rounded-xl lg:border lg:border-border/50 lg:bg-muted/40">
                     <button
                         onClick={() => setActiveTab('timeline')}
@@ -690,7 +869,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                             activeTab === 'direct' ? "bg-[#383a51] text-white shadow-sm lg:bg-background lg:text-primary" : "text-zinc-400 hover:text-foreground"
                         )}
                     >
-                        <MessageSquare className="hidden h-3.5 w-3.5 lg:block" /> Fields
+                        <MessageSquare className="hidden h-3.5 w-3.5 lg:block" /> Direct
                     </button>
                 </div>
 
@@ -703,7 +882,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                     </div>
                 </div>
 
-                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1 scrollbar-thin lg:space-y-4">
+                <div data-lenis-prevent className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1 scrollbar-thin lg:space-y-4">
                     {activeComments.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-center">
                             <div className="h-12 w-12 rounded-full bg-muted/30 flex items-center justify-center mb-4">
@@ -718,6 +897,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                 key={c.id}
                                 onClick={(e) => {
                                     if ((e.target as HTMLElement).closest('button, a, textarea, input')) return;
+                                    if (activeTab !== 'timeline' || c.timestamp < 0) return;
                                     seekToCommentTime(c.timestamp);
                                 }}
                                 className={cn(
@@ -755,22 +935,82 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                     <div className="flex items-center gap-1 text-xs font-bold text-zinc-500 lg:hidden">
                                         #{index + 1}
                                     </div>
-                                    {(user?.uid === c.userId || isAdmin || isStaff) && (
-                                        <button onClick={() => handleDeleteComment(c.id)} className="opacity-0 group-hover:opacity-100 p-1.5 text-muted-foreground hover:text-destructive transition-all">
-                                            <X className="h-4 w-4" />
-                                        </button>
+                                    {canModifyComment(c) && (
+                                        <div className="flex items-center gap-1 opacity-100">
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    startEditingComment(c);
+                                                }}
+                                                className="rounded px-2 py-1 text-[10px] font-black uppercase tracking-widest text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                                            >
+                                                Edit
+                                            </button>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteComment(c.id);
+                                                }}
+                                                className="p-1.5 text-muted-foreground transition-all hover:text-destructive"
+                                            >
+                                                <X className="h-4 w-4" />
+                                            </button>
+                                        </div>
                                     )}
                                 </div>
                                 
-                                <div className="whitespace-pre-wrap pl-10 text-sm font-semibold leading-relaxed text-zinc-200 lg:pl-1 lg:font-normal lg:text-foreground">
-                                    {c.content}
+                                {editingCommentId === c.id ? (
+                                    <div className="space-y-2 pl-10 lg:pl-1">
+                                        <textarea
+                                            value={editingCommentText}
+                                            onFocus={pauseReviewVideo}
+                                            onChange={(e) => setEditingCommentText(e.target.value)}
+                                            className="min-h-20 w-full resize-none rounded-lg border border-[#34374c] bg-[#202232] p-3 text-sm text-zinc-100 placeholder:text-zinc-500 focus:outline-none lg:border-border/50 lg:bg-background/40 lg:text-foreground"
+                                            autoFocus
+                                        />
+                                        <div className="flex justify-end gap-2">
+                                            <button
+                                                onClick={() => {
+                                                    setEditingCommentId(null);
+                                                    setEditingCommentText("");
+                                                }}
+                                                className="h-8 px-3 text-xs font-bold text-zinc-400 transition-colors hover:text-white"
+                                            >
+                                                Cancel
+                                            </button>
+                                            <button
+                                                onClick={() => handleUpdateComment(c.id)}
+                                                className="h-8 rounded-md bg-[#5b55b8] px-3 text-xs font-black text-white transition-all hover:brightness-110"
+                                            >
+                                                Save
+                                            </button>
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div className="whitespace-pre-wrap pl-10 text-sm font-semibold leading-relaxed text-zinc-200 lg:pl-1 lg:font-normal lg:text-foreground">
+                                        {c.content}
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-3 pl-10 lg:pl-1">
+                                    <button
+                                        onClick={() => setReplyingTo(replyingTo === c.id ? null : c.id)}
+                                        className="text-xs font-bold text-zinc-300 transition-colors hover:text-white lg:text-muted-foreground lg:hover:text-foreground"
+                                    >
+                                        Reply
+                                    </button>
+                                    {!c.notificationSubmitted && canSubmitCommentNotification(c) && (
+                                        <button
+                                            onClick={() => handleSubmitCommentNotification(c)}
+                                            disabled={submittingCommentId === c.id}
+                                            className="rounded-md bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-400 transition-colors hover:bg-emerald-500/20 disabled:opacity-50"
+                                        >
+                                            {submittingCommentId === c.id ? "Submitting..." : "Submit"}
+                                        </button>
+                                    )}
+                                    {c.notificationSubmitted && canSubmitCommentNotification(c) && (
+                                        <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500/80">Submitted</span>
+                                    )}
                                 </div>
-                                <button
-                                    onClick={() => setReplyingTo(replyingTo === c.id ? null : c.id)}
-                                    className="pl-10 text-xs font-bold text-zinc-300 transition-colors hover:text-white lg:pl-1 lg:text-muted-foreground lg:hover:text-foreground"
-                                >
-                                    Reply
-                                </button>
 
                                 {c.imageUrl && (
                                     <div className="relative rounded-xl border border-border/50 overflow-hidden bg-black/5 flex justify-center">
@@ -836,21 +1076,8 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         ))
                     )}
 
-                    {/* Pending comments being queued */}
-                    {pendingComments.filter(p => p.isDirectConnection === (activeTab === 'direct')).map((pc) => (
-                        <div key={pc.id} className="p-4 rounded-2xl bg-primary/5 border border-primary/20 space-y-3 opacity-70">
-                            <div className="flex items-center justify-between">
-                                <div className="flex items-center gap-2">
-                                    <div className="h-6 w-6 rounded-full bg-primary/10 flex items-center justify-center text-[10px] font-black text-primary uppercase">Q</div>
-                                    <div className="text-[10px] font-bold text-primary uppercase tracking-wider">Queued Comment {pc.timestamp > 0 && `@ ${formatTime(pc.timestamp)}`}</div>
-                                </div>
-                                <button onClick={() => setPendingComments(p => p.filter(x => x.id !== pc.id))} className="text-muted-foreground hover:text-destructive"><X className="h-3.5 w-3.5" /></button>
-                            </div>
-                            {pc.content && <p className="text-xs text-foreground/80">{pc.content}</p>}
-                            {pc.imagePreview && <img src={pc.imagePreview} className="max-h-24 rounded-lg" />}
-                        </div>
-                    ))}
                 </div>
+
 
                 {/* Comment Input Area */}
                 <div className="border-t border-[#25283a] pt-2 lg:border-border/50 lg:pt-3">
@@ -903,18 +1130,12 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                             </div>
                             <div className="flex items-center gap-2">
                                 <button
-                                    onClick={handleQueueComment}
-                                    className="hidden h-8 px-4 rounded-lg text-[10px] font-black uppercase tracking-wider text-muted-foreground hover:bg-muted transition-colors lg:block"
-                                >
-                                    Queue
-                                </button>
-                                <button
-                                    onClick={handleSendQueuedComments}
-                                    disabled={savingComment || (!newComment.trim() && !selectedImage && pendingComments.length === 0)}
+                                    onClick={handleSendComment}
+                                    disabled={savingComment || (!newComment.trim() && !selectedImage)}
                                     className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#5b55b8] text-white transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 lg:h-8 lg:w-auto lg:px-5 lg:bg-primary lg:text-primary-foreground lg:text-[10px] lg:font-black lg:uppercase lg:tracking-widest"
                                 >
                                     {savingComment ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                                    <span className="hidden lg:inline">Send {pendingComments.length > 0 ? `(${pendingComments.length + (newComment.trim() || selectedImage ? 1 : 0)})` : ""}</span>
+                                    <span className="hidden lg:inline">Send</span>
                                 </button>
                             </div>
                         </div>
@@ -926,18 +1147,11 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
 
     if (guestPreview) {
         return (
-            <div className="min-h-screen bg-background p-6 md:p-8">
-                <div className="max-w-400 mx-auto space-y-8">
-                    <div className="flex items-center justify-between">
-                        <div className="space-y-1">
-                            <h1 className="text-3xl font-black text-foreground flex items-center gap-3">
-                                {project?.name || "Project Review"}
-                                <span className="text-xs px-2.5 py-1 rounded-full bg-primary/10 text-primary border border-primary/20 uppercase tracking-widest font-black">Guest Access</span>
-                            </h1>
-                            <p className="text-sm text-muted-foreground">Welcome, <span className="text-foreground font-bold">{guestName || "Guest"}</span>. Leave your feedback below.</p>
-                        </div>
+            <div className="h-[100dvh] overflow-hidden bg-background p-3 md:p-6">
+                <div className="mx-auto flex h-full max-w-400 flex-col overflow-hidden">
+                    <div className="min-h-0 flex-1 overflow-hidden">
+                        {uiContent}
                     </div>
-                    {uiContent}
                 </div>
             </div>
         );
@@ -947,7 +1161,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         <>
             <Modal
                 isOpen={isOpen}
-                onClose={onClose}
+                onClose={() => void handleCloseReview()}
                 title={`Review // ${project?.name || "System"}`}
                 maxWidth="max-w-7xl"
                 className="flex h-[100dvh] w-full flex-col overflow-hidden rounded-none border-0 bg-[#07080d] p-0 sm:h-[90vh] sm:w-full sm:rounded-2xl sm:border sm:bg-popover sm:p-6 [&>div:first-child]:hidden sm:[&>div:first-child]:flex sm:[&>div:first-child]:mb-6 sm:[&>div:first-child]:p-0 sm:[&>div:first-child_h2]:text-xl"
