@@ -1,6 +1,6 @@
 "use client";
 
-import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect } from "react";
+import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect, useMemo } from "react";
 import MuxPlayer from "@mux/mux-player-react";
 import { cn } from "@/lib/utils";
 import { Loader2, AlertCircle, Play, Pause, RotateCcw } from "lucide-react";
@@ -83,9 +83,7 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
     const [isPaused, setIsPaused] = useState(true);
     const [currentTime, setCurrentTime] = useState(startTime);
     const [duration, setDuration] = useState(0);
-    const [volume, setVolume] = useState(1);
     const [isMuted, setIsMuted] = useState(muted);
-    const [showVolumeIndicator, setShowVolumeIndicator] = useState(false);
     const [lastAction, setLastAction] = useState<"play" | "pause" | "seek-f" | "seek-b" | "mute" | "unmute" | null>(null);
 
 
@@ -96,12 +94,29 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
     const isMux = !forceNative && !isFallingBack && (!!playbackId || (videoPath?.startsWith("mux://")));
     const effectivePlaybackId = playbackId || (videoPath?.startsWith("mux://") ? videoPath.replace("mux://", "") : null);
 
+    const syncDefaultVolume = () => {
+        const player = playerRef.current;
+        if (!player) return;
+
+        try {
+            player.volume = muted ? 0 : 1;
+            player.muted = muted;
+            setIsMuted(Boolean(player.muted));
+        } catch (error) {
+            console.warn("Unable to set player volume defaults:", error);
+        }
+    };
+
     useEffect(() => {
         setHasError(false);
         setIsLoading(true);
         setIsPaused(true);
         setCurrentTime(startTime);
     }, [effectivePlaybackId, videoPath, startTime]);
+
+    useEffect(() => {
+        syncDefaultVolume();
+    }, [muted, effectivePlaybackId, videoPath]);
 
     // Handle Keyboard Shortcuts
     useEffect(() => {
@@ -230,15 +245,7 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
         )}
         onClick={(e) => {
             if (hideControls && playerRef.current) {
-                // Don't toggle if clicking on a button or interactive element inside
                 if ((e.target as HTMLElement).closest('button')) return;
-                
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                const x = e.clientX - rect.left;
-                const width = rect.width;
-
-                // Double click detection for seeking (simulated with a click count or just standard toggle)
-                // For now, let's just do single click toggle as it's more standard for desktop overlays
                 if (isPaused) playerRef.current.play();
                 else playerRef.current.pause();
             }
@@ -272,7 +279,7 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
                     </div>
                     <div>
                         <h4 className="text-sm font-black text-white uppercase tracking-widest">Playback Failed</h4>
-                        <p className="text-[10px] text-white/50 mt-1 max-w-xs mx-auto">There was a problem loading this video stream. This could be due to network issues or the file being processed.</p>
+                        <p className="text-[10px] text-white/50 mt-1 max-w-xs mx-auto">There was a problem loading this video stream.</p>
                     </div>
                     <button 
                         onClick={handleRetry}
@@ -281,18 +288,6 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
                         <RotateCcw className="h-3 w-3" />
                         Retry Connection
                     </button>
-                    {videoPath && !videoPath.startsWith("mux://") && (
-                        <button 
-                            onClick={() => {
-                                setIsFallingBack(true);
-                                setHasError(false);
-                                setIsLoading(true);
-                            }}
-                            className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/20 hover:bg-primary/30 text-primary text-[10px] font-black uppercase tracking-widest transition-all"
-                        >
-                            Switch to Legacy Player
-                        </button>
-                    )}
                 </div>
             ) : (
                 isMux ? (
@@ -333,6 +328,7 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
                             const target = e.target as HTMLVideoElement;
                             setIsLoading(false);
                             setDuration(target.duration);
+                            syncDefaultVolume();
                             onLoadedMetadata?.(target.duration);
                         }}
                         onPlay={() => {
@@ -373,6 +369,7 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
                             const target = e.target as HTMLVideoElement;
                             setIsLoading(false);
                             setDuration(target.duration);
+                            syncDefaultVolume();
                             onLoadedMetadata?.(target.duration);
                         }}
                         onPlay={() => {
@@ -395,8 +392,6 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
                     />
                 )
             )}
-
-            {/* Global Watermark is now handled by GlobalVideoWatermark component via layout */}
 
             {/* Icon Flash Animation */}
             <AnimatePresence mode="wait">
@@ -443,26 +438,9 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
                         </div>
                     </motion.div>
                 )}
-                {(lastAction === "mute" || lastAction === "unmute" || isMuted) && (
-                    <motion.div
-                        key="mute-flash"
-                        initial={{ opacity: 0, y: 10 }}
-                        animate={{ opacity: [0, 1, 0], y: [10, 0, -10] }}
-                        exit={{ opacity: 0 }}
-                        transition={{ duration: 0.8 }}
-                        className="absolute top-8 right-8 z-40 pointer-events-none"
-                    >
-                        <div className="px-4 py-2 rounded-full bg-black/60 backdrop-blur-xl border border-white/10 flex items-center gap-2">
-                            {isMuted ? <AlertCircle className="h-4 w-4 text-red-500" /> : <Play className="h-4 w-4 text-green-500" />}
-                            <span className="text-[10px] font-black uppercase tracking-widest text-white">
-                                {isMuted ? "Muted" : "Audio On"}
-                            </span>
-                        </div>
-                    </motion.div>
-                )}
             </AnimatePresence>
             
-            {/* Custom Play Overlay for Premium Feel */}
+            {/* Custom Play Overlay */}
             {!isLoading && !hasError && hideControls && (
                 <div 
                     className={cn(

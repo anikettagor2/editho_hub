@@ -414,6 +414,19 @@ mux-player {
     --accent-color: #3b82f6;
 }
 
+@media (max-width: 767px) {
+    mux-player::part(mute),
+    mux-player::part(volume) {
+        display: none;
+    }
+
+    mux-player::part(time) {
+        display: inline-flex;
+        margin-left: auto;
+        white-space: nowrap;
+    }
+}
+
 /* Ensure the player resizer works well on touch */
 [data-resizer] {
     touch-action: none;

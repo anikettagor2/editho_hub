@@ -54,7 +54,7 @@ type ReplyDoc = {
     userName?: string;
     userRole?: string;
     content: string;
-    imageUrl?: string;
+    imageUrl?: string | null;
     createdAt: number;
 };
 
@@ -64,7 +64,7 @@ type CommentDoc = {
     revisionId: string;
     timestamp: number;
     content: string;
-    imageUrl?: string;
+    imageUrl?: string | null;
     userName?: string;
     userRole?: string;
     userId: string;
@@ -144,6 +144,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     const [uploadingImage, setUploadingImage] = useState(false);
     const [savingComment, setSavingComment] = useState(false);
     const [submittingCommentId, setSubmittingCommentId] = useState<string | null>(null);
+    const [pendingNotificationComment, setPendingNotificationComment] = useState<CommentDoc | null>(null);
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [editingCommentText, setEditingCommentText] = useState("");
     const [replyingTo, setReplyingTo] = useState<string | null>(null);
@@ -421,7 +422,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                 setUploadingImage(false);
             }
 
-            await addDoc(collection(db, "comments"), {
+            const newCommentPayload = {
                 projectId: project.id,
                 revisionId: selectedRevisionId,
                 userId: user?.uid || "guest",
@@ -435,7 +436,15 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                 replies: [],
                 isDirectConnection: activeTab === 'direct',
                 notificationSubmitted: false,
-            });
+            };
+
+            const commentRef = await addDoc(collection(db, "comments"), newCommentPayload);
+            if (!options?.silent) {
+                setPendingNotificationComment({
+                    id: commentRef.id,
+                    ...newCommentPayload,
+                });
+            }
 
             setNewComment("");
             clearImageSelection();
@@ -543,6 +552,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                 notificationSubmitted: true,
                 notificationSubmittedAt: Date.now(),
             });
+            setPendingNotificationComment((current) => current?.id === comment.id ? null : current);
             toast.success("WhatsApp notification submitted.");
         } catch (error: any) {
             console.error("Comment notification submit error:", error);
@@ -650,6 +660,11 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     }, [isOpen, selectedRevisionId]);
 
     const activeComments = activeTab === 'timeline' ? comments : directConnections;
+    const pendingCommentForNotification = useMemo(() => {
+        if (!pendingNotificationComment || pendingNotificationComment.notificationSubmitted) return null;
+        const liveComment = [...comments, ...directConnections].find((comment) => comment.id === pendingNotificationComment.id);
+        return liveComment?.notificationSubmitted ? null : (liveComment || pendingNotificationComment);
+    }, [comments, directConnections, pendingNotificationComment]);
     const timelineComments = useMemo(
         () => comments.filter((comment) => comment.timestamp >= 0 && duration > 0),
         [comments, duration]
@@ -796,12 +811,12 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                     />
                 </div>
 
-                <div className="space-y-3 bg-[#07080d] px-5 py-4 lg:rounded-2xl lg:border lg:border-border/50 lg:bg-muted/10">
-                    <div className="flex items-center gap-2 text-[11px] font-black uppercase tracking-[0.22em] text-[#9cb0d0]">
-                        <Clock className="h-4 w-4 text-zinc-500" />
+                <div className="hidden space-y-2 bg-[#07080d] px-3 py-2.5 lg:block lg:space-y-3 lg:px-5 lg:py-4 lg:rounded-2xl lg:border lg:border-border/50 lg:bg-muted/10">
+                    <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.18em] text-[#9cb0d0] lg:gap-2 lg:text-[11px] lg:tracking-[0.22em]">
+                        <Clock className="h-3.5 w-3.5 text-zinc-500 lg:h-4 lg:w-4" />
                         <span>Timeline - {formatTime(currentTime)} / {formatTime(duration)}</span>
                     </div>
-                    <div className="relative h-6">
+                    <div className="relative h-5 lg:h-6">
                         <div
                             className="absolute left-0 right-0 top-1/2 h-1.5 -translate-y-1/2 rounded-full bg-[#263147]"
                             role="presentation"
@@ -821,7 +836,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                     type="button"
                                     onClick={() => seekToCommentTime(comment.timestamp)}
                                     className={cn(
-                                        "absolute top-1/2 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#07080d] shadow-[0_0_0_2px_rgba(7,8,13,0.7)] transition-all hover:h-4 hover:w-4 hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-white/40",
+                                        "absolute top-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-[#07080d] shadow-[0_0_0_2px_rgba(7,8,13,0.7)] transition-all hover:h-4 hover:w-4 hover:bg-emerald-400 focus:outline-none focus:ring-2 focus:ring-white/40 lg:h-3 lg:w-3",
                                         isNearPlayhead ? "bg-emerald-400" : "bg-[#6d79ff]"
                                     )}
                                     style={{ left: `${left}%` }}
@@ -832,7 +847,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         })}
                         {duration > 0 && (
                             <div
-                                className="absolute top-1/2 h-4 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.75)]"
+                                className="absolute top-1/2 h-3.5 w-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-emerald-400 shadow-[0_0_14px_rgba(52,211,153,0.75)] lg:h-4"
                                 style={{ left: `${Math.min(100, Math.max(0, (currentTime / duration) * 100))}%` }}
                                 aria-hidden="true"
                             />
@@ -842,7 +857,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
             </div>
 
             {/* Right Column: Comments */}
-            <div className="flex min-h-0 flex-1 flex-col gap-3 border-t border-[#262a3a] bg-[#11131e] px-4 py-4 lg:col-span-4 lg:h-auto lg:border-t-0 lg:border-l lg:border-border/50 lg:bg-transparent lg:p-0 lg:pl-4">
+            <div className="flex min-h-0 flex-1 flex-col gap-2 border-t border-[#262a3a] bg-[#11131e] px-3 py-2.5 lg:col-span-4 lg:h-auto lg:gap-3 lg:border-t-0 lg:border-l lg:border-border/50 lg:bg-transparent lg:p-0 lg:pl-4">
                 <button
                     type="button"
                     onPointerDown={handleResizeStart}
@@ -856,7 +871,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                     <button
                         onClick={() => setActiveTab('timeline')}
                         className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-bold transition-all lg:rounded-lg lg:text-xs",
+                            "flex flex-1 items-center justify-center gap-2 rounded-md py-1.5 text-[13px] font-bold transition-all lg:rounded-lg lg:py-2 lg:text-xs",
                             activeTab === 'timeline' ? "bg-[#383a51] text-white shadow-sm lg:bg-background lg:text-primary" : "text-zinc-400 hover:text-foreground"
                         )}
                     >
@@ -865,7 +880,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                     <button
                         onClick={() => setActiveTab('direct')}
                         className={cn(
-                            "flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-sm font-bold transition-all lg:rounded-lg lg:text-xs",
+                            "flex flex-1 items-center justify-center gap-2 rounded-md py-1.5 text-[13px] font-bold transition-all lg:rounded-lg lg:py-2 lg:text-xs",
                             activeTab === 'direct' ? "bg-[#383a51] text-white shadow-sm lg:bg-background lg:text-primary" : "text-zinc-400 hover:text-foreground"
                         )}
                     >
@@ -873,16 +888,16 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                     </button>
                 </div>
 
-                <div className="flex items-center justify-between text-sm font-bold text-zinc-200 lg:hidden">
+                <div className="flex items-center justify-between text-xs font-bold text-zinc-200 lg:hidden">
                     <span>All comments</span>
-                    <div className="flex items-center gap-4 text-zinc-400">
-                        <button title="Filter comments"><ListFilter className="h-4 w-4" /></button>
-                        <button title="Sort comments"><MessageSquare className="h-4 w-4" /></button>
-                        <button title="More"><MoreHorizontal className="h-4 w-4" /></button>
+                    <div className="flex items-center gap-3 text-zinc-400">
+                        <button title="Filter comments"><ListFilter className="h-3.5 w-3.5" /></button>
+                        <button title="Sort comments"><MessageSquare className="h-3.5 w-3.5" /></button>
+                        <button title="More"><MoreHorizontal className="h-3.5 w-3.5" /></button>
                     </div>
                 </div>
 
-                <div data-lenis-prevent className="min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain pr-1 scrollbar-thin lg:space-y-4">
+                <div data-lenis-prevent className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pr-1 scrollbar-thin lg:space-y-4">
                     {activeComments.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-center">
                             <div className="h-12 w-12 rounded-full bg-muted/30 flex items-center justify-center mb-4">
@@ -901,20 +916,20 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                     seekToCommentTime(c.timestamp);
                                 }}
                                 className={cn(
-                                    "group relative space-y-3 rounded-lg bg-[#181a27] p-3 transition-all hover:border-primary/20 lg:rounded-2xl lg:border lg:border-border/50 lg:bg-muted/20 lg:p-4",
+                                    "group relative space-y-2 rounded-lg bg-[#181a27] p-2.5 transition-all hover:border-primary/20 lg:space-y-3 lg:rounded-2xl lg:border lg:border-border/50 lg:bg-muted/20 lg:p-4",
                                     activeTab === 'timeline' && c.timestamp > 0 && "cursor-pointer hover:bg-[#202334] lg:hover:bg-muted/30"
                                 )}
                                 title={activeTab === 'timeline' && c.timestamp > 0 ? `Jump to ${formatTime(c.timestamp)}` : undefined}
                             >
-                                <div className="flex items-start justify-between gap-3">
-                                    <div className="flex items-center gap-2.5">
-                                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-[#ee54e8] text-[10px] font-black uppercase text-black lg:h-8 lg:w-8 lg:border lg:border-primary/20 lg:bg-primary/10 lg:text-primary">
+                                <div className="flex items-start justify-between gap-2">
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-[#ee54e8] text-[9px] font-black uppercase text-black lg:h-8 lg:w-8 lg:border lg:border-primary/20 lg:bg-primary/10 lg:text-primary">
                                             {c.userName?.charAt(0) || "U"}
                                         </div>
                                         <div>
-                                            <div className="flex items-center gap-1.5 text-sm font-black text-zinc-100 lg:text-xs lg:text-foreground">
+                                            <div className="flex items-center gap-1 text-[13px] font-black text-zinc-100 lg:gap-1.5 lg:text-xs lg:text-foreground">
                                                 {c.userName}
-                                                <span className="text-xs font-bold text-zinc-500 lg:text-[9px]">{formatDate(c.createdAt || 0)}</span>
+                                                <span className="text-[10px] font-bold text-zinc-500 lg:text-[9px]">{formatDate(c.createdAt || 0)}</span>
                                                 {c.userRole && <span className="hidden text-[9px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground font-bold uppercase lg:inline">{c.userRole}</span>}
                                             </div>
                                             <div className="flex items-center gap-2 text-[10px] text-zinc-400">
@@ -932,7 +947,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                             </div>
                                         </div>
                                     </div>
-                                    <div className="flex items-center gap-1 text-xs font-bold text-zinc-500 lg:hidden">
+                                    <div className="flex items-center gap-1 text-[10px] font-bold text-zinc-500 lg:hidden">
                                         #{index + 1}
                                     </div>
                                     {canModifyComment(c) && (
@@ -960,7 +975,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                 </div>
                                 
                                 {editingCommentId === c.id ? (
-                                    <div className="space-y-2 pl-10 lg:pl-1">
+                                    <div className="space-y-2 pl-8 lg:pl-1">
                                         <textarea
                                             value={editingCommentText}
                                             onFocus={pauseReviewVideo}
@@ -987,26 +1002,17 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                         </div>
                                     </div>
                                 ) : (
-                                    <div className="whitespace-pre-wrap pl-10 text-sm font-semibold leading-relaxed text-zinc-200 lg:pl-1 lg:font-normal lg:text-foreground">
+                                    <div className="whitespace-pre-wrap pl-8 text-[13px] font-semibold leading-relaxed text-zinc-200 lg:pl-1 lg:text-sm lg:font-normal lg:text-foreground">
                                         {c.content}
                                     </div>
                                 )}
-                                <div className="flex items-center gap-3 pl-10 lg:pl-1">
+                                <div className="flex items-center gap-2.5 pl-8 lg:gap-3 lg:pl-1">
                                     <button
                                         onClick={() => setReplyingTo(replyingTo === c.id ? null : c.id)}
-                                        className="text-xs font-bold text-zinc-300 transition-colors hover:text-white lg:text-muted-foreground lg:hover:text-foreground"
+                                        className="text-[11px] font-bold text-zinc-300 transition-colors hover:text-white lg:text-xs lg:text-muted-foreground lg:hover:text-foreground"
                                     >
                                         Reply
                                     </button>
-                                    {!c.notificationSubmitted && canSubmitCommentNotification(c) && (
-                                        <button
-                                            onClick={() => handleSubmitCommentNotification(c)}
-                                            disabled={submittingCommentId === c.id}
-                                            className="rounded-md bg-emerald-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-emerald-400 transition-colors hover:bg-emerald-500/20 disabled:opacity-50"
-                                        >
-                                            {submittingCommentId === c.id ? "Submitting..." : "Submit"}
-                                        </button>
-                                    )}
                                     {c.notificationSubmitted && canSubmitCommentNotification(c) && (
                                         <span className="text-[10px] font-black uppercase tracking-widest text-emerald-500/80">Submitted</span>
                                     )}
@@ -1022,7 +1028,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                 )}
 
                                 {c.replies && c.replies.length > 0 && (
-                                    <div className="mt-3 pl-4 border-l-2 border-border/30 space-y-3">
+                                    <div className="mt-2 pl-3 border-l-2 border-border/30 space-y-2 lg:mt-3 lg:pl-4 lg:space-y-3">
                                         {c.replies.map((reply) => (
                                             <div key={reply.id} className="space-y-1">
                                                 <div className="flex items-center gap-2">
@@ -1036,7 +1042,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                 )}
 
                                 {replyingTo === c.id && (
-                                    <div className="ml-10 space-y-2 rounded-lg border border-[#34374c] bg-[#202232] p-2 lg:ml-4 lg:border-border/50 lg:bg-background/40">
+                                    <div className="ml-8 space-y-2 rounded-lg border border-[#34374c] bg-[#202232] p-2 lg:ml-4 lg:border-border/50 lg:bg-background/40">
                                         <textarea
                                             value={newReply[c.id] || ""}
                                             onFocus={pauseReviewVideo}
@@ -1080,18 +1086,18 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
 
 
                 {/* Comment Input Area */}
-                <div className="border-t border-[#25283a] pt-2 lg:border-border/50 lg:pt-3">
-                    <div className="space-y-3 rounded-lg bg-[#2a2d40] p-3 lg:rounded-2xl lg:border lg:border-border/50 lg:bg-muted/30 lg:p-4">
+                <div className="border-t border-[#25283a] pt-1.5 lg:border-border/50 lg:pt-3">
+                    <div className="space-y-2 rounded-lg bg-[#2a2d40] p-2.5 lg:space-y-3 lg:rounded-2xl lg:border lg:border-border/50 lg:bg-muted/30 lg:p-4">
                         <div className="relative">
                             <textarea
                                 value={newComment}
                                 onFocus={pauseReviewVideo}
                                 onChange={(e) => setNewComment(e.target.value)}
                                 placeholder={activeTab === 'timeline' ? "Leave your comment..." : "Message editor directly..."}
-                                className="min-h-10 w-full resize-none border-none bg-transparent text-sm text-zinc-100 placeholder:text-zinc-400 focus:outline-none lg:min-h-15 lg:text-foreground"
+                                className="min-h-8 w-full resize-none border-none bg-transparent text-[13px] text-zinc-100 placeholder:text-zinc-400 focus:outline-none lg:min-h-15 lg:text-sm lg:text-foreground"
                             />
                             {activeTab === 'timeline' && (
-                                <div className="absolute right-0 top-0 rounded bg-[#504700] px-1.5 py-0.5 text-xs font-black text-[#ffd21f] lg:bottom-0 lg:top-auto lg:mb-2 lg:mr-2 lg:bg-primary/10 lg:text-primary">
+                                <div className="absolute right-0 top-0 rounded bg-[#504700] px-1.5 py-0.5 text-[10px] font-black text-[#ffd21f] lg:bottom-0 lg:top-auto lg:mb-2 lg:mr-2 lg:text-xs lg:bg-primary/10 lg:text-primary">
                                     {formatTime(currentTime)}:00
                                 </div>
                             )}
@@ -1111,28 +1117,37 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                             </div>
                         )}
 
-                        <div className="flex items-center justify-between border-t border-[#36394f] pt-2 lg:border-border/30 lg:pt-3">
+                        <div className="flex items-center justify-between border-t border-[#36394f] pt-1.5 lg:border-border/30 lg:pt-3">
                             <div className="flex items-center gap-1">
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
-                                    className="rounded-lg p-2 text-zinc-300 transition-colors hover:bg-muted lg:text-muted-foreground"
+                                    className="rounded-lg p-1.5 text-zinc-300 transition-colors hover:bg-muted lg:p-2 lg:text-muted-foreground"
                                     title="Attach screenshot"
                                 >
-                                    <ImageIcon className="h-4 w-4" />
+                                    <ImageIcon className="h-3.5 w-3.5 lg:h-4 lg:w-4" />
                                 </button>
-                                <button className="rounded-lg p-2 text-zinc-300 transition-colors hover:bg-muted lg:hidden" title="Add reaction">
-                                    <Smile className="h-4 w-4" />
+                                <button className="rounded-lg p-1.5 text-zinc-300 transition-colors hover:bg-muted lg:hidden" title="Add reaction">
+                                    <Smile className="h-3.5 w-3.5" />
                                 </button>
-                                <button className="rounded-lg p-2 text-zinc-300 transition-colors hover:bg-muted lg:hidden" title="Approve">
-                                    <ThumbsUp className="h-4 w-4" />
+                                <button className="rounded-lg p-1.5 text-zinc-300 transition-colors hover:bg-muted lg:hidden" title="Approve">
+                                    <ThumbsUp className="h-3.5 w-3.5" />
                                 </button>
                                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
                             </div>
                             <div className="flex items-center gap-2">
+                                {pendingCommentForNotification && canSubmitCommentNotification(pendingCommentForNotification) && (
+                                    <button
+                                        onClick={() => handleSubmitCommentNotification(pendingCommentForNotification)}
+                                        disabled={submittingCommentId === pendingCommentForNotification.id}
+                                        className="flex h-8 items-center rounded-lg bg-emerald-500 px-3 text-[10px] font-black uppercase tracking-widest text-emerald-950 transition-all hover:brightness-110 disabled:opacity-50"
+                                    >
+                                        {submittingCommentId === pendingCommentForNotification.id ? "Submitting..." : "Submit"}
+                                    </button>
+                                )}
                                 <button
                                     onClick={handleSendComment}
                                     disabled={savingComment || (!newComment.trim() && !selectedImage)}
-                                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#5b55b8] text-white transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 lg:h-8 lg:w-auto lg:px-5 lg:bg-primary lg:text-primary-foreground lg:text-[10px] lg:font-black lg:uppercase lg:tracking-widest"
+                                    className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#5b55b8] text-white transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 lg:h-8 lg:w-auto lg:px-5 lg:bg-primary lg:text-primary-foreground lg:text-[10px] lg:font-black lg:uppercase lg:tracking-widest"
                                 >
                                     {savingComment ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                                     <span className="hidden lg:inline">Send</span>
