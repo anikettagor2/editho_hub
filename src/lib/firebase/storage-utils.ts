@@ -1,6 +1,24 @@
 import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
 import { storage } from "./config";
 
+export const uploadCommentAttachment = async (file: File, projectId: string, revisionId: string): Promise<string> => {
+    if (!file) throw new Error("No file provided");
+
+    const maxSize = 20 * 1024 * 1024; // 20MB
+    if (file.size > maxSize) {
+        throw new Error("File size must be less than 20MB");
+    }
+
+    const timestamp = Date.now();
+    const fileName = `${timestamp}_${file.name}`;
+    const storageRef = ref(storage, `comments/${projectId}/${revisionId}/${fileName}`);
+
+    const snapshot = await uploadBytes(storageRef, file);
+    const downloadUrl = await getDownloadURL(snapshot.ref);
+
+    return downloadUrl;
+};
+
 export const uploadCommentImage = async (file: File, projectId: string, revisionId: string): Promise<string> => {
     if (!file) throw new Error("No file provided");
 

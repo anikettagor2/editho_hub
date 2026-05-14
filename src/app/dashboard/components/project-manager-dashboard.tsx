@@ -2056,14 +2056,24 @@ export function ProjectManagerDashboard() {
                                 <button onClick={() => setPreviewFile(null)} className="absolute top-4 right-4 h-10 w-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md z-10 transition-all">
                                     <X className="h-5 w-5" />
                                 </button>
+                                <button
+                                    onClick={() => void handleFileDownload(previewFile.url, previewFile.name)}
+                                    className="absolute left-4 top-4 z-10 inline-flex h-10 items-center gap-2 rounded-full bg-white/10 px-4 text-xs font-bold uppercase tracking-widest text-white transition-all hover:bg-white/20"
+                                >
+                                    <Download className="h-3.5 w-3.5" />
+                                    Download
+                                </button>
                                 <div className="relative w-full max-w-5xl aspect-video bg-black/50 rounded-2xl overflow-hidden shadow-2xl border border-white/10 mt-8 mb-4">
                                     {previewFile.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp)$/i.test(previewFile.name) ? (
                                         <img src={previewFile.url} alt={previewFile.name} className="w-full h-full object-contain" />
                                     ) : previewFile.type.startsWith('video/') || /\.(mp4|webm|mov)$/i.test(previewFile.name) ? (
-                                        <div className="flex flex-col items-center justify-center h-full text-white/50 gap-3">
-                                            <FileVideo className="h-10 w-10 opacity-20" />
-                                            <span className="text-sm">Video Preview Removed</span>
+                                        <video src={previewFile.url} controls className="h-full w-full object-contain" />
+                                    ) : previewFile.type.startsWith('audio/') || /\.(mp3|wav|aac|m4a|ogg|flac)$/i.test(previewFile.name) ? (
+                                        <div className="flex h-full items-center justify-center px-8">
+                                            <audio controls className="w-full max-w-xl" src={previewFile.url} preload="metadata" />
                                         </div>
+                                    ) : /\.pdf$/i.test(previewFile.name) ? (
+                                        <iframe src={previewFile.url} title={previewFile.name} className="h-full w-full bg-white" />
                                     ) : (
                                         <div className="text-center text-white">
                                             <FileVideo className="h-12 w-12 mx-auto mb-4 opacity-50" />

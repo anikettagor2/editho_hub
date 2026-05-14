@@ -17,8 +17,9 @@ import {
 import Image from "next/image";
 import { warmVideoInMemory } from "@/lib/video-preload";
 import { useIntersectionObserver } from "@/hooks/use-intersection-observer";
-import { useVideoTranscodeStatus, TranscodeStatus } from "@/hooks/use-video-transcode-status";
+import { useVideoTranscodeStatus } from "@/hooks/use-video-transcode-status";
 import { VideoPlayer } from "@/components/video-player";
+import { handleFileDownload } from "@/lib/download-utils";
 
 interface FilePreviewProps {
   file: {
@@ -32,11 +33,9 @@ interface FilePreviewProps {
   onDownload?: (url: string, name: string) => void;
 }
 
-export function FilePreview({ file, index }: FilePreviewProps) {
+export function FilePreview({ file, onDownload }: FilePreviewProps) {
   const [showPreview, setShowPreview] = useState(false);
   const [previewError, setPreviewError] = useState(false);
-  const [isVideoLoaded, setIsVideoLoaded] = useState(false);
-  const videoRef = React.useRef<HTMLVideoElement>(null);
 
   // Monitor transcoding status for .mov files
   const transcodeState = useVideoTranscodeStatus(file.storagePath, file.name);
@@ -96,6 +95,16 @@ export function FilePreview({ file, index }: FilePreviewProps) {
   const fileType = getFileType(file.name);
   const ext = getFileExtension(file.name);
   const fileSizeMB = file.size ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : null;
+  const previewSrc = fileType === "video" ? effectiveVideoUrl : file.url;
+  const isPdfDocument = fileType === "document" && ext === "pdf";
+
+  const handleDownloadClick = async () => {
+    if (onDownload) {
+      onDownload(file.url, file.name);
+      return;
+    }
+    await handleFileDownload(file.url, file.name);
+  };
 
   // Transcode status badge component
   const TranscodeBadge = () => {
@@ -197,13 +206,6 @@ export function FilePreview({ file, index }: FilePreviewProps) {
                   </button>
                 </>
               )}
-
-              {/* Quality indicator */}
-              {isVideoLoaded && (
-                <div className="absolute top-2 right-2 bg-black/50 text-white text-xs px-2 py-1 rounded">
-                  HD
-                </div>
-              )}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center text-muted-foreground gap-2">
@@ -249,57 +251,34 @@ export function FilePreview({ file, index }: FilePreviewProps) {
 
           {/* Action Buttons */}
           <div className="flex gap-2 mt-3">
-            {fileType === 'image' && (
+            {fileType !== 'file' && (
               <button
                 onClick={() => setShowPreview(true)}
                 className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-bold text-foreground bg-muted/60 hover:bg-primary/20 hover:text-primary rounded-lg transition-all duration-200 active:scale-95"
-                title="View image"
+                title={fileType === "video" ? "Preview video" : "Preview file"}
               >
                 <Eye className="h-3.5 w-3.5" />
-                View
+                Preview
               </button>
             )}
-            {fileType === 'video' && (
-              <button
-                onClick={() => setShowPreview(true)}
-                disabled={isTranscoding}
-                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-bold text-foreground bg-muted/60 hover:bg-primary/20 hover:text-primary rounded-lg transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
-                title={isTranscoding ? "Video is being optimized..." : "Play video"}
-              >
-                {isTranscoding ? (
-                  <>
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    Optimizing...
-                  </>
-                ) : (
-                  <>
-                    <Eye className="h-3.5 w-3.5" />
-                    Preview
-                  </>
-                )}
-              </button>
-            )}
-            {(fileType !== 'image' && fileType !== 'video') && (
-              <button
-                onClick={() => setShowPreview(true)}
-                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-bold text-foreground bg-muted/60 hover:bg-primary/20 hover:text-primary rounded-lg transition-all duration-200 active:scale-95"
-                title="View file"
-              >
-                <Eye className="h-3.5 w-3.5" />
-                View
-              </button>
-            )}
+            <button
+              onClick={() => void handleDownloadClick()}
+              className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 text-xs font-bold text-primary bg-primary/10 hover:bg-primary hover:text-white rounded-lg transition-all duration-200 active:scale-95"
+              title="Download file"
+            >
+              <File className="h-3.5 w-3.5" />
+              Download
+            </button>
           </div>
         </div>
       </div>
 
-      {/* Image Preview Modal */}
-      {showPreview && fileType === 'image' && (
+      {showPreview && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4"
           onClick={() => setShowPreview(false)}
         >
-          <div className="relative max-w-3xl max-h-[90vh] w-full flex items-center justify-center">
+          <div className="relative max-w-5xl max-h-[90vh] w-full rounded-2xl border border-white/10 bg-[#090b12] p-4 sm:p-6 flex items-center justify-center">
             <button
               onClick={(e) => {
                 e.stopPropagation();
@@ -310,50 +289,75 @@ export function FilePreview({ file, index }: FilePreviewProps) {
             >
               <X className="h-6 w-6" />
             </button>
-            <Image
-              src={file.url}
-              alt={file.name}
-              width={1200}
-              height={800}
-              className="object-contain max-w-full max-h-full rounded-lg shadow-2xl"
-              priority
-            />
-          </div>
-        </div>
-      )}
-
-      {/* Video Preview Modal - Uses transcoded URL when ready */}
-      {showPreview && fileType === 'video' && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-sm p-4"
-          onClick={() => setShowPreview(false)}
-        >
-          <div className="relative max-w-4xl max-h-[90vh] w-full flex items-center justify-center">
             <button
               onClick={(e) => {
                 e.stopPropagation();
-                setShowPreview(false);
+                void handleDownloadClick();
               }}
-              className="absolute -top-10 right-0 p-2 rounded-lg bg-white/10 hover:bg-white/20 text-white transition-colors z-10"
-              title="Close preview"
+              className="absolute -top-10 left-0 flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/20"
+              title="Download file"
             >
-              <X className="h-6 w-6" />
+              <File className="h-4 w-4" />
+              Download
             </button>
 
-            {/* Show optimized badge in the preview modal */}
-            {isTranscodeReady && (
-              <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-emerald-500/90 text-white text-xs font-bold shadow-lg backdrop-blur-sm">
-                <CheckCircle2 className="h-3.5 w-3.5" />
-                Playing Optimized MP4
+            {fileType === "image" && (
+              <Image
+                src={file.url}
+                alt={file.name}
+                width={1200}
+                height={800}
+                className="object-contain max-w-full max-h-[78vh] rounded-lg shadow-2xl"
+                priority
+              />
+            )}
+
+            {fileType === "video" && (
+              <div className="w-full">
+                {isTranscodeReady && (
+                  <div className="mb-3 inline-flex items-center gap-1.5 rounded-full bg-emerald-500/90 px-3 py-1.5 text-xs font-bold text-white shadow-lg">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Playing Optimized MP4
+                  </div>
+                )}
+                <VideoPlayer
+                  videoPath={previewSrc}
+                  title={file.name}
+                  className="w-full aspect-video rounded-lg shadow-2xl"
+                  onError={() => setPreviewError(true)}
+                />
               </div>
             )}
 
-            <VideoPlayer
-              videoPath={effectiveVideoUrl}
-              title={file.name}
-              className="w-full aspect-video rounded-lg shadow-2xl"
-              onError={() => setPreviewError(true)}
-            />
+            {fileType === "audio" && (
+              <div className="w-full max-w-xl rounded-xl border border-border/50 bg-card p-6 text-center">
+                <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <FileAudio className="h-7 w-7" />
+                </div>
+                <p className="mb-4 text-sm font-bold text-foreground">{file.name}</p>
+                <audio controls className="w-full" src={file.url} preload="metadata" />
+              </div>
+            )}
+
+            {fileType === "document" && (
+              isPdfDocument ? (
+                <iframe
+                  src={file.url}
+                  title={file.name}
+                  className="h-[78vh] w-full rounded-lg border border-white/10 bg-white"
+                />
+              ) : (
+                <div className="w-full max-w-xl rounded-xl border border-border/50 bg-card p-6 text-center">
+                  <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <FileText className="h-7 w-7" />
+                  </div>
+                  <p className="text-sm font-bold text-foreground">{file.name}</p>
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Inline preview is not available for this format yet. Use Download to open it locally.
+                  </p>
+                </div>
+              )
+            )}
           </div>
         </div>
       )}

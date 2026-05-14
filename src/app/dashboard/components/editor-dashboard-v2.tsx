@@ -16,7 +16,6 @@ import {
     MessageCircle,
     Film,
     Check,
-    Download,
     RefreshCw,
     History,
     FileVideo,
@@ -40,30 +39,43 @@ import {
     Settings,
     LogOut,
     Plus,
-    Play,
     PlusSquare,
     CheckCircle,
     Building2,
     Hash,
-    CreditCard
+    CreditCard,
+    LayoutGrid,
+    List,
+    FileText,
+    Link2,
+    Music
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
 import { ReviewSystemModal } from "./review-system-modal";
-import { preloadVideosIntoMemory, warmVideoInMemory } from "@/lib/video-preload";
-import { VideoPlayer } from "@/components/video-player";
+import { preloadVideosIntoMemory } from "@/lib/video-preload";
+import { FilePreview } from "@/components/file-preview";
 import { UploadService, UploadProgress } from "@/lib/services/upload-service";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_GB } from "@/lib/constants";
 import { handleRevisionUploaded } from "@/app/actions/notification-actions";
-import { useVideoTranscodeStatus } from "@/hooks/use-video-transcode-status";
 import { respondToAssignment } from "@/app/actions/admin-actions";
 import { updateEditorPayoutDetails } from "@/app/actions/payout-actions";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 
 // --- Components ---
+
+const inrFormatter = new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+});
+
+function formatCurrency(value?: number | null) {
+    return inrFormatter.format(value || 0);
+}
 
 function StatusBadge({ status }: { status: string }) {
     const colors = {
@@ -91,7 +103,7 @@ function StatCard({ icon: Icon, label, value, subValue, trend, variant = "defaul
         <motion.div 
             whileHover={{ y: -5, scale: 1.02 }}
             className={cn(
-                "p-6 rounded-[32px] bg-card border border-border/50 shadow-xl shadow-black/5 relative overflow-hidden group transition-all",
+                "p-5 rounded-2xl bg-card border border-border/50 shadow-xl shadow-black/5 relative overflow-hidden group transition-all",
                 variant === "primary" && "bg-primary/5 border-primary/20"
             )}
         >
@@ -101,15 +113,15 @@ function StatCard({ icon: Icon, label, value, subValue, trend, variant = "defaul
             <div className="relative z-10 space-y-4">
                 <div className="flex items-center gap-4">
                     <div className={cn(
-                        "h-12 w-12 rounded-2xl flex items-center justify-center transition-transform group-hover:rotate-3",
+                        "h-11 w-11 rounded-xl flex items-center justify-center transition-transform group-hover:rotate-3",
                         variant === "primary" ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-primary/10 text-primary"
                     )}>
-                        <Icon size={24} />
+                        <Icon size={22} />
                     </div>
                     <div className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">{label}</div>
                 </div>
                 <div>
-                    <div className="text-3xl font-black text-foreground tracking-tighter flex items-baseline gap-2">
+                    <div className="text-2xl font-black text-foreground tracking-tighter flex items-baseline gap-2">
                         {value}
                         {trend && <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">{trend}</span>}
                     </div>
@@ -118,6 +130,64 @@ function StatCard({ icon: Icon, label, value, subValue, trend, variant = "defaul
             </div>
         </motion.div>
     );
+}
+
+function summarizeProjectResources(project: Project) {
+    const scriptText = (project as any).scriptText;
+    const bRoleFiles = ((project as any).bRoleFiles || []) as { name?: string }[];
+    const clientReferenceFiles = (project.referenceFiles || []).filter((file: any) => !file?.uploadedBy);
+    const pmReferenceFiles = (project.referenceFiles || []).filter((file: any) => Boolean(file?.uploadedBy));
+
+    return [
+        {
+            label: "Raw Footage",
+            icon: FileVideo,
+            value: (project.rawFiles?.length || 0) > 0 || (project.footageLinks?.length || 0) > 0 || project.footageLink
+                ? `${project.rawFiles?.length || 0} file${(project.rawFiles?.length || 0) === 1 ? "" : "s"}${(project.footageLinks?.length || 0) > 0 || project.footageLink ? ` â€¢ ${(project.footageLinks?.length || 0) + (project.footageLink ? 1 : 0)} link${((project.footageLinks?.length || 0) + (project.footageLink ? 1 : 0)) === 1 ? "" : "s"}` : ""}`
+                : "Client has not uploaded raw footage",
+            hasData: Boolean((project.rawFiles?.length || 0) > 0 || (project.footageLinks?.length || 0) > 0 || project.footageLink),
+        },
+        {
+            label: "Scripts",
+            icon: FileText,
+            value: (project.scripts?.length || 0) > 0 || Boolean(scriptText)
+                ? `${project.scripts?.length || 0} file${(project.scripts?.length || 0) === 1 ? "" : "s"}${scriptText ? " â€¢ pasted brief included" : ""}`
+                : "Client has not uploaded scripts or directions",
+            hasData: Boolean((project.scripts?.length || 0) > 0 || scriptText),
+        },
+        {
+            label: "Audio",
+            icon: Music,
+            value: (project.audioFiles?.length || 0) > 0
+                ? `${project.audioFiles?.length || 0} audio file${(project.audioFiles?.length || 0) === 1 ? "" : "s"}`
+                : "Client has not uploaded audio files",
+            hasData: Boolean((project.audioFiles?.length || 0) > 0),
+        },
+        {
+            label: "Style References",
+            icon: Link2,
+            value: clientReferenceFiles.length > 0 || (project.referenceLinks?.length || 0) > 0 || project.referenceLink
+                ? `${clientReferenceFiles.length} file${clientReferenceFiles.length === 1 ? "" : "s"}${(project.referenceLinks?.length || 0) > 0 || project.referenceLink ? ` â€¢ ${(project.referenceLinks?.length || 0) + (project.referenceLink ? 1 : 0)} link${((project.referenceLinks?.length || 0) + (project.referenceLink ? 1 : 0)) === 1 ? "" : "s"}` : ""}`
+                : "Client has not uploaded style references",
+            hasData: Boolean(clientReferenceFiles.length > 0 || (project.referenceLinks?.length || 0) > 0 || project.referenceLink),
+        },
+        {
+            label: "B-Roll",
+            icon: Layers,
+            value: bRoleFiles.length > 0
+                ? `${bRoleFiles.length} B-roll file${bRoleFiles.length === 1 ? "" : "s"}`
+                : "Client has not uploaded B-roll assets",
+            hasData: Boolean(bRoleFiles.length > 0),
+        },
+        {
+            label: "PM Files",
+            icon: Briefcase,
+            value: (project.pmFiles?.length || 0) > 0 || pmReferenceFiles.length > 0
+                ? `${(project.pmFiles?.length || 0) + pmReferenceFiles.length} manager file${((project.pmFiles?.length || 0) + pmReferenceFiles.length) === 1 ? "" : "s"}`
+                : "PM has not uploaded additional files",
+            hasData: Boolean((project.pmFiles?.length || 0) > 0 || pmReferenceFiles.length > 0),
+        },
+    ];
 }
 
 // --- Main Dashboard ---
@@ -130,13 +200,16 @@ export function EditorDashboardV2() {
     const [allUsers, setAllUsers] = useState<any>({});
     const [projectRevisions, setProjectRevisions] = useState<Record<string, any>>({});
     const [activeTab, setActiveTab] = useState<'projects' | 'finance'>('projects');
+    const [projectsView, setProjectsView] = useState<"grid" | "list">("list");
+    const [projectFilter, setProjectFilter] = useState<"all" | "editing" | "in_review" | "pending" | "completed" | "pay_later" | "payment_due">("all");
     const [searchQuery, setSearchQuery] = useState("");
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [currentPage, setCurrentPage] = useState(1);
     const [isResponding, setIsResponding] = useState<string | null>(null); // projectId
     
     // Review/Modal States
     const [reviewProject, setReviewProject] = useState<Project | null>(null);
     const [selectedProjectAssets, setSelectedProjectAssets] = useState<Project | null>(null);
-    const [previewVideo, setPreviewVideo] = useState<any | null>(null);
     
     // Upload State
     const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
@@ -314,10 +387,40 @@ export function EditorDashboardV2() {
         }
     };
 
-    const filteredProjects = projects.filter(p => p.name?.toLowerCase().includes(searchQuery.toLowerCase()));
+    const filteredProjects = projects.filter((p) => {
+        const matchesSearch =
+            p.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            p.clientName?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+            allUsers[p.assignedPMId || ""]?.displayName?.toLowerCase().includes(searchQuery.toLowerCase());
+
+        if (!matchesSearch) return false;
+
+        if (projectFilter === "all") return true;
+        if (projectFilter === "editing") return ["active", "in_production", "editor_assigned"].includes(p.status);
+        if (projectFilter === "in_review") return ["review", "in_review"].includes(p.status);
+        if (projectFilter === "pending") return p.assignmentStatus === "pending" || ["editor_not_assigned", "project_created", "pending_assignment"].includes(p.status);
+        if (projectFilter === "completed") return ["completed", "approved"].includes(p.status);
+        if (projectFilter === "pay_later") return Boolean(p.isPayLaterRequest);
+        if (projectFilter === "payment_due") return p.paymentStatus !== "full_paid" || p.status === "completed_pending_payment";
+        return true;
+    });
     const earnings = projects.filter(p => ['completed', 'approved', 'completed_pending_payment'].includes(p.status));
     const totalPaid = earnings.filter(p => p.editorPaid).reduce((acc, p) => acc + (p.editorPrice || 0), 0);
     const pendingEarnings = earnings.filter(p => !p.editorPaid).reduce((acc, p) => acc + (p.editorPrice || 0), 0);
+    const totalProjectPages = Math.max(1, Math.ceil(filteredProjects.length / rowsPerPage));
+    const paginatedProjects = filteredProjects.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
+    const activeProjectCount = projects.filter(p => ['active', 'in_production', 'in_review'].includes(p.status)).length;
+    const pendingAssignmentCount = projects.filter(p => p.assignmentStatus === "pending").length;
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [activeTab, projectsView, projectFilter, searchQuery, rowsPerPage]);
+
+    useEffect(() => {
+        if (currentPage > totalProjectPages) {
+            setCurrentPage(totalProjectPages);
+        }
+    }, [currentPage, totalProjectPages]);
 
     if (loading) return <div className="flex h-[80vh] items-center justify-center"><Loader2 className="animate-spin text-primary" size={40} /></div>;
 
@@ -357,37 +460,58 @@ export function EditorDashboardV2() {
                 </div>
             </div>
 
-            <main className="max-w-7xl mx-auto px-6 pt-10 space-y-10">
+            <main className="mx-auto max-w-[1600px] px-4 pt-8 sm:px-6 lg:px-8 space-y-8">
                 {/* --- Stats Overview --- */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                    <StatCard icon={Gauge} label="Active Projects" value={projects.filter(p => ['active', 'in_production', 'in_review'].includes(p.status)).length} trend="+2 new" variant="primary" />
-                    <StatCard icon={CheckCircle2} label="Completed" value={earnings.length} trend="All Time" />
-                    <StatCard icon={Banknote} label="Paid Earnings" value={`₹${totalPaid.toLocaleString()}`} subValue="Successfully settled" />
-                    <StatCard icon={Wallet} label="Pending" value={`₹${pendingEarnings.toLocaleString()}`} subValue="Awaiting client settlement" />
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                    <StatCard icon={Gauge} label="Active Projects" value={activeProjectCount} trend={pendingAssignmentCount > 0 ? `${pendingAssignmentCount} pending` : undefined} variant="primary" />
+                    <StatCard icon={CheckCircle2} label="Completed" value={earnings.length} subValue="All settled and due projects" />
+                    <StatCard icon={Banknote} label="Paid Earnings" value={formatCurrency(totalPaid)} subValue="Successfully settled" />
+                    <StatCard icon={Wallet} label="Pending" value={formatCurrency(pendingEarnings)} subValue="Awaiting client settlement" />
                 </div>
 
                 {/* --- Project Controls --- */}
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="flex p-1.5 bg-muted/40 rounded-2xl border border-border/50 w-fit">
-                        <button 
-                            onClick={() => setActiveTab('projects')}
-                            className={cn("px-6 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2", activeTab === 'projects' ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
-                        >
-                            <LayoutDashboard size={14} /> Projects
-                        </button>
-                        <button 
-                            onClick={() => setActiveTab('finance')}
-                            className={cn("px-6 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2", activeTab === 'finance' ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
-                        >
-                            <Wallet size={14} /> Finance
-                        </button>
+                    <div className="flex flex-wrap items-center gap-3">
+                        <div className="flex p-1 bg-muted/40 rounded-xl border border-border/50 w-fit">
+                            <button 
+                                onClick={() => setActiveTab('projects')}
+                                className={cn("px-5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2", activeTab === 'projects' ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
+                            >
+                                <LayoutDashboard size={14} /> Projects
+                            </button>
+                            <button 
+                                onClick={() => setActiveTab('finance')}
+                                className={cn("px-5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2", activeTab === 'finance' ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
+                            >
+                                <Wallet size={14} /> Finance
+                            </button>
+                        </div>
+
+                        {activeTab === "projects" && (
+                            <div className="flex p-1 bg-muted/40 rounded-xl border border-border/50 w-fit">
+                                <button
+                                    onClick={() => setProjectsView("grid")}
+                                    className={cn("px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2", projectsView === "grid" ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
+                                    title="Grid view"
+                                >
+                                    <LayoutGrid size={14} /> Blocks
+                                </button>
+                                <button
+                                    onClick={() => setProjectsView("list")}
+                                    className={cn("px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2", projectsView === "list" ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
+                                    title="List view"
+                                >
+                                    <List size={14} /> List
+                                </button>
+                            </div>
+                        )}
                     </div>
 
-                    <div className="relative group flex-1 md:max-w-md">
+                    <div className="relative group flex-1 md:max-w-xl">
                         <input 
                             type="text"
                             placeholder="Search projects by name..."
-                            className="w-full h-12 pl-12 pr-6 rounded-2xl bg-card border border-border/50 focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all outline-none text-sm"
+                            className="w-full h-11 pl-12 pr-6 rounded-xl bg-card border border-border/50 focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all outline-none text-sm"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                         />
@@ -395,27 +519,74 @@ export function EditorDashboardV2() {
                     </div>
                 </div>
 
+                {activeTab === "projects" && projectsView === "list" && (
+                    <div className="rounded-2xl border border-border/50 bg-card shadow-xl shadow-black/5 overflow-hidden">
+                        <div className="flex flex-col gap-4 border-b border-border/50 px-6 py-5 xl:flex-row xl:items-center xl:justify-between">
+                            <div className="flex items-center gap-3 text-[11px] font-black uppercase tracking-[0.24em] text-muted-foreground">
+                                <List size={14} className="text-primary" />
+                                Viewing: Projects
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                                {[
+                                    { key: "all", label: "All" },
+                                    { key: "editing", label: "Editing" },
+                                    { key: "in_review", label: "In Review" },
+                                    { key: "pending", label: "Pending" },
+                                    { key: "completed", label: "Completed" },
+                                    { key: "pay_later", label: "Pay Later" },
+                                    { key: "payment_due", label: "Payment Due" },
+                                ].map((filter) => (
+                                    <button
+                                        key={filter.key}
+                                        onClick={() => setProjectFilter(filter.key as typeof projectFilter)}
+                                        className={cn(
+                                            "rounded-lg border px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-all",
+                                            projectFilter === filter.key
+                                                ? "border-primary/30 bg-primary/10 text-primary"
+                                                : "border-border/50 bg-muted/20 text-muted-foreground hover:text-foreground"
+                                        )}
+                                    >
+                                        {filter.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
                 {/* --- Project List --- */}
                 <AnimatePresence mode="wait">
                     {activeTab === 'projects' ? (
                         <motion.div 
                             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-                            className="grid grid-cols-1 xl:grid-cols-2 gap-8"
+                            className={cn(projectsView === "grid" ? "grid grid-cols-1 gap-5 xl:grid-cols-2 2xl:grid-cols-3" : "")}
                         >
-                            {filteredProjects.map((project, idx) => (
-                                <ProjectCard 
-                                    key={project.id} 
-                                    project={project} 
-                                    idx={idx} 
-                                    pm={project.assignedPMId ? allUsers[project.assignedPMId] : undefined}
-                                    latestRevision={projectRevisions[project.id]}
-                                    onUpload={() => { setUploadProject(project); setIsUploadModalOpen(true); }}
-                                    onReview={() => setReviewProject(project)}
-                                    onAssets={() => setSelectedProjectAssets(project)}
-                                    onRespond={handleRespond}
-                                    isResponding={isResponding === project.id}
-                                />
-                            ))}
+                            {projectsView === "grid" ? paginatedProjects.map((project, idx) => (
+                                    <ProjectCard 
+                                        key={project.id} 
+                                        project={project} 
+                                        idx={idx} 
+                                        pm={project.assignedPMId ? allUsers[project.assignedPMId] : undefined}
+                                        latestRevision={projectRevisions[project.id]}
+                                        onUpload={() => { setUploadProject(project); setIsUploadModalOpen(true); }}
+                                        onReview={() => setReviewProject(project)}
+                                        onAssets={() => setSelectedProjectAssets(project)}
+                                        onRespond={handleRespond}
+                                        isResponding={isResponding === project.id}
+                                    />
+                                )) : (
+                                    <ProjectTable
+                                        projects={paginatedProjects}
+                                        allUsers={allUsers}
+                                        projectRevisions={projectRevisions}
+                                        startIndex={(currentPage - 1) * rowsPerPage}
+                                        onUpload={(project: Project) => { setUploadProject(project); setIsUploadModalOpen(true); }}
+                                        onReview={(project: Project) => setReviewProject(project)}
+                                        onAssets={(project: Project) => setSelectedProjectAssets(project)}
+                                        onRespond={handleRespond}
+                                        isResponding={isResponding}
+                                    />
+                                )}
                         </motion.div>
                     ) : (
                         <motion.div 
@@ -485,6 +656,62 @@ export function EditorDashboardV2() {
                         </motion.div>
                     )}
                 </AnimatePresence>
+
+                {activeTab === "projects" && filteredProjects.length > 0 && (
+                    <div className="flex flex-col gap-4 rounded-2xl border border-border/50 bg-card px-4 py-4 shadow-xl shadow-black/5 md:flex-row md:items-center md:justify-between">
+                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                            <span className="font-medium">Rows per page</span>
+                            <select
+                                value={rowsPerPage}
+                                onChange={(e) => setRowsPerPage(Number(e.target.value))}
+                                className="h-9 rounded-lg border border-border/50 bg-background px-3 text-sm font-semibold text-foreground outline-none"
+                            >
+                                {[10, 20, 30].map((option) => (
+                                    <option key={option} value={option}>
+                                        {option}
+                                    </option>
+                                ))}
+                            </select>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                            <button
+                                onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                                disabled={currentPage === 1}
+                                className="flex h-9 w-9 items-center justify-center rounded-full border border-border/50 bg-background text-foreground transition-all hover:border-primary/40 hover:text-primary disabled:opacity-40"
+                                aria-label="Previous page"
+                            >
+                                <ChevronRight className="h-4 w-4 rotate-180" />
+                            </button>
+
+                            {Array.from({ length: totalProjectPages }, (_, index) => index + 1)
+                                .slice(Math.max(0, currentPage - 3), Math.max(5, currentPage + 2))
+                                .map((page) => (
+                                    <button
+                                        key={page}
+                                        onClick={() => setCurrentPage(page)}
+                                        className={cn(
+                                            "flex h-9 min-w-9 items-center justify-center rounded-full border px-3 text-sm font-semibold transition-all",
+                                            currentPage === page
+                                                ? "border-primary bg-primary text-primary-foreground"
+                                                : "border-border/50 bg-background text-foreground hover:border-primary/40 hover:text-primary"
+                                        )}
+                                    >
+                                        {page}
+                                    </button>
+                                ))}
+
+                            <button
+                                onClick={() => setCurrentPage((page) => Math.min(totalProjectPages, page + 1))}
+                                disabled={currentPage === totalProjectPages}
+                                className="flex h-9 w-9 items-center justify-center rounded-full border border-primary/50 bg-background text-primary transition-all hover:bg-primary hover:text-primary-foreground disabled:opacity-40"
+                                aria-label="Next page"
+                            >
+                                <ChevronRight className="h-4 w-4" />
+                            </button>
+                        </div>
+                    </div>
+                )}
             </main>
 
             {/* --- Modals --- */}
@@ -497,7 +724,7 @@ export function EditorDashboardV2() {
 
             <AnimatePresence>
                 {selectedProjectAssets && (
-                    <AssetModal project={selectedProjectAssets} onClose={() => setSelectedProjectAssets(null)} onPreview={setPreviewVideo} />
+                    <AssetModal project={selectedProjectAssets} onClose={() => setSelectedProjectAssets(null)} />
                 )}
                 {isUploadModalOpen && (
                     <UploadModal 
@@ -513,9 +740,6 @@ export function EditorDashboardV2() {
                         onCancel={abortRef.current}
                         previewUrl={uploadPreviewUrl}
                     />
-                )}
-                {previewVideo && (
-                    <VideoPreviewModal video={previewVideo} onClose={() => setPreviewVideo(null)} />
                 )}
             </AnimatePresence>
         </div>
@@ -592,7 +816,7 @@ function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets
                         </div>
                     </div>
                     <div className="text-right">
-                        <div className="text-2xl font-black text-primary tracking-tighter">₹{project.editorPrice?.toLocaleString()}</div>
+                        <div className="text-2xl font-black text-primary tracking-tighter">{formatCurrency(project.editorPrice)}</div>
                         <div className="text-[9px] text-muted-foreground uppercase tracking-widest font-black opacity-50">Payout</div>
                     </div>
                 </div>
@@ -698,8 +922,251 @@ function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets
     );
 }
 
-function AssetModal({ project, onClose, onPreview }: any) {
-    const assets = [...(project.rawFiles || []), ...(project.pmFiles || [])];
+function ProjectTable({ projects, allUsers, projectRevisions, startIndex = 0, onUpload, onReview, onAssets, onRespond, isResponding }: any) {
+    return (
+        <div className="overflow-hidden rounded-2xl border border-border/50 bg-card shadow-xl shadow-black/5">
+            <div className="overflow-x-auto">
+                <table className="min-w-[1220px] w-full table-fixed text-left">
+                    <thead>
+                        <tr className="bg-muted/30">
+                            {["S.No", "Project", "Type", "PM", "Status", "Created", "Last Draft", "Editor Share", "Actions"].map((header) => (
+                                <th key={header} className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
+                                    {header}
+                                </th>
+                            ))}
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                        {projects.map((project: Project, index: number) => (
+                            <ProjectTableRow
+                                key={project.id}
+                                index={startIndex + index}
+                                project={project}
+                                pm={project.assignedPMId ? allUsers[project.assignedPMId] : undefined}
+                                latestRevision={projectRevisions[project.id]}
+                                onUpload={() => onUpload(project)}
+                                onReview={() => onReview(project)}
+                                onAssets={() => onAssets(project)}
+                                onRespond={onRespond}
+                                isResponding={isResponding === project.id}
+                            />
+                        ))}
+                        {projects.length === 0 && (
+                            <tr>
+                                <td colSpan={9} className="px-6 py-16 text-center text-sm font-medium text-muted-foreground">
+                                    No projects match this filter yet.
+                                </td>
+                            </tr>
+                        )}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
+
+function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onReview, onAssets, onRespond, isResponding }: any) {
+    const [showDeclineReason, setShowDeclineReason] = useState(false);
+    const [reason, setReason] = useState("");
+    const isPending = project.assignmentStatus === "pending";
+    const isAccepted = project.assignmentStatus === "accepted";
+
+    return (
+        <tr className="align-top transition-colors hover:bg-muted/50 group">
+            <td className="px-3 py-3 text-xs font-bold text-foreground/80 tabular-nums">{index + 1}</td>
+            <td className="px-3 py-3">
+                <div className="min-w-[280px] max-w-[400px]">
+                    <p className="text-xs font-bold text-foreground leading-tight">{project.name}</p>
+                    <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ID: {project.id.slice(0, 10)}</p>
+                    <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                        {project.description || "Client has not added a project description yet."}
+                    </p>
+                </div>
+            </td>
+            <td className="px-3 py-3 text-xs text-foreground font-semibold whitespace-nowrap">{project.videoFormat || project.videoType || "Not set"}</td>
+            <td className="px-3 py-3 text-xs text-foreground font-semibold whitespace-nowrap">{pm?.displayName || "System Manager"}</td>
+            <td className="px-3 py-3">
+                <div className="space-y-2">
+                    <StatusBadge status={project.status} />
+                    {isPending && (
+                        <button
+                            onClick={() => setShowDeclineReason((value) => !value)}
+                            className="block text-[10px] font-black uppercase tracking-widest text-amber-500"
+                        >
+                            Assignment pending
+                        </button>
+                    )}
+                </div>
+            </td>
+            <td className="px-3 py-3 text-[11px] text-foreground/80 font-semibold whitespace-nowrap" suppressHydrationWarning>
+                {project.createdAt
+                    ? new Date(project.createdAt).toLocaleDateString("en-IN", {
+                        day: "2-digit",
+                        month: "short",
+                        year: "numeric",
+                    })
+                    : "N/A"}
+            </td>
+            <td className="px-3 py-3 text-xs font-semibold text-foreground">
+                {latestRevision ? (
+                    <div className="space-y-1">
+                        <div>{`Draft ${latestRevision.version}`}</div>
+                        <div className="text-[10px] uppercase tracking-wider text-muted-foreground">
+                            {latestRevision.description || "Revision uploaded"}
+                        </div>
+                    </div>
+                ) : (
+                    "No drafts yet"
+                )}
+            </td>
+            <td className="px-3 py-3 text-xs font-black text-blue-400 whitespace-nowrap">{formatCurrency(project.editorPrice)}</td>
+            <td className="px-3 py-3">
+                {showDeclineReason && isPending ? (
+                    <div className="w-[220px] space-y-2">
+                        <Textarea
+                            placeholder="Reason for decline"
+                            className="min-h-[84px] rounded-xl border-border/50 bg-background text-xs"
+                            value={reason}
+                            onChange={(e) => setReason(e.target.value)}
+                        />
+                        <div className="flex gap-2">
+                            <button onClick={() => setShowDeclineReason(false)} className="h-9 flex-1 rounded-xl bg-muted text-[10px] font-black uppercase tracking-widest text-foreground">
+                                Back
+                            </button>
+                            <button
+                                disabled={!reason.trim() || isResponding}
+                                onClick={() => onRespond(project.id, "rejected", reason)}
+                                className="h-9 flex-1 rounded-xl bg-destructive text-[10px] font-black uppercase tracking-widest text-destructive-foreground disabled:opacity-50"
+                            >
+                                {isResponding ? "Saving..." : "Decline"}
+                            </button>
+                        </div>
+                    </div>
+                ) : (
+                    <>
+                        <div className="flex min-w-[220px] flex-wrap gap-2">
+                            {isPending ? (
+                                <>
+                                    <button
+                                        disabled={isResponding}
+                                        onClick={() => onRespond(project.id, "accepted")}
+                                        className="h-9 rounded-xl bg-emerald-500 px-3 text-[10px] font-black uppercase tracking-widest text-white disabled:opacity-50"
+                                    >
+                                        {isResponding ? "Working..." : "Accept"}
+                                    </button>
+                                    <button
+                                        disabled={isResponding}
+                                        onClick={() => setShowDeclineReason(true)}
+                                        className="h-9 rounded-xl border border-border/50 bg-muted/30 px-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground"
+                                    >
+                                        Decline
+                                    </button>
+                                </>
+                            ) : (
+                                <>
+                                    {latestRevision && (
+                                        <button onClick={onReview} className="h-9 rounded-xl bg-primary px-3 text-[10px] font-black uppercase tracking-widest text-primary-foreground">
+                                            Review
+                                        </button>
+                                    )}
+                                    <button onClick={onAssets} className="h-9 rounded-xl border border-border/50 bg-muted/30 px-3 text-[10px] font-black uppercase tracking-widest text-foreground">
+                                        Assets
+                                    </button>
+                                    {isAccepted && (
+                                        <button onClick={onUpload} className="h-9 rounded-xl bg-emerald-500 px-3 text-[10px] font-black uppercase tracking-widest text-white">
+                                            Upload
+                                        </button>
+                                    )}
+                                </>
+                            )}
+                        </div>
+                        {!isPending && (
+                            <p className="mt-3 text-[10px] font-medium text-muted-foreground">
+                                Client details and uploads are available inside Assets.
+                            </p>
+                        )}
+                    </>
+                )}
+            </td>
+        </tr>
+    );
+}
+
+function AssetSection({ title, icon: Icon, summary, children }: any) {
+    return (
+        <div className="rounded-xl border border-border/50 bg-muted/10 p-4 space-y-4">
+            <div className="flex items-start gap-3">
+                <div className={cn("mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl", summary.hasData ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-500")}>
+                    <Icon size={18} />
+                </div>
+                <div className="min-w-0 flex-1">
+                    <h3 className="text-sm font-black text-foreground">{title}</h3>
+                    <p className={cn("mt-1 text-xs leading-relaxed", summary.hasData ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400")}>
+                        {summary.value}
+                    </p>
+                </div>
+            </div>
+            {children}
+        </div>
+    );
+}
+
+function AssetModal({ project, onClose }: any) {
+    const resourceSummary = summarizeProjectResources(project);
+    const scriptText = (project as any).scriptText;
+    const clientReferenceFiles = (project.referenceFiles || []).filter((file: any) => !file?.uploadedBy);
+    const pmReferenceFiles = (project.referenceFiles || []).filter((file: any) => Boolean(file?.uploadedBy));
+    const groupedAssets = [
+        {
+            key: "raw",
+            title: "Raw Footage",
+            icon: FileVideo,
+            summary: resourceSummary[0],
+            files: project.rawFiles || [],
+            links: [...(project.footageLinks || []), ...(project.footageLink ? [project.footageLink] : [])],
+        },
+        {
+            key: "scripts",
+            title: "Scripts",
+            icon: FileText,
+            summary: resourceSummary[1],
+            files: project.scripts || [],
+            links: [],
+            text: scriptText,
+        },
+        {
+            key: "audio",
+            title: "Audio",
+            icon: Music,
+            summary: resourceSummary[2],
+            files: project.audioFiles || [],
+            links: [],
+        },
+        {
+            key: "references",
+            title: "Style References",
+            icon: Link2,
+            summary: resourceSummary[3],
+            files: clientReferenceFiles,
+            links: [...(project.referenceLinks || []), ...(project.referenceLink ? [project.referenceLink] : [])],
+        },
+        {
+            key: "broll",
+            title: "B-Roll",
+            icon: Layers,
+            summary: resourceSummary[4],
+            files: (project as any).bRoleFiles || [],
+            links: [],
+        },
+        {
+            key: "pm",
+            title: "PM Files",
+            icon: Briefcase,
+            summary: resourceSummary[5],
+            files: [...(project.pmFiles || []), ...pmReferenceFiles],
+            links: [],
+        },
+    ];
 
     return (
         <motion.div 
@@ -709,28 +1176,71 @@ function AssetModal({ project, onClose, onPreview }: any) {
         >
             <motion.div 
                 initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-                className="w-full max-w-5xl bg-card border border-border/50 rounded-2xl shadow-3xl overflow-hidden flex flex-col max-h-[80vh]"
+                className="w-full max-w-7xl bg-card border border-border/50 rounded-2xl shadow-3xl overflow-hidden flex flex-col max-h-[88vh]"
                 onClick={e => e.stopPropagation()}
             >
                 <div className="p-8 border-b border-border/50 flex items-center justify-between">
                     <div>
                         <h2 className="text-2xl font-black text-foreground">Project Assets</h2>
-                        <p className="text-sm text-muted-foreground mt-1">{project.name} • {assets.length} Files</p>
+                        <p className="text-sm text-muted-foreground mt-1">{project.name}</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                            <span className="rounded-full border border-border/50 bg-muted/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                Client: {project.clientName || "Direct Client"}
+                            </span>
+                            <span className="rounded-full border border-border/50 bg-muted/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
+                                Type: {project.videoFormat || project.videoType || "Not set"}
+                            </span>
+                        </div>
                     </div>
                     <button onClick={onClose} className="h-12 w-12 rounded-2xl bg-muted hover:bg-muted/80 transition-colors flex items-center justify-center"><X size={20}/></button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-8 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {assets.map((asset, i) => (
-                        <AssetItem key={i} asset={asset} onPreview={() => onPreview(asset)} />
-                    ))}
-                    {assets.length === 0 && <div className="col-span-full py-20 text-center text-muted-foreground">No assets found for this project.</div>}
+                <div className="flex-1 overflow-y-auto p-8">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        {groupedAssets.map((section) => (
+                            <AssetSection key={section.key} title={section.title} icon={section.icon} summary={section.summary}>
+                                {section.text && (
+                                    <div className="rounded-xl border border-border/50 bg-background/60 p-4">
+                                        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Pasted Brief</p>
+                                        <p className="mt-2 text-xs leading-relaxed text-foreground whitespace-pre-wrap">{section.text}</p>
+                                    </div>
+                                )}
+                                {section.links.length > 0 && (
+                                    <div className="space-y-2">
+                                        {section.links.map((link: string, index: number) => (
+                                            <a
+                                                key={section.key + '-link-' + index}
+                                                href={link}
+                                                target="_blank"
+                                                rel="noreferrer"
+                                                className="flex items-center gap-3 rounded-xl border border-border/50 bg-background/50 px-4 py-3 text-xs text-foreground hover:border-primary/40 hover:text-primary transition-colors"
+                                            >
+                                                <Link2 size={14} className="shrink-0" />
+                                                <span className="truncate">{link}</span>
+                                                <ExternalLink size={12} className="ml-auto shrink-0" />
+                                            </a>
+                                        ))}
+                                    </div>
+                                )}
+                                {section.files.length > 0 ? (
+                                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                                        {section.files.map((asset: any, index: number) => (
+                                            <FilePreview key={section.key + '-file-' + index} file={asset} index={index} />
+                                        ))}
+                                    </div>
+                                ) : !section.text && section.links.length === 0 ? (
+                                    <div className="rounded-xl border border-dashed border-border/50 bg-background/40 px-4 py-5 text-xs text-muted-foreground">
+                                        {section.summary.value}
+                                    </div>
+                                ) : null}
+                            </AssetSection>
+                        ))}
+                    </div>
                 </div>
             </motion.div>
         </motion.div>
     );
 }
-
 function FinanceCard({ project }: any) {
     return (
         <div className="bg-card border border-border/50 rounded-xl p-6 flex flex-col gap-4 shadow-sm hover:shadow-md transition-all">
@@ -740,7 +1250,7 @@ function FinanceCard({ project }: any) {
                 </div>
                 <div className="text-right">
                     <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Earnings</p>
-                    <p className="text-xl font-black text-foreground">₹{project.payout || "0"}</p>
+                    <p className="text-xl font-black text-foreground">{formatCurrency(project.editorPrice)}</p>
                 </div>
             </div>
             <div className="space-y-1">
@@ -748,56 +1258,10 @@ function FinanceCard({ project }: any) {
                 <p className="text-xs text-muted-foreground">Completed on {new Date(project.updatedAt).toLocaleDateString()}</p>
             </div>
             <div className="pt-2 border-t border-border/30 flex items-center justify-between">
-                <span className="text-[10px] font-bold text-emerald-500 uppercase">Paid</span>
+                <span className={cn("text-[10px] font-bold uppercase", project.editorPaid ? "text-emerald-500" : "text-amber-500")}>
+                    {project.editorPaid ? "Paid" : "Pending"}
+                </span>
                 <span className="text-[10px] font-bold text-muted-foreground uppercase">{project.category}</span>
-            </div>
-        </div>
-    );
-}
-
-
-function AssetItem({ asset, onPreview }: any) {
-    const isVideo = /\.(mp4|webm|mov|avi|mkv)$/i.test(asset.name) || asset.type?.startsWith('video/');
-    const transcode = useVideoTranscodeStatus(asset.url || "", asset.name || "");
-
-    return (
-        <div className="group border border-border/50 rounded-xl overflow-hidden bg-muted/10 hover:bg-muted/20 transition-all flex flex-col">
-            <div className="aspect-video bg-black relative overflow-hidden flex items-center justify-center">
-                {isVideo ? (
-                    <>
-                        <video src={transcode.videoUrl || asset.url} className="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-500" />
-                        <div className="absolute inset-0 flex items-center justify-center z-10">
-                            <button 
-                                onClick={onPreview}
-                                className="h-12 w-12 rounded-full bg-white/20 backdrop-blur-md border border-white/30 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-all scale-90 group-hover:scale-100"
-                            >
-                                <Play size={20} fill="currentColor" />
-                            </button>
-                        </div>
-                        {transcode.status === 'processing' && (
-                            <div className="absolute inset-0 bg-black/60 backdrop-blur-[2px] flex flex-col items-center justify-center gap-2 z-20">
-                                <Loader2 className="animate-spin text-white" size={20} />
-                                <span className="text-[9px] font-black text-white uppercase tracking-widest">Optimizing...</span>
-                            </div>
-                        )}
-                    </>
-                ) : (
-                    <FileVideo size={40} className="text-muted-foreground/30" />
-                )}
-            </div>
-            <div className="p-4 space-y-2">
-                <p className="text-xs font-bold text-foreground truncate">{asset.name}</p>
-                <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10px] text-muted-foreground uppercase font-black">{(asset.size / (1024*1024)).toFixed(1)} MB</span>
-                    <a 
-                        href={asset.url} 
-                        download={asset.name}
-                        className="h-8 px-3 rounded-lg bg-primary/10 text-primary hover:bg-primary text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all hover:text-white"
-                        onClick={e => e.stopPropagation()}
-                    >
-                        <Download size={12} /> Save
-                    </a>
-                </div>
             </div>
         </div>
     );
@@ -916,30 +1380,6 @@ function UploadModal({ project, onClose, file, onFileChange, description, setDes
     );
 }
 
-function VideoPreviewModal({ video, onClose }: any) {
-    const transcode = useVideoTranscodeStatus(video.url || "", video.name || "");
-    const isMux = video.storagePath?.startsWith("mux://") || video.url?.startsWith("mux://");
-    const playbackId = (transcode.status === "ready" && isMux) ? transcode.videoUrl : null;
-
-    return (
-        <motion.div 
-            initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[120] bg-black/95 backdrop-blur-2xl flex items-center justify-center p-4"
-            onClick={onClose}
-        >
-            <div className="relative w-full max-w-6xl aspect-video rounded-3xl overflow-hidden shadow-4xl" onClick={e => e.stopPropagation()}>
-                <button onClick={onClose} className="absolute top-6 right-6 h-12 w-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-xl z-50 transition-all active:scale-95"><X size={24}/></button>
-                <VideoPlayer 
-                    videoPath={transcode.videoUrl || video.url}
-                    playbackId={playbackId || undefined}
-                    title={video.name}
-                    autoPlay={true}
-                />
-            </div>
-        </motion.div>
-    );
-}
-
 function PayoutSettingsForm({ userId, initialData }: { userId: string, initialData: any }) {
     const [payoutMode, setPayoutMode] = useState<'bank' | 'upi'>(initialData.upiDetails?.vpa ? 'upi' : 'bank');
     const [bankDetails, setBankDetails] = useState(initialData.bankDetails || { accountHolderName: "", accountNumber: "", ifscCode: "" });
@@ -1046,3 +1486,4 @@ function PayoutSettingsForm({ userId, initialData }: { userId: string, initialDa
         </div>
     );
 }
+

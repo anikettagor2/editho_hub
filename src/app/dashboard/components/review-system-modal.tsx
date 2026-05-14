@@ -8,12 +8,12 @@ import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/lib/context/auth-context";
 import { addDoc, collection, doc, getDocs, onSnapshot, query, updateDoc, where, deleteDoc, limit, orderBy } from "firebase/firestore";
 import { localFileManager } from "@/lib/local-file-manager";
-import { Loader2, MessageSquare, Share2, Copy, Download, Star, X, Send, Image as ImageIcon, Clock, Users, Film, ChevronLeft, ChevronRight, MoreHorizontal, ListFilter, Smile, ThumbsUp } from "lucide-react";
+import { Loader2, MessageSquare, Share2, Copy, Download, Star, X, Send, Image as ImageIcon, Clock, Users, Film, ChevronLeft, ChevronRight, Smile, ThumbsUp, FileText, FileVideo, Music } from "lucide-react";
 import { toast } from "sonner";
 import { registerDownload, submitEditorRating } from "@/app/actions/project-actions";
 import { handleNewComment } from "@/app/actions/notification-actions";
 import { PaymentButton } from "@/components/payment-button";
-import { uploadCommentImage } from "@/lib/firebase/storage-utils";
+import { uploadCommentAttachment } from "@/lib/firebase/storage-utils";
 import { warmVideoInMemory } from "@/lib/video-preload";
 import { VideoPlayer } from "@/components/video-player";
 import { handleFileDownload } from "@/lib/download-utils";
@@ -55,6 +55,10 @@ type ReplyDoc = {
     userRole?: string;
     content: string;
     imageUrl?: string | null;
+    attachmentUrl?: string | null;
+    attachmentName?: string | null;
+    attachmentType?: string | null;
+    attachmentSize?: number | null;
     createdAt: number;
 };
 
@@ -65,6 +69,10 @@ type CommentDoc = {
     timestamp: number;
     content: string;
     imageUrl?: string | null;
+    attachmentUrl?: string | null;
+    attachmentName?: string | null;
+    attachmentType?: string | null;
+    attachmentSize?: number | null;
     userName?: string;
     userRole?: string;
     userId: string;
@@ -137,17 +145,18 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     const [directConnections, setDirectConnections] = useState<CommentDoc[]>([]);
     const [newComment, setNewComment] = useState("");
     const [newReply, setNewReply] = useState<{ [commentId: string]: string }>({});
-    const [selectedImage, setSelectedImage] = useState<File | null>(null);
-    const [selectedImagePreview, setSelectedImagePreview] = useState<string>("");
+    const [selectedAttachment, setSelectedAttachment] = useState<File | null>(null);
+    const [selectedAttachmentPreview, setSelectedAttachmentPreview] = useState<string>("");
     const [imageOverlayText, setImageOverlayText] = useState<string>("");
     const [annotatedImagePreview, setAnnotatedImagePreview] = useState<string>("");
-    const [uploadingImage, setUploadingImage] = useState(false);
+    const [uploadingAttachment, setUploadingAttachment] = useState(false);
     const [savingComment, setSavingComment] = useState(false);
     const [submittingCommentId, setSubmittingCommentId] = useState<string | null>(null);
     const [pendingNotificationComment, setPendingNotificationComment] = useState<CommentDoc | null>(null);
     const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
     const [editingCommentText, setEditingCommentText] = useState("");
     const [replyingTo, setReplyingTo] = useState<string | null>(null);
+    const [previewAttachment, setPreviewAttachment] = useState<{ url: string; name: string; type?: string | null } | null>(null);
     const [topPaneHeight, setTopPaneHeight] = useState(0);
 
     // Video state
@@ -232,6 +241,28 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         player.pause();
     };
 
+    const isImageFile = (fileType?: string | null, fileName?: string | null) =>
+        Boolean(fileType?.startsWith("image/") || fileName?.match(/\.(png|jpe?g|gif|webp|bmp|svg)$/i));
+
+    const isVideoFile = (fileType?: string | null, fileName?: string | null) =>
+        Boolean(fileType?.startsWith("video/") || fileName?.match(/\.(mp4|mov|webm|avi|mkv|m4v)$/i));
+
+    const isAudioFile = (fileType?: string | null, fileName?: string | null) =>
+        Boolean(fileType?.startsWith("audio/") || fileName?.match(/\.(mp3|wav|aac|m4a|ogg|flac)$/i));
+
+    const formatFileSize = (size?: number | null) => {
+        if (!size) return null;
+        if (size >= 1024 * 1024) return `${(size / (1024 * 1024)).toFixed(1)} MB`;
+        if (size >= 1024) return `${Math.round(size / 1024)} KB`;
+        return `${size} B`;
+    };
+
+    const canPreviewAttachment = (fileType?: string | null, fileName?: string | null) =>
+        isImageFile(fileType, fileName) ||
+        isVideoFile(fileType, fileName) ||
+        isAudioFile(fileType, fileName) ||
+        Boolean(fileName?.match(/\.pdf$/i));
+
     const seekToCommentTime = (timestamp: number) => {
         if (timestamp < 0) return;
         const player = videoPlayerRef.current;
@@ -240,20 +271,25 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         setCurrentTime(timestamp);
     };
 
-    const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleAttachmentSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0];
         if (!file) return;
-        setSelectedImage(file);
-        const preview = URL.createObjectURL(file);
-        setSelectedImagePreview(preview);
+        setSelectedAttachment(file);
+
+        if (isImageFile(file.type, file.name) || isVideoFile(file.type, file.name)) {
+            const preview = URL.createObjectURL(file);
+            setSelectedAttachmentPreview(preview);
+        } else {
+            setSelectedAttachmentPreview("");
+        }
         setAnnotatedImagePreview("");
         setImageOverlayText("");
     };
 
-    const clearImageSelection = () => {
-        if (selectedImagePreview) URL.revokeObjectURL(selectedImagePreview);
-        setSelectedImage(null);
-        setSelectedImagePreview("");
+    const clearAttachmentSelection = () => {
+        if (selectedAttachmentPreview) URL.revokeObjectURL(selectedAttachmentPreview);
+        setSelectedAttachment(null);
+        setSelectedAttachmentPreview("");
         setAnnotatedImagePreview("");
         setImageOverlayText("");
         if (fileInputRef.current) fileInputRef.current.value = "";
@@ -283,12 +319,12 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     };
 
     useEffect(() => {
-        if (selectedImagePreview && imageOverlayText.trim()) {
-            drawTextOnImage(selectedImagePreview, imageOverlayText).then(setAnnotatedImagePreview);
+        if (selectedAttachmentPreview && selectedAttachment && isImageFile(selectedAttachment.type, selectedAttachment.name) && imageOverlayText.trim()) {
+            drawTextOnImage(selectedAttachmentPreview, imageOverlayText).then(setAnnotatedImagePreview);
         } else {
             setAnnotatedImagePreview("");
         }
-    }, [selectedImagePreview, imageOverlayText]);
+    }, [selectedAttachmentPreview, selectedAttachment, imageOverlayText]);
 
     const startDownload = async () => {
         console.log("[Download Flow] startDownload triggered", { selectedRevisionId, projectId: project?.id });
@@ -395,31 +431,32 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         if (!project?.id || !selectedRevisionId || savingComment) return false;
         
         const content = newComment.trim();
-        if (!content && !selectedImage) {
-            if (!options?.silent) toast.error("Write a comment or upload an image.");
+        if (!content && !selectedAttachment) {
+            if (!options?.silent) toast.error("Write a comment or upload a file.");
             return false;
         }
 
         setSavingComment(true);
         try {
-            let imageUrl = "";
-            let finalImageFile = selectedImage;
+            let attachmentUrl = "";
+            let finalAttachmentFile = selectedAttachment;
+            const attachmentIsImage = selectedAttachment ? isImageFile(selectedAttachment.type, selectedAttachment.name) : false;
 
-            if (selectedImage && imageOverlayText.trim() && selectedImagePreview) {
+            if (selectedAttachment && attachmentIsImage && imageOverlayText.trim() && selectedAttachmentPreview) {
                 try {
-                    const annotatedDataUrl = await drawTextOnImage(selectedImagePreview, imageOverlayText);
+                    const annotatedDataUrl = await drawTextOnImage(selectedAttachmentPreview, imageOverlayText);
                     const response = await fetch(annotatedDataUrl);
                     const blob = await response.blob();
-                    finalImageFile = new File([blob], selectedImage.name, { type: 'image/jpeg' });
+                    finalAttachmentFile = new File([blob], selectedAttachment.name, { type: "image/jpeg" });
                 } catch (error) {
-                    console.error('Failed to apply text overlay:', error);
+                    console.error("Failed to apply text overlay:", error);
                 }
             }
 
-            if (finalImageFile) {
-                setUploadingImage(true);
-                imageUrl = await uploadCommentImage(finalImageFile, project.id, selectedRevisionId);
-                setUploadingImage(false);
+            if (finalAttachmentFile) {
+                setUploadingAttachment(true);
+                attachmentUrl = await uploadCommentAttachment(finalAttachmentFile, project.id, selectedRevisionId);
+                setUploadingAttachment(false);
             }
 
             const newCommentPayload = {
@@ -429,7 +466,11 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                 userName: user?.displayName || guestName || "User",
                 userRole: (user as any)?.role || "guest",
                 content: content,
-                imageUrl: imageUrl || null,
+                imageUrl: attachmentIsImage ? attachmentUrl || null : null,
+                attachmentUrl: attachmentUrl || null,
+                attachmentName: finalAttachmentFile?.name || null,
+                attachmentType: finalAttachmentFile?.type || null,
+                attachmentSize: finalAttachmentFile?.size || null,
                 timestamp: activeTab === 'timeline' ? currentTime : 0,
                 createdAt: Date.now(),
                 status: "open",
@@ -447,7 +488,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
             }
 
             setNewComment("");
-            clearImageSelection();
+            clearAttachmentSelection();
             if (!options?.silent) toast.success("Comment visible in review. Submit it to send WhatsApp.");
             return true;
         } catch (error) {
@@ -455,7 +496,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
             if (!options?.silent) toast.error("Failed to send comment.");
             return false;
         } finally {
-            setUploadingImage(false);
+            setUploadingAttachment(false);
             setSavingComment(false);
         }
     };
@@ -465,7 +506,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     };
 
     const handleCloseReview = async () => {
-        if (newComment.trim() || selectedImage) {
+        if (newComment.trim() || selectedAttachment) {
             await persistCurrentDraftComment({ silent: true });
         }
         onClose();
@@ -888,15 +929,6 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                     </button>
                 </div>
 
-                <div className="flex items-center justify-between text-[11px] font-bold text-zinc-200 lg:hidden">
-                    <span>All comments</span>
-                    <div className="flex items-center gap-2.5 text-zinc-400">
-                        <button title="Filter comments"><ListFilter className="h-3.5 w-3.5" /></button>
-                        <button title="Sort comments"><MessageSquare className="h-3.5 w-3.5" /></button>
-                        <button title="More"><MoreHorizontal className="h-3.5 w-3.5" /></button>
-                    </div>
-                </div>
-
                 <div data-lenis-prevent className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain pr-1 scrollbar-thin lg:space-y-4">
                     {activeComments.length === 0 ? (
                         <div className="flex flex-col items-center justify-center py-12 text-center">
@@ -1018,12 +1050,62 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                     )}
                                 </div>
 
-                                {c.imageUrl && (
-                                    <div className="relative rounded-xl border border-border/50 overflow-hidden bg-black/5 flex justify-center">
-                                        <img src={c.imageUrl} className="max-h-60 object-contain w-full" alt="Comment attachment" />
-                                        <a href={c.imageUrl} target="_blank" rel="noreferrer" className="absolute top-2 right-2 p-1.5 rounded-full bg-black/60 text-white hover:bg-black transition-all">
+                                {(c.attachmentUrl || c.imageUrl) && (
+                                    <div
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="ml-7 flex w-fit max-w-full items-center gap-2 rounded-lg border border-border/50 bg-[#202232] p-2 transition-colors hover:bg-[#26293d] lg:ml-1"
+                                    >
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                const attachmentUrl = c.attachmentUrl || c.imageUrl || "";
+                                                const attachmentName = c.attachmentName || (c.imageUrl ? "Image attachment" : "Attachment");
+                                                if (canPreviewAttachment(c.attachmentType, attachmentName)) {
+                                                    setPreviewAttachment({
+                                                        url: attachmentUrl,
+                                                        name: attachmentName,
+                                                        type: c.attachmentType,
+                                                    });
+                                                    return;
+                                                }
+                                                void handleFileDownload(attachmentUrl, attachmentName);
+                                            }}
+                                            className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                        >
+                                        {isImageFile(c.attachmentType, c.attachmentName) || (!!c.imageUrl && !c.attachmentType) ? (
+                                            <div className="h-14 w-14 overflow-hidden rounded-md bg-black/20">
+                                                <img src={c.attachmentUrl || c.imageUrl || ""} className="h-full w-full object-cover" alt={c.attachmentName || "Comment attachment"} />
+                                            </div>
+                                        ) : isVideoFile(c.attachmentType, c.attachmentName) ? (
+                                            <div className="flex h-14 w-14 items-center justify-center rounded-md bg-black/20 text-zinc-200">
+                                                <FileVideo className="h-5 w-5" />
+                                            </div>
+                                        ) : isAudioFile(c.attachmentType, c.attachmentName) ? (
+                                            <div className="flex h-14 w-14 items-center justify-center rounded-md bg-black/20 text-zinc-200">
+                                                <Music className="h-5 w-5" />
+                                            </div>
+                                        ) : (
+                                            <div className="flex h-14 w-14 items-center justify-center rounded-md bg-black/20 text-zinc-200">
+                                                <FileText className="h-5 w-5" />
+                                            </div>
+                                        )}
+                                        <div className="min-w-0">
+                                            <p className="truncate text-[10px] font-bold text-zinc-100">
+                                                {c.attachmentName || (c.imageUrl ? "Image attachment" : "Attachment")}
+                                            </p>
+                                            <p className="text-[9px] text-zinc-400">
+                                                {formatFileSize(c.attachmentSize) || (canPreviewAttachment(c.attachmentType, c.attachmentName) ? "Preview file" : "Download file")}
+                                            </p>
+                                        </div>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => void handleFileDownload(c.attachmentUrl || c.imageUrl || "", c.attachmentName || "attachment")}
+                                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                                            title="Download attachment"
+                                        >
                                             <Download className="h-3.5 w-3.5" />
-                                        </a>
+                                        </button>
                                     </div>
                                 )}
 
@@ -1103,17 +1185,37 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                             )}
                         </div>
 
-                        {selectedImagePreview && (
-                            <div className="relative rounded-xl border border-border/50 overflow-hidden bg-black/20 p-2">
-                                <img src={annotatedImagePreview || selectedImagePreview} className="max-h-32 rounded-lg mx-auto" />
-                                <button onClick={clearImageSelection} className="absolute top-3 right-3 p-1 rounded-full bg-black/60 text-white hover:bg-black"><X className="h-3 w-3" /></button>
-                                <input 
-                                    type="text"
-                                    value={imageOverlayText}
-                                    onChange={(e) => setImageOverlayText(e.target.value)}
-                                    placeholder="Add text overlay..."
-                                    className="w-full mt-2 text-[10px] bg-background/50 border border-border/30 rounded-lg p-2 focus:outline-none"
-                                />
+                        {selectedAttachment && (
+                            <div className="relative rounded-xl border border-border/50 bg-black/20 p-2">
+                                <button onClick={clearAttachmentSelection} className="absolute right-2 top-2 p-1 rounded-full bg-black/60 text-white hover:bg-black"><X className="h-3 w-3" /></button>
+                                <div className="flex items-center gap-2 pr-7">
+                                    {(selectedAttachmentPreview && isImageFile(selectedAttachment.type, selectedAttachment.name)) ? (
+                                        <img src={annotatedImagePreview || selectedAttachmentPreview} className="h-14 w-14 rounded-lg object-cover" alt={selectedAttachment.name} />
+                                    ) : (selectedAttachmentPreview && isVideoFile(selectedAttachment.type, selectedAttachment.name)) ? (
+                                        <video src={selectedAttachmentPreview} className="h-14 w-14 rounded-lg object-cover" muted />
+                                    ) : isAudioFile(selectedAttachment.type, selectedAttachment.name) ? (
+                                        <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-background/40 text-zinc-100">
+                                            <Music className="h-5 w-5" />
+                                        </div>
+                                    ) : (
+                                        <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-background/40 text-zinc-100">
+                                            <FileText className="h-5 w-5" />
+                                        </div>
+                                    )}
+                                    <div className="min-w-0">
+                                        <p className="truncate text-[10px] font-bold text-zinc-100">{selectedAttachment.name}</p>
+                                        <p className="text-[9px] text-zinc-400">{formatFileSize(selectedAttachment.size) || "Attachment"}</p>
+                                    </div>
+                                </div>
+                                {isImageFile(selectedAttachment.type, selectedAttachment.name) && (
+                                    <input 
+                                        type="text"
+                                        value={imageOverlayText}
+                                        onChange={(e) => setImageOverlayText(e.target.value)}
+                                        placeholder="Add text overlay..."
+                                        className="mt-2 w-full rounded-lg border border-border/30 bg-background/50 p-2 text-[10px] focus:outline-none"
+                                    />
+                                )}
                             </div>
                         )}
 
@@ -1122,7 +1224,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                 <button
                                     onClick={() => fileInputRef.current?.click()}
                                     className="rounded-lg p-1 text-zinc-300 transition-colors hover:bg-muted lg:p-2 lg:text-muted-foreground"
-                                    title="Attach screenshot"
+                                    title="Attach file"
                                 >
                                     <ImageIcon className="h-3 w-3 lg:h-4 lg:w-4" />
                                 </button>
@@ -1132,7 +1234,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                 <button className="rounded-lg p-1 text-zinc-300 transition-colors hover:bg-muted lg:hidden" title="Approve">
                                     <ThumbsUp className="h-3 w-3" />
                                 </button>
-                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageSelect} />
+                                <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip,.rar,.7z" onChange={handleAttachmentSelect} />
                             </div>
                             <div className="flex items-center gap-2">
                                 {pendingCommentForNotification && canSubmitCommentNotification(pendingCommentForNotification) && (
@@ -1146,10 +1248,10 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                 )}
                                 <button
                                     onClick={handleSendComment}
-                                    disabled={savingComment || (!newComment.trim() && !selectedImage)}
+                                    disabled={savingComment || (!newComment.trim() && !selectedAttachment)}
                                     className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#5b55b8] text-white transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 lg:h-8 lg:w-auto lg:px-5 lg:bg-primary lg:text-primary-foreground lg:text-[10px] lg:font-black lg:uppercase lg:tracking-widest"
                                 >
-                                    {savingComment ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
+                                    {(savingComment || uploadingAttachment) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
                                     <span className="hidden lg:inline">Send</span>
                                 </button>
                             </div>
@@ -1200,6 +1302,75 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                     }}
                 />
             ))}
+
+            {previewAttachment && (
+                <div
+                    className="fixed inset-0 z-[160] flex items-center justify-center bg-black/90 p-4 backdrop-blur-xl"
+                    onClick={() => setPreviewAttachment(null)}
+                >
+                    <div
+                        className="relative w-full max-w-5xl rounded-2xl border border-white/10 bg-[#090b12] p-4 shadow-2xl"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        <button
+                            onClick={() => setPreviewAttachment(null)}
+                            className="absolute right-3 top-3 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
+                            title="Close preview"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                        <button
+                            onClick={() => void handleFileDownload(previewAttachment.url, previewAttachment.name)}
+                            className="mb-4 inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/20"
+                            title="Download attachment"
+                        >
+                            <Download className="h-4 w-4" />
+                            Download
+                        </button>
+
+                        {isImageFile(previewAttachment.type, previewAttachment.name) && (
+                            <div className="flex max-h-[78vh] items-center justify-center">
+                                <img
+                                    src={previewAttachment.url}
+                                    alt={previewAttachment.name}
+                                    className="max-h-[78vh] max-w-full rounded-lg object-contain"
+                                />
+                            </div>
+                        )}
+
+                        {isVideoFile(previewAttachment.type, previewAttachment.name) && (
+                            <VideoPlayer
+                                videoPath={previewAttachment.url}
+                                title={previewAttachment.name}
+                                className="w-full aspect-video rounded-lg"
+                            />
+                        )}
+
+                        {isAudioFile(previewAttachment.type, previewAttachment.name) && (
+                            <div className="rounded-xl border border-border/50 bg-card p-6">
+                                <p className="mb-4 text-sm font-bold text-foreground">{previewAttachment.name}</p>
+                                <audio controls className="w-full" src={previewAttachment.url} preload="metadata" />
+                            </div>
+                        )}
+
+                        {!isImageFile(previewAttachment.type, previewAttachment.name) &&
+                            !isVideoFile(previewAttachment.type, previewAttachment.name) &&
+                            !isAudioFile(previewAttachment.type, previewAttachment.name) && (
+                                previewAttachment.name.match(/\.pdf$/i) ? (
+                                    <iframe
+                                        src={previewAttachment.url}
+                                        title={previewAttachment.name}
+                                        className="h-[78vh] w-full rounded-lg border border-white/10 bg-white"
+                                    />
+                                ) : (
+                                    <div className="rounded-xl border border-border/50 bg-card p-6 text-sm text-muted-foreground">
+                                        Preview is not available for this file type yet. Use Download to open it locally.
+                                    </div>
+                                )
+                            )}
+                    </div>
+                </div>
+            )}
 
             {/* Payment Modal */}
             <Modal

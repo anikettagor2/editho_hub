@@ -80,13 +80,11 @@ function triggerDownload(url: string, filename: string) {
 
 function triggerDirectNavigation(url: string, filename: string) {
     try {
-        console.log(`[DownloadUtils] Triggering direct navigation with anchor tag for ${url}`);
+        console.log(`[DownloadUtils] Triggering direct download navigation for ${url}`);
         const link = document.createElement('a');
         link.style.display = 'none';
         link.href = url;
         link.download = filename;
-        link.target = '_blank';
-        link.rel = 'noopener noreferrer';
         document.body.appendChild(link);
         link.click();
         
