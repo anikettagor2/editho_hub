@@ -4,7 +4,7 @@ import React, { forwardRef, useImperativeHandle, useRef, useState, useEffect } f
 import MuxPlayer from "@mux/mux-player-react";
 import { cn } from "@/lib/utils";
 import { Loader2, AlertCircle, Play, Pause, RotateCcw } from "lucide-react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface VideoPlayerProps {
     videoPath?: string; // Legacy/Fallback URL
@@ -25,6 +25,7 @@ interface VideoPlayerProps {
     autoPlay?: boolean;
     muted?: boolean;
     loop?: boolean;
+    hideControls?: boolean;
     envKey?: string; // Mux Data env key
     tokens?: {
         playback?: string;
@@ -34,6 +35,7 @@ interface VideoPlayerProps {
     preferPlayback?: "mse" | "native";
     forwardSeekOffset?: number;
     backwardSeekOffset?: number;
+    forceNative?: boolean;
     metadata?: {
         video_id?: string;
         video_title?: string;
@@ -56,12 +58,14 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
         autoPlay = false,
         muted = false,
         loop = false,
+        hideControls = false,
         envKey,
         tokens,
         preferPlayback,
         forwardSeekOffset,
         backwardSeekOffset,
         metadata,
+        forceNative = false,
         onTimeUpdate,
         onPlaying,
         onPause,
@@ -74,18 +78,81 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
     const [isLoading, setIsLoading] = useState(true);
     const [hasError, setHasError] = useState(false);
     const [retryCount, setRetryCount] = useState(0);
+    const [isFallingBack, setIsFallingBack] = useState(false);
+
+    const [isPaused, setIsPaused] = useState(true);
+    const [currentTime, setCurrentTime] = useState(startTime);
+    const [duration, setDuration] = useState(0);
+    const [volume, setVolume] = useState(1);
+    const [isMuted, setIsMuted] = useState(muted);
+    const [showVolumeIndicator, setShowVolumeIndicator] = useState(false);
+    const [lastAction, setLastAction] = useState<"play" | "pause" | "seek-f" | "seek-b" | "mute" | "unmute" | null>(null);
+
 
     // Expose the underlying player element via ref
     useImperativeHandle(ref, () => playerRef.current);
 
-    // Prioritize Mux Playback ID
-    const isMux = !!playbackId || (videoPath?.startsWith("mux://"));
+    // Prioritize Mux Playback ID unless forced native
+    const isMux = !forceNative && !isFallingBack && (!!playbackId || (videoPath?.startsWith("mux://")));
     const effectivePlaybackId = playbackId || (videoPath?.startsWith("mux://") ? videoPath.replace("mux://", "") : null);
 
     useEffect(() => {
         setHasError(false);
         setIsLoading(true);
-    }, [effectivePlaybackId, videoPath]);
+        setIsPaused(true);
+        setCurrentTime(startTime);
+    }, [effectivePlaybackId, videoPath, startTime]);
+
+    // Handle Keyboard Shortcuts
+    useEffect(() => {
+        if (hideControls) {
+            const handleKeyDown = (e: KeyboardEvent) => {
+                if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement).tagName)) return;
+                
+                const player = playerRef.current;
+                if (!player) return;
+
+                switch (e.key.toLowerCase()) {
+                    case " ":
+                    case "k":
+                        e.preventDefault();
+                        if (player.paused) player.play();
+                        else player.pause();
+                        break;
+                    case "arrowleft":
+                    case "j":
+                        e.preventDefault();
+                        player.currentTime = Math.max(0, player.currentTime - 10);
+                        setLastAction("seek-b");
+                        break;
+                    case "arrowright":
+                    case "l":
+                        e.preventDefault();
+                        player.currentTime = Math.min(player.duration, player.currentTime + 10);
+                        setLastAction("seek-f");
+                        break;
+                    case "m":
+                        e.preventDefault();
+                        player.muted = !player.muted;
+                        setIsMuted(player.muted);
+                        setLastAction(player.muted ? "mute" : "unmute");
+                        break;
+                    case "f":
+                        e.preventDefault();
+                        if (document.fullscreenElement) {
+                            document.exitFullscreen();
+                        } else {
+                            player.requestFullscreen?.() || player.parentElement?.requestFullscreen?.();
+                        }
+                        break;
+                }
+            };
+
+            window.addEventListener("keydown", handleKeyDown);
+            return () => window.removeEventListener("keydown", handleKeyDown);
+        }
+    }, [hideControls]);
+
 
     const handleRetry = () => {
         setRetryCount(prev => prev + 1);
@@ -95,7 +162,7 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
 
     if (!isMux && !videoPath) {
         return (
-            <div className={cn("group relative w-full aspect-video bg-black/90 rounded-2xl overflow-hidden flex flex-col items-center justify-center border border-white/5 shadow-2xl", className)}>
+            <div className={cn("group relative w-full h-full min-h-[200px] bg-black/90 overflow-hidden flex flex-col items-center justify-center border border-white/5 shadow-2xl", className)}>
                 <AlertCircle className="h-10 w-10 text-white/20 mb-3" />
                 <div className="text-center">
                     <p className="text-sm font-bold text-white/40 uppercase tracking-widest">No Video Source</p>
@@ -108,23 +175,47 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
     // Handling Mux "optimizing" state (waiting for playbackId)
     if (isMux && videoPath?.startsWith("mux://") && !playbackId) {
         return (
-            <div className={cn("group relative w-full aspect-video bg-black/95 rounded-2xl overflow-hidden flex flex-col items-center justify-center gap-4 border border-white/5 shadow-2xl", className)}>
+            <div className={cn("group relative w-full h-full min-h-[200px] bg-[#050505] overflow-hidden flex flex-col items-center justify-center gap-6 border border-white/5 shadow-2xl", className)}>
                 <div className="relative">
-                    <div className="w-16 h-16 border-4 border-primary/20 border-t-primary rounded-full animate-spin" />
+                    <motion.div 
+                        animate={{ 
+                            scale: [1, 1.1, 1],
+                            opacity: [0.3, 0.6, 0.3],
+                            rotate: [0, 180, 360]
+                        }}
+                        transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
+                        className="absolute -inset-8 bg-primary/10 blur-3xl rounded-full"
+                    />
+                    <div className="w-20 h-20 border-2 border-white/5 border-t-primary rounded-full animate-[spin_1.5s_linear_infinite]" />
                     <div className="absolute inset-0 flex items-center justify-center">
-                        <Loader2 className="h-6 w-6 text-primary animate-pulse" />
+                        <div className="w-12 h-12 bg-primary/20 backdrop-blur-xl rounded-full flex items-center justify-center border border-primary/30">
+                            <Loader2 className="h-6 w-6 text-primary animate-spin" />
+                        </div>
                     </div>
                 </div>
-                <div className="text-center">
-                    <p className="text-sm font-black text-white uppercase tracking-[0.2em] animate-pulse">Processing Video</p>
-                    <p className="text-[10px] text-white/40 mt-2 font-medium">Generating ultra-high quality renditions...</p>
+                <div className="text-center relative z-10">
+                    <motion.h3 
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="text-lg font-black text-white uppercase tracking-[0.3em]"
+                    >
+                        Mastering
+                    </motion.h3>
+                    <motion.p 
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 0.5 }}
+                        transition={{ delay: 0.2 }}
+                        className="text-[10px] text-white/50 mt-2 font-medium max-w-[200px] leading-relaxed"
+                    >
+                        Optimizing bitrates and generating high-fidelity renditions for your project.
+                    </motion.p>
                 </div>
-                <div className="absolute bottom-6 left-6 right-6 h-1 bg-white/5 rounded-full overflow-hidden">
+                <div className="w-48 h-[2px] bg-white/5 rounded-full overflow-hidden relative">
                     <motion.div 
                         initial={{ x: "-100%" }}
                         animate={{ x: "100%" }}
-                        transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
-                        className="w-1/2 h-full bg-gradient-to-r from-transparent via-primary to-transparent"
+                        transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                        className="absolute inset-0 bg-gradient-to-r from-transparent via-primary to-transparent"
                     />
                 </div>
             </div>
@@ -133,10 +224,41 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
 
     return (
         <div className={cn(
-            "group relative w-full aspect-video bg-black rounded-2xl overflow-hidden flex items-center justify-center shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] border border-white/5 transition-all duration-500",
+            "group relative w-full h-full bg-black overflow-hidden flex items-center justify-center shadow-[0_0_50px_-12px_rgba(0,0,0,0.5)] border border-white/5 transition-all duration-500",
             hasError ? "border-destructive/30" : "hover:border-primary/30",
             className
-        )}>
+        )}
+        onClick={(e) => {
+            if (hideControls && playerRef.current) {
+                // Don't toggle if clicking on a button or interactive element inside
+                if ((e.target as HTMLElement).closest('button')) return;
+                
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const width = rect.width;
+
+                // Double click detection for seeking (simulated with a click count or just standard toggle)
+                // For now, let's just do single click toggle as it's more standard for desktop overlays
+                if (isPaused) playerRef.current.play();
+                else playerRef.current.pause();
+            }
+        }}
+        onDoubleClick={(e) => {
+            if (hideControls && playerRef.current) {
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const width = rect.width;
+
+                if (x < width * 0.3) {
+                    playerRef.current.currentTime = Math.max(0, playerRef.current.currentTime - 10);
+                    setLastAction("seek-b");
+                } else if (x > width * 0.7) {
+                    playerRef.current.currentTime = Math.min(playerRef.current.duration, playerRef.current.currentTime + 10);
+                    setLastAction("seek-f");
+                }
+            }
+        }}
+    >
             {isLoading && !hasError && (
                 <div className="absolute inset-0 z-20 bg-black/40 backdrop-blur-sm flex items-center justify-center pointer-events-none">
                     <Loader2 className="h-8 w-8 text-primary animate-spin" />
@@ -159,6 +281,18 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
                         <RotateCcw className="h-3 w-3" />
                         Retry Connection
                     </button>
+                    {videoPath && !videoPath.startsWith("mux://") && (
+                        <button 
+                            onClick={() => {
+                                setIsFallingBack(true);
+                                setHasError(false);
+                                setIsLoading(true);
+                            }}
+                            className="flex items-center gap-2 px-4 py-2 rounded-full bg-primary/20 hover:bg-primary/30 text-primary text-[10px] font-black uppercase tracking-widest transition-all"
+                        >
+                            Switch to Legacy Player
+                        </button>
+                    )}
                 </div>
             ) : (
                 isMux ? (
@@ -186,20 +320,32 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
                         preferPlayback={preferPlayback}
                         forwardSeekOffset={forwardSeekOffset}
                         backwardSeekOffset={backwardSeekOffset}
+                        nohotkeys={hideControls}
+                        {...(hideControls ? {
+                            "nocomponents": "play-button,seek-backward,seek-forward,mute-button,volume-range,time-range,time-display,duration-display,playback-rate-button,fullscreen-button,airplay-button,cast-button,pip-button,quality-selection"
+                        } : {})}
                         onTimeUpdate={(e) => {
                             const target = e.target as HTMLVideoElement;
+                            setCurrentTime(target.currentTime);
                             onTimeUpdate?.(target.currentTime, target.duration);
                         }}
                         onLoadedMetadata={(e) => {
                             const target = e.target as HTMLVideoElement;
                             setIsLoading(false);
+                            setDuration(target.duration);
                             onLoadedMetadata?.(target.duration);
                         }}
                         onPlay={() => {
                             setIsLoading(false);
+                            setIsPaused(false);
+                            setLastAction("play");
                             onPlaying?.();
                         }}
-                        onPause={onPause}
+                        onPause={() => {
+                            setIsPaused(true);
+                            setLastAction("pause");
+                            onPause?.();
+                        }}
                         onEnded={onEnded}
                         onError={(e) => {
                             console.error("Mux Player Error:", e);
@@ -212,7 +358,7 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
                     <video
                         ref={playerRef}
                         src={videoPath}
-                        controls
+                        controls={!hideControls}
                         className="w-full h-full object-contain"
                         poster={thumbnailUrl}
                         autoPlay={autoPlay}
@@ -220,18 +366,26 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
                         loop={loop}
                         onTimeUpdate={(e) => {
                             const target = e.target as HTMLVideoElement;
+                            setCurrentTime(target.currentTime);
                             onTimeUpdate?.(target.currentTime, target.duration);
                         }}
                         onLoadedMetadata={(e) => {
                             const target = e.target as HTMLVideoElement;
                             setIsLoading(false);
+                            setDuration(target.duration);
                             onLoadedMetadata?.(target.duration);
                         }}
                         onPlay={() => {
                             setIsLoading(false);
+                            setIsPaused(false);
+                            setLastAction("play");
                             onPlaying?.();
                         }}
-                        onPause={onPause}
+                        onPause={() => {
+                            setIsPaused(true);
+                            setLastAction("pause");
+                            onPause?.();
+                        }}
                         onEnded={onEnded}
                         onError={() => {
                             setHasError(true);
@@ -244,8 +398,109 @@ const VideoPlayer = forwardRef<any, VideoPlayerProps>((props, ref) => {
 
             {/* Global Watermark is now handled by GlobalVideoWatermark component via layout */}
 
+            {/* Icon Flash Animation */}
+            <AnimatePresence mode="wait">
+                {lastAction === "play" && (
+                    <motion.div
+                        key="play-flash"
+                        initial={{ opacity: 0, scale: 0.5 }}
+                        animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 1.5] }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.5, ease: "easeOut" }}
+                        className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none"
+                    >
+                        <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center">
+                            <Play fill="white" size={32} className="ml-1 text-white" />
+                        </div>
+                    </motion.div>
+                )}
+                {lastAction === "pause" && (
+                    <motion.div
+                        key="pause-flash"
+                        initial={{ opacity: 0, scale: 0.5 }}
+                        animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 1.5] }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.5, ease: "easeOut" }}
+                        className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none"
+                    >
+                        <div className="w-20 h-20 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 flex items-center justify-center">
+                            <Pause fill="white" size={32} className="text-white" />
+                        </div>
+                    </motion.div>
+                )}
+                {(lastAction === "seek-f" || lastAction === "seek-b") && (
+                    <motion.div
+                        key={`seek-${lastAction}`}
+                        initial={{ opacity: 0, x: lastAction === "seek-f" ? 20 : -20 }}
+                        animate={{ opacity: [0, 1, 0], x: lastAction === "seek-f" ? [20, 40, 60] : [-20, -40, -60] }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.5, ease: "easeOut" }}
+                        className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none"
+                    >
+                        <div className="flex flex-col items-center gap-2">
+                            <RotateCcw size={48} className={cn("text-white", lastAction === "seek-f" && "rotate-180")} />
+                            <span className="text-white text-xs font-black uppercase tracking-widest">10s</span>
+                        </div>
+                    </motion.div>
+                )}
+                {(lastAction === "mute" || lastAction === "unmute" || isMuted) && (
+                    <motion.div
+                        key="mute-flash"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: [0, 1, 0], y: [10, 0, -10] }}
+                        exit={{ opacity: 0 }}
+                        transition={{ duration: 0.8 }}
+                        className="absolute top-8 right-8 z-40 pointer-events-none"
+                    >
+                        <div className="px-4 py-2 rounded-full bg-black/60 backdrop-blur-xl border border-white/10 flex items-center gap-2">
+                            {isMuted ? <AlertCircle className="h-4 w-4 text-red-500" /> : <Play className="h-4 w-4 text-green-500" />}
+                            <span className="text-[10px] font-black uppercase tracking-widest text-white">
+                                {isMuted ? "Muted" : "Audio On"}
+                            </span>
+                        </div>
+                    </motion.div>
+                )}
+            </AnimatePresence>
             
             {/* Custom Play Overlay for Premium Feel */}
+            {!isLoading && !hasError && hideControls && (
+                <div 
+                    className={cn(
+                        "absolute inset-0 z-10 flex items-center justify-center transition-all duration-500",
+                        !isPaused ? "bg-transparent opacity-0 pointer-events-none" : "bg-black/20 opacity-100"
+                    )}
+                >
+                    <AnimatePresence>
+                        {isPaused && (
+                            <motion.button
+                                initial={{ opacity: 0, scale: 0.9, rotate: -10 }}
+                                animate={{ opacity: 1, scale: 1, rotate: 0 }}
+                                exit={{ opacity: 0, scale: 1.1 }}
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    playerRef.current?.play();
+                                }}
+                                className="w-16 h-16 rounded-full bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center text-white shadow-2xl hover:scale-110 active:scale-95 transition-transform"
+                            >
+                                <Play fill="white" size={24} className="ml-1" />
+                            </motion.button>
+                        )}
+                    </AnimatePresence>
+                </div>
+            )}
+
+            {/* Minimal Progress Bar */}
+            {hideControls && !isLoading && !hasError && (
+                <div className="absolute bottom-0 left-0 right-0 h-1 z-30 bg-white/5 overflow-hidden">
+                    <motion.div 
+                        className="h-full bg-primary shadow-[0_0_10px_rgba(59,130,246,0.5)]"
+                        initial={{ width: 0 }}
+                        animate={{ width: `${(currentTime / (duration || 1)) * 100}%` }}
+                        transition={{ type: "spring", bounce: 0, duration: 0.1 }}
+                    />
+                </div>
+            )}
+            
             {!isLoading && !hasError && (
                 <div className="absolute inset-0 z-5 bg-gradient-to-t from-black/60 via-transparent to-black/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
             )}

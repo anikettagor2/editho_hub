@@ -26,6 +26,13 @@ export const metadata: Metadata = {
   description: "Transform your raw footage into cinematic masterpieces. Professional video editing, scriptwriting, and thumbnail design.",
 };
 
+export const viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+}
+
 import { SmoothScroll } from "@/components/smooth-scroll";
 import { ContactProvider } from "@/providers/contact-provider";
 import { ContactModal } from "@/components/contact-modal";

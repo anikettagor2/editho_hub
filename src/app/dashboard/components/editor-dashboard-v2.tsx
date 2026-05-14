@@ -42,7 +42,10 @@ import {
     Plus,
     Play,
     PlusSquare,
-    CheckCircle
+    CheckCircle,
+    Building2,
+    Hash,
+    CreditCard
 } from "lucide-react";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -56,6 +59,9 @@ import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_GB } from "@/lib/constants";
 import { handleRevisionUploaded } from "@/app/actions/notification-actions";
 import { useVideoTranscodeStatus } from "@/hooks/use-video-transcode-status";
 import { respondToAssignment } from "@/app/actions/admin-actions";
+import { updateEditorPayoutDetails } from "@/app/actions/payout-actions";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 
 // --- Components ---
 
@@ -414,23 +420,68 @@ export function EditorDashboardV2() {
                     ) : (
                         <motion.div 
                             initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -20 }}
-                            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
+                            className="space-y-12"
                         >
-                            {earnings.map((p) => (
-                                <FinanceCard key={p.id} project={p} />
-                            ))}
-                            {earnings.length === 0 && (
-                                <div className="col-span-full py-32 text-center space-y-6">
-                                    <div className="h-24 w-24 bg-muted/20 rounded-2xl flex items-center justify-center mx-auto text-muted-foreground relative">
-                                        <div className="absolute inset-0 bg-primary/5 rounded-full animate-ping opacity-20" />
-                                        <Banknote size={40} className="relative z-10" />
+                            {/* Payout Settings Section */}
+                            <div className="bg-card border border-border/50 rounded-[32px] p-8 lg:p-12 shadow-2xl shadow-black/5">
+                                <div className="flex flex-col lg:flex-row gap-12">
+                                    <div className="lg:w-1/3 space-y-4">
+                                        <div className="h-14 w-14 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
+                                            <Building2 size={28} />
+                                        </div>
+                                        <h2 className="text-2xl font-black text-foreground tracking-tight">Payout Settings</h2>
+                                        <p className="text-sm text-muted-foreground leading-relaxed">
+                                            Configure how you receive your earnings. We support Direct Bank Transfer (IMPS) and UPI.
+                                        </p>
+                                        <div className="pt-4 flex items-center gap-2">
+                                            <div className={cn(
+                                                "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
+                                                userData?.payoutDetails?.payoutStatus === 'active' 
+                                                    ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                                    : "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                                            )}>
+                                                {userData?.payoutDetails?.payoutStatus === 'active' ? 'Verified' : 'Verification Pending'}
+                                            </div>
+                                        </div>
                                     </div>
-                                    <div className="space-y-2">
-                                        <h3 className="text-lg font-black text-foreground">No earnings yet</h3>
-                                        <p className="text-sm text-muted-foreground max-w-xs mx-auto">Once you complete projects and they are approved, your financial records will appear here.</p>
+
+                                    <div className="flex-1">
+                                        <PayoutSettingsForm 
+                                            userId={user!.uid} 
+                                            initialData={{
+                                                bankDetails: userData?.bankDetails,
+                                                upiDetails: userData?.upiDetails
+                                            }} 
+                                        />
                                     </div>
                                 </div>
-                            )}
+                            </div>
+
+                            <div className="space-y-6">
+                                <div className="flex items-center justify-between">
+                                    <h3 className="text-xl font-black text-foreground tracking-tight">Earning History</h3>
+                                    <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest bg-muted/30 px-3 py-1 rounded-full border border-border/50">
+                                        {earnings.length} Projects
+                                    </div>
+                                </div>
+                                
+                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                    {earnings.map((p) => (
+                                        <FinanceCard key={p.id} project={p} />
+                                    ))}
+                                    {earnings.length === 0 && (
+                                        <div className="col-span-full py-20 text-center space-y-6 bg-muted/10 rounded-[32px] border border-dashed border-border/50">
+                                            <div className="h-20 w-20 bg-muted/20 rounded-2xl flex items-center justify-center mx-auto text-muted-foreground">
+                                                <Banknote size={32} />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <h3 className="text-lg font-black text-foreground">No earnings records</h3>
+                                                <p className="text-sm text-muted-foreground max-w-xs mx-auto">Complete projects to start building your earning history.</p>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         </motion.div>
                     )}
                 </AnimatePresence>
@@ -883,10 +934,115 @@ function VideoPreviewModal({ video, onClose }: any) {
                     playbackId={playbackId || undefined}
                     title={video.name}
                     autoPlay={true}
-                    accentColor="#3b82f6"
-                    className="w-full h-full"
                 />
             </div>
         </motion.div>
+    );
+}
+
+function PayoutSettingsForm({ userId, initialData }: { userId: string, initialData: any }) {
+    const [payoutMode, setPayoutMode] = useState<'bank' | 'upi'>(initialData.upiDetails?.vpa ? 'upi' : 'bank');
+    const [bankDetails, setBankDetails] = useState(initialData.bankDetails || { accountHolderName: "", accountNumber: "", ifscCode: "" });
+    const [upiDetails, setUpiDetails] = useState(initialData.upiDetails || { vpa: "" });
+    const [isSaving, setIsSaving] = useState(false);
+
+    const handleSave = async () => {
+        setIsSaving(true);
+        try {
+            const res = await updateEditorPayoutDetails(userId, {
+                bankDetails: payoutMode === 'bank' ? bankDetails : undefined,
+                upiDetails: payoutMode === 'upi' ? upiDetails : undefined
+            });
+
+            if (res.success) {
+                toast.success("Payout details updated successfully!");
+            } else {
+                toast.error(res.error || "Failed to update details.");
+            }
+        } catch (err) {
+            toast.error("An unexpected error occurred.");
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
+    return (
+        <div className="space-y-8">
+            <div className="flex p-1.5 bg-muted/40 rounded-2xl border border-border/50 w-full sm:w-fit">
+                <button 
+                    onClick={() => setPayoutMode('bank')}
+                    className={cn("flex-1 sm:flex-none px-6 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2", payoutMode === 'bank' ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
+                >
+                    <CreditCard size={14} /> Bank Account
+                </button>
+                <button 
+                    onClick={() => setPayoutMode('upi')}
+                    className={cn("flex-1 sm:flex-none px-6 py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2", payoutMode === 'upi' ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
+                >
+                    <Hash size={14} /> UPI ID
+                </button>
+            </div>
+
+            <div className="space-y-6">
+                {payoutMode === 'bank' ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Account Holder Name</Label>
+                            <Input 
+                                placeholder="As per bank records"
+                                value={bankDetails.accountHolderName}
+                                onChange={e => setBankDetails({ ...bankDetails, accountHolderName: e.target.value })}
+                                className="h-12 bg-muted/20 border-border/50 rounded-xl px-4 font-bold"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">IFSC Code</Label>
+                            <Input 
+                                placeholder="SBIN0001234"
+                                value={bankDetails.ifscCode}
+                                onChange={e => setBankDetails({ ...bankDetails, ifscCode: e.target.value.toUpperCase() })}
+                                className="h-12 bg-muted/20 border-border/50 rounded-xl px-4 font-bold uppercase"
+                            />
+                        </div>
+                        <div className="col-span-full space-y-2">
+                            <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Account Number</Label>
+                            <div className="relative">
+                                <Input 
+                                    type="password"
+                                    placeholder="Enter your account number"
+                                    value={bankDetails.accountNumber}
+                                    onChange={e => setBankDetails({ ...bankDetails, accountNumber: e.target.value })}
+                                    className="h-12 bg-muted/20 border-border/50 rounded-xl px-4 font-bold tracking-widest"
+                                />
+                                <CreditCard size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">UPI ID (VPA)</Label>
+                        <div className="relative">
+                            <Input 
+                                placeholder="username@upi"
+                                value={upiDetails.vpa}
+                                onChange={e => setUpiDetails({ vpa: e.target.value })}
+                                className="h-12 bg-muted/20 border-border/50 rounded-xl px-4 font-bold lowercase"
+                            />
+                            <Hash size={18} className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                        </div>
+                        <p className="text-[10px] text-muted-foreground mt-2 italic">Common suffixes: @okaxis, @okicici, @paytm, @ybl</p>
+                    </div>
+                )}
+            </div>
+
+            <Button 
+                onClick={handleSave}
+                disabled={isSaving}
+                className="h-14 w-full sm:w-64 rounded-2xl bg-primary text-primary-foreground font-black text-sm shadow-xl shadow-primary/20 hover:brightness-110 active:scale-95 transition-all gap-3"
+            >
+                {isSaving ? <Loader2 className="animate-spin" size={20} /> : <CheckCircle size={20} />}
+                Save Details
+            </Button>
+        </div>
     );
 }

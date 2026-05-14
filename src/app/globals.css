@@ -139,6 +139,19 @@ body {
     -moz-osx-font-smoothing: grayscale;
     color: var(--foreground);
     line-height: 1.6;
+    /* Disable project-wide zooming as requested */
+    touch-action: manipulation;
+    -webkit-text-size-adjust: 100%;
+}
+
+/* Prevent zoom on inputs for iOS */
+@media screen and (max-width: 768px) {
+
+    input,
+    select,
+    textarea {
+        font-size: 16px !important;
+    }
 }
 
 /* Premium / Cinematic Utilities (v3 - Enterprise Grade) */
@@ -231,25 +244,32 @@ body {
     scrollbar-width: thin;
     scrollbar-color: rgba(156, 163, 175, 0.25) transparent;
 }
+
 .custom-scrollbar::-webkit-scrollbar {
     width: 4px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-track {
     background: transparent;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb {
     background: rgba(156, 163, 175, 0.25);
     border-radius: 9999px;
 }
+
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(156, 163, 175, 0.4);
 }
+
 .dark .custom-scrollbar {
     scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
 }
+
 .dark .custom-scrollbar::-webkit-scrollbar-thumb {
     background: rgba(255, 255, 255, 0.08);
 }
+
 .dark .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: rgba(255, 255, 255, 0.15);
 }
@@ -330,9 +350,11 @@ body {
     0% {
         transform: scale(1);
     }
+
     50% {
         transform: scale(0.95);
     }
+
     100% {
         transform: scale(1);
     }
@@ -353,7 +375,9 @@ body {
 }
 
 /* For all button-like elements */
-button, a[role="button"], [role="button"] {
+button,
+a[role="button"],
+[role="button"] {
     cursor: pointer;
 }
 
@@ -375,4 +399,22 @@ button, a[role="button"], [role="button"] {
 
 .premium-light-divider {
     border-top: 1px solid rgba(24, 24, 27, 0.08);
+}
+
+/* Mux Player Custom Theme (White & Blue) */
+mux-player {
+    --media-button-icon-fill: #ffffff;
+    --media-button-icon-color: #ffffff;
+    --media-range-thumb-background: #3b82f6;
+    --media-range-bar-color: #3b82f6;
+    --media-range-track-background: rgba(255, 255, 255, 0.2);
+    --media-control-background: rgba(15, 17, 21, 0.6);
+    --media-control-hover-background: rgba(15, 17, 21, 0.8);
+    --primary-color: #ffffff;
+    --accent-color: #3b82f6;
+}
+
+/* Ensure the player resizer works well on touch */
+[data-resizer] {
+    touch-action: none;
 }

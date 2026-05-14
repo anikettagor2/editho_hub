@@ -52,6 +52,23 @@ export interface User {
     bio?: string;
     contact?: string;
 
+    // RazorpayX Payout Details
+    payoutDetails?: {
+        razorpayContactId?: string;
+        razorpayFundAccountId?: string;
+        lastPayoutAt?: number;
+        payoutStatus?: 'active' | 'pending' | 'failed';
+    };
+    bankDetails?: {
+        accountHolderName: string;
+        accountNumber: string;
+        ifscCode: string;
+        bankName?: string;
+    };
+    upiDetails?: {
+        vpa: string;
+    };
+
     // Client Documents
     documents?: {
         agreement?: { url: string; name: string; uploadedAt: number };
@@ -135,6 +152,10 @@ export interface Project {
     // Audit Log
     editorPaid?: boolean;              // Admin marked this editor payment as cleared
     editorPaidAt?: number;
+    payoutId?: string;                 // RazorpayX Payout ID
+    payoutStatus?: string;             // RazorpayX Payout Status (processed, failed, pending, etc.)
+    payoutProcessedAt?: number;        // Timestamp when payout was processed
+    razorpayPayoutDetails?: any;       // Full detail object from RazorpayX if needed
 
     logs?: {
         event: string;

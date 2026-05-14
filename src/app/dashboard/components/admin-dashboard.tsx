@@ -107,6 +107,7 @@ import {
   updateUserDetails,
   assignManagerToClient,
 } from "@/app/actions/admin-actions";
+import { initiateEditorPayout } from "@/app/actions/payout-actions";
 import { AdminOverviewGraphs } from "./admin-overview-graphs";
 import { AdminPerformanceTab } from "./admin-performance";
 import { ClientDocuments } from "./client-documents";
@@ -267,14 +268,37 @@ function ProjectStatusBadges({ project }: { project: any }) {
     });
   }
 
-  // Editor Payment
+  // Editor Payment (RazorpayX aware)
   if (project.assignedEditorId && (project.editorPrice || 0) > 0) {
-    if (project.editorPaid) {
+    if (project.payoutStatus === "processed" || project.editorPaid) {
       badges.push({
         label: "Editor Payment Done",
         color: "text-emerald-500",
         bg: "bg-emerald-500/10",
         border: "border-emerald-500/20",
+      });
+    } else if (
+      project.payoutStatus === "processing" ||
+      project.payoutStatus === "queued" ||
+      project.payoutStatus === "pending"
+    ) {
+      badges.push({
+        label: "Payout Processing",
+        color: "text-blue-400",
+        bg: "bg-blue-400/10",
+        border: "border-blue-400/20",
+        pulse: true,
+      });
+    } else if (
+      project.payoutStatus === "failed" ||
+      project.payoutStatus === "rejected" ||
+      project.payoutStatus === "reversed"
+    ) {
+      badges.push({
+        label: "Payout Failed",
+        color: "text-red-400",
+        bg: "bg-red-400/10",
+        border: "border-red-400/20",
       });
     } else {
       badges.push({
@@ -449,6 +473,9 @@ export function AdminDashboard() {
     totalCost: 0,
     status: "",
   });
+
+  // Payout Processing State
+  const [payoutProcessing, setPayoutProcessing] = useState<Record<string, boolean>>({});
 
   const [stats, setStats] = useState({
     revenue: 0,
@@ -862,24 +889,31 @@ export function AdminDashboard() {
   };
 
   const handleReimburseEditor = async (projectId: string) => {
+    if (payoutProcessing[projectId]) return;
+
     try {
-      await updateDoc(doc(db, "projects", projectId), {
-        editorPaid: true,
-        editorPaidAt: Date.now(),
-      });
-      await addProjectLog(
-        projectId,
-        "PAYMENT_MARKED",
-        {
-          uid: currentUser?.uid || "system",
-          displayName: currentUser?.displayName || "Admin",
-        },
-        "Editor payment marked as cleared.",
-      );
-      toast.success("Editor payment marked as cleared.");
-    } catch (error) {
-      toast.error("Failed to clear payment.");
-      console.error(error);
+      setPayoutProcessing((prev) => ({ ...prev, [projectId]: true }));
+      const result = await initiateEditorPayout(projectId);
+
+      if (result.success) {
+        toast.success("Payout initiated successfully via RazorpayX");
+        await addProjectLog(
+          projectId,
+          "PAYMENT_INITIATED",
+          {
+            uid: currentUser?.uid || "system",
+            displayName: currentUser?.displayName || "Admin",
+          },
+          `Editor payout of ₹${result.payout?.amount ? result.payout.amount / 100 : "unknown"} initiated via RazorpayX. Payout ID: ${result.payoutId}`,
+        );
+      } else {
+        toast.error(result.error || "Failed to initiate payout");
+      }
+    } catch (err: any) {
+      console.error("Payout error:", err);
+      toast.error(err.message || "An unexpected error occurred during payout");
+    } finally {
+      setPayoutProcessing((prev) => ({ ...prev, [projectId]: false }));
     }
   };
 
@@ -4184,10 +4218,47 @@ export function AdminDashboard() {
                                           e.preventDefault();
                                           handleReimburseEditor(project.id);
                                         }}
-                                        className="h-9 px-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-foreground text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2 shadow-[0_0_15px_rgba(59,130,246,0.1)] hover:shadow-[0_0_20px_rgba(59,130,246,0.4)]"
+                                        disabled={
+                                          payoutProcessing[project.id] ||
+                                          project.payoutStatus === "processing" ||
+                                          project.payoutStatus === "queued" ||
+                                          project.payoutStatus === "pending"
+                                        }
+                                        className={cn(
+                                          "h-9 px-4 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2",
+                                          project.payoutStatus === "failed" ||
+                                            project.payoutStatus === "rejected"
+                                            ? "bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-foreground"
+                                            : "bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-foreground",
+                                          (payoutProcessing[project.id] ||
+                                            project.payoutStatus === "processing" ||
+                                            project.payoutStatus === "queued" ||
+                                            project.payoutStatus === "pending") &&
+                                            "opacity-50 cursor-not-allowed",
+                                        )}
                                       >
-                                        <RefreshCw className="h-3.5 w-3.5" />
-                                        Settle Payout
+                                        <RefreshCw
+                                          className={cn(
+                                            "h-3.5 w-3.5",
+                                            (payoutProcessing[project.id] ||
+                                              project.payoutStatus ===
+                                                "processing" ||
+                                              project.payoutStatus ===
+                                                "queued" ||
+                                              project.payoutStatus ===
+                                                "pending") &&
+                                              "animate-spin",
+                                          )}
+                                        />
+                                        {payoutProcessing[project.id] ||
+                                        project.payoutStatus === "processing" ||
+                                        project.payoutStatus === "queued" ||
+                                        project.payoutStatus === "pending"
+                                          ? "Processing..."
+                                          : project.payoutStatus === "failed" ||
+                                              project.payoutStatus === "rejected"
+                                            ? "Retry Payout"
+                                            : "Settle Payout"}
                                       </button>
                                     </div>
                                   </div>
@@ -5205,17 +5276,7 @@ export function AdminDashboard() {
       <ReviewSystemModal
         isOpen={isReviewSystemOpen}
         onClose={() => setIsReviewSystemOpen(false)}
-        project={
-          reviewProject
-            ? {
-                id: reviewProject.id,
-                name: reviewProject.name,
-                paymentStatus: reviewProject.paymentStatus,
-                editorRating: reviewProject.editorRating,
-                createdAt: reviewProject.createdAt,
-              }
-            : null
-        }
+        project={reviewProject}
       />
 
       <Modal
@@ -5553,6 +5614,48 @@ export function AdminDashboard() {
                         <Zap className="h-5 w-5 text-primary" />
                       </div>
                     </div>
+
+                    {inspectProject.payoutId && (
+                      <div className="p-4 bg-blue-500/5 border border-blue-500/10 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[8px] font-black text-blue-400 uppercase tracking-widest">
+                            RazorpayX Payout
+                          </span>
+                          <span
+                            className={cn(
+                              "text-[8px] font-bold uppercase px-1.5 py-0.5 rounded border",
+                              inspectProject.payoutStatus === "processed"
+                                ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20"
+                                : inspectProject.payoutStatus === "failed" ||
+                                    inspectProject.payoutStatus === "rejected"
+                                  ? "bg-red-500/10 text-red-500 border-red-500/20"
+                                  : "bg-blue-500/10 text-blue-500 border-blue-500/20",
+                            )}
+                          >
+                            {inspectProject.payoutStatus || "Pending"}
+                          </span>
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[10px] font-mono text-muted-foreground break-all">
+                            ID: {inspectProject.payoutId}
+                          </span>
+                          {inspectProject.payoutProcessedAt && (
+                            <span className="text-[8px] text-muted-foreground mt-1">
+                              Processed:{" "}
+                              {new Date(
+                                inspectProject.payoutProcessedAt,
+                              ).toLocaleString()}
+                            </span>
+                          )}
+                          {inspectProject.razorpayPayoutDetails?.failure_reason && (
+                            <span className="text-[9px] text-red-400 mt-2 font-bold italic">
+                              Reason:{" "}
+                              {inspectProject.razorpayPayoutDetails.failure_reason}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    )}
 
                     <div className="pt-2 flex items-center justify-between px-1">
                       <div className="flex flex-col">
