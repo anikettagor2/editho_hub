@@ -398,7 +398,7 @@ export function EditorDashboardV2() {
         if (projectFilter === "all") return true;
         if (projectFilter === "editing") return ["active", "in_production", "editor_assigned"].includes(p.status);
         if (projectFilter === "in_review") return ["review", "in_review"].includes(p.status);
-        if (projectFilter === "pending") return p.assignmentStatus === "pending" || ["editor_not_assigned", "project_created", "pending_assignment"].includes(p.status);
+        if (projectFilter === "pending") return p.assignmentStatus !== "accepted" && p.assignmentStatus !== "rejected";
         if (projectFilter === "completed") return ["completed", "approved"].includes(p.status);
         if (projectFilter === "pay_later") return Boolean(p.isPayLaterRequest);
         if (projectFilter === "payment_due") return p.paymentStatus !== "full_paid" || p.status === "completed_pending_payment";
@@ -410,7 +410,7 @@ export function EditorDashboardV2() {
     const totalProjectPages = Math.max(1, Math.ceil(filteredProjects.length / rowsPerPage));
     const paginatedProjects = filteredProjects.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
     const activeProjectCount = projects.filter(p => ['active', 'in_production', 'in_review'].includes(p.status)).length;
-    const pendingAssignmentCount = projects.filter(p => p.assignmentStatus === "pending").length;
+    const pendingAssignmentCount = projects.filter(p => p.assignmentStatus !== "accepted" && p.assignmentStatus !== "rejected").length;
 
     useEffect(() => {
         setCurrentPage(1);
@@ -724,7 +724,12 @@ export function EditorDashboardV2() {
 
             <AnimatePresence>
                 {selectedProjectAssets && (
-                    <AssetModal project={selectedProjectAssets} onClose={() => setSelectedProjectAssets(null)} />
+                    <AssetModal 
+                        project={selectedProjectAssets} 
+                        onClose={() => setSelectedProjectAssets(null)} 
+                        onRespond={handleRespond}
+                        isResponding={isResponding === selectedProjectAssets.id}
+                    />
                 )}
                 {isUploadModalOpen && (
                     <UploadModal 
@@ -749,12 +754,10 @@ export function EditorDashboardV2() {
 // --- Subcomponents ---
 
 function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets, onRespond, isResponding }: any) {
-    const [showDeclineReason, setShowDeclineReason] = useState(false);
-    const [reason, setReason] = useState("");
     const [timeLeft, setTimeLeft] = useState<string | null>(null);
 
     useEffect(() => {
-        if (project.assignmentStatus !== 'pending' || !project.assignmentExpiresAt) {
+        if (project.assignmentStatus === 'accepted' || project.assignmentStatus === 'rejected' || !project.assignmentExpiresAt) {
             setTimeLeft(null);
             return;
         }
@@ -775,7 +778,7 @@ function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets
         return () => clearInterval(interval);
     }, [project.assignmentStatus, project.assignmentExpiresAt]);
 
-    const isPending = project.assignmentStatus === 'pending';
+    const isPending = project.assignmentStatus !== 'accepted' && project.assignmentStatus !== 'rejected';
     const isAccepted = project.assignmentStatus === 'accepted';
 
     return (
@@ -838,85 +841,45 @@ function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets
                 </div>
 
                 {/* Action Section */}
-                {isPending ? (
-                    <div className="space-y-4 pt-2">
-                        {showDeclineReason ? (
-                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
-                                <Textarea 
-                                    placeholder="Briefly explain why you are declining..."
-                                    className="min-h-[100px] text-sm rounded-xl bg-background border-border/50 focus:border-primary/50 shadow-inner p-4"
-                                    value={reason}
-                                    onChange={e => setReason(e.target.value)}
-                                />
-                                <div className="flex gap-3">
-                                    <button 
-                                        onClick={() => setShowDeclineReason(false)}
-                                        className="flex-1 h-12 rounded-xl bg-muted text-foreground font-black text-xs hover:bg-muted/80 transition-all"
-                                    >
-                                        Back
-                                    </button>
-                                    <button 
-                                        disabled={!reason.trim() || isResponding}
-                                        onClick={() => onRespond(project.id, 'rejected', reason)}
-                                        className="flex-[2] h-12 rounded-xl bg-destructive text-destructive-foreground font-black text-xs hover:brightness-110 transition-all flex items-center justify-center gap-2"
-                                    >
-                                        {isResponding ? <Loader2 className="animate-spin" size={18} /> : "Confirm Decline"}
-                                    </button>
-                                </div>
-                            </motion.div>
-                        ) : (
-                            <div className="flex items-center gap-3">
-                                <button 
-                                    disabled={isResponding}
-                                    onClick={() => onRespond(project.id, 'accepted')}
-                                    className="flex-[3] h-16 rounded-xl bg-emerald-500 text-white font-black text-sm shadow-xl shadow-emerald-500/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-3 group/btn"
-                                >
-                                    {isResponding ? <Loader2 className="animate-spin" size={20} /> : (
-                                        <>
-                                            <CheckCircle2 size={20} className="group-hover:scale-110 transition-transform" /> 
-                                            Accept Project
-                                        </>
-                                    )}
-                                </button>
-                                <button 
-                                    disabled={isResponding}
-                                    onClick={() => setShowDeclineReason(true)}
-                                    className="flex-1 h-16 rounded-xl bg-muted/50 border border-border/50 text-muted-foreground font-black text-xs hover:bg-muted active:scale-95 transition-all"
-                                >
-                                    Decline
-                                </button>
-                            </div>
-                        )}
-                    </div>
-                ) : (
-                    <div className="flex items-center gap-3 pt-2">
-                        {latestRevision && (
-                            <button 
-                                onClick={onReview}
-                                className="flex-[3] h-14 rounded-xl bg-primary text-primary-foreground font-black text-xs shadow-xl shadow-primary/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-3"
-                            >
-                                <MessageCircle size={18} /> 
-                                Review
-                            </button>
-                        )}
+                <div className="flex items-center gap-3 pt-2">
+                    {isPending ? (
                         <button 
                             onClick={onAssets}
-                            className="h-14 w-14 rounded-xl bg-muted/50 border border-border/50 text-foreground flex items-center justify-center hover:bg-muted active:scale-95 transition-all"
-                            title="Project Assets"
+                            className="flex-1 h-16 rounded-2xl bg-primary text-white font-black text-sm shadow-xl shadow-primary/20 hover:shadow-primary/40 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-3 group/btn"
                         >
-                            <Layers size={18} />
+                            <Briefcase size={20} className="group-hover/btn:rotate-12 transition-transform" />
+                            Review Project Briefing
                         </button>
-                        {isAccepted && (
+                    ) : (
+                        <>
+                            {latestRevision && (
+                                <button 
+                                    onClick={onReview}
+                                    className="flex-[3] h-14 rounded-xl bg-primary text-primary-foreground font-black text-xs shadow-xl shadow-primary/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-3"
+                                >
+                                    <MessageCircle size={18} /> 
+                                    Review
+                                </button>
+                            )}
                             <button 
-                                onClick={onUpload}
-                                className="h-14 w-14 rounded-xl bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center"
-                                title="Upload New Draft"
+                                onClick={onAssets}
+                                className="h-14 w-14 rounded-xl bg-muted/50 border border-border/50 text-foreground flex items-center justify-center hover:bg-muted active:scale-95 transition-all"
+                                title="Project Details & Assets"
                             >
-                                <Plus size={24} />
+                                <FileText size={18} />
                             </button>
-                        )}
-                    </div>
-                )}
+                            {isAccepted && (
+                                <button 
+                                    onClick={onUpload}
+                                    className="h-14 w-14 rounded-xl bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center"
+                                    title="Upload New Draft"
+                                >
+                                    <Plus size={24} />
+                                </button>
+                            )}
+                        </>
+                    )}
+                </div>
             </div>
         </motion.div>
     );
@@ -966,9 +929,7 @@ function ProjectTable({ projects, allUsers, projectRevisions, startIndex = 0, on
 }
 
 function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onReview, onAssets, onRespond, isResponding }: any) {
-    const [showDeclineReason, setShowDeclineReason] = useState(false);
-    const [reason, setReason] = useState("");
-    const isPending = project.assignmentStatus === "pending";
+    const isPending = project.assignmentStatus !== "accepted" && project.assignmentStatus !== "rejected";
     const isAccepted = project.assignmentStatus === "accepted";
 
     return (
@@ -989,12 +950,10 @@ function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onRevie
                 <div className="space-y-2">
                     <StatusBadge status={project.status} />
                     {isPending && (
-                        <button
-                            onClick={() => setShowDeclineReason((value) => !value)}
-                            className="block text-[10px] font-black uppercase tracking-widest text-amber-500"
-                        >
-                            Assignment pending
-                        </button>
+                        <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-amber-500">
+                            <Clock size={12} className="animate-pulse" />
+                            Awaiting Response
+                        </div>
                     )}
                 </div>
             </td>
@@ -1021,72 +980,38 @@ function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onRevie
             </td>
             <td className="px-3 py-3 text-xs font-black text-blue-400 whitespace-nowrap">{formatCurrency(project.editorPrice)}</td>
             <td className="px-3 py-3">
-                {showDeclineReason && isPending ? (
-                    <div className="w-[220px] space-y-2">
-                        <Textarea
-                            placeholder="Reason for decline"
-                            className="min-h-[84px] rounded-xl border-border/50 bg-background text-xs"
-                            value={reason}
-                            onChange={(e) => setReason(e.target.value)}
-                        />
-                        <div className="flex gap-2">
-                            <button onClick={() => setShowDeclineReason(false)} className="h-9 flex-1 rounded-xl bg-muted text-[10px] font-black uppercase tracking-widest text-foreground">
-                                Back
-                            </button>
-                            <button
-                                disabled={!reason.trim() || isResponding}
-                                onClick={() => onRespond(project.id, "rejected", reason)}
-                                className="h-9 flex-1 rounded-xl bg-destructive text-[10px] font-black uppercase tracking-widest text-destructive-foreground disabled:opacity-50"
-                            >
-                                {isResponding ? "Saving..." : "Decline"}
-                            </button>
-                        </div>
-                    </div>
-                ) : (
-                    <>
-                        <div className="flex min-w-[220px] flex-wrap gap-2">
-                            {isPending ? (
-                                <>
-                                    <button
-                                        disabled={isResponding}
-                                        onClick={() => onRespond(project.id, "accepted")}
-                                        className="h-9 rounded-xl bg-emerald-500 px-3 text-[10px] font-black uppercase tracking-widest text-white disabled:opacity-50"
-                                    >
-                                        {isResponding ? "Working..." : "Accept"}
-                                    </button>
-                                    <button
-                                        disabled={isResponding}
-                                        onClick={() => setShowDeclineReason(true)}
-                                        className="h-9 rounded-xl border border-border/50 bg-muted/30 px-3 text-[10px] font-black uppercase tracking-widest text-muted-foreground"
-                                    >
-                                        Decline
-                                    </button>
-                                </>
-                            ) : (
-                                <>
-                                    {latestRevision && (
-                                        <button onClick={onReview} className="h-9 rounded-xl bg-primary px-3 text-[10px] font-black uppercase tracking-widest text-primary-foreground">
-                                            Review
-                                        </button>
-                                    )}
-                                    <button onClick={onAssets} className="h-9 rounded-xl border border-border/50 bg-muted/30 px-3 text-[10px] font-black uppercase tracking-widest text-foreground">
-                                        Assets
-                                    </button>
-                                    {isAccepted && (
-                                        <button onClick={onUpload} className="h-9 rounded-xl bg-emerald-500 px-3 text-[10px] font-black uppercase tracking-widest text-white">
-                                            Upload
-                                        </button>
-                                    )}
-                                </>
+                <div className="flex min-w-[220px] flex-wrap gap-2">
+                    {isPending ? (
+                        <button
+                            onClick={onAssets}
+                            className="h-10 px-5 rounded-xl bg-primary text-[10px] font-black uppercase tracking-widest text-white hover:brightness-110 active:scale-95 transition-all flex items-center gap-2 shadow-lg shadow-primary/20"
+                        >
+                            <Briefcase size={14} />
+                            Review Briefing
+                        </button>
+                    ) : (
+                        <>
+                            {latestRevision && (
+                                <button onClick={onReview} className="h-9 rounded-xl bg-primary px-3 text-[10px] font-black uppercase tracking-widest text-primary-foreground">
+                                    Review
+                                </button>
                             )}
-                        </div>
-                        {!isPending && (
-                            <p className="mt-3 text-[10px] font-medium text-muted-foreground">
-                                Client details and uploads are available inside Assets.
-                            </p>
-                        )}
-                    </>
-                )}
+                            <button onClick={onAssets} className="h-9 rounded-xl border border-border/50 bg-muted/30 px-3 text-[10px] font-black uppercase tracking-widest text-foreground" title="View Project Details">
+                                Details
+                            </button>
+                            {isAccepted && (
+                                <button onClick={onUpload} className="h-9 rounded-xl bg-emerald-500 px-3 text-[10px] font-black uppercase tracking-widest text-white">
+                                    Upload
+                                </button>
+                            )}
+                        </>
+                    )}
+                    {!isPending && (
+                        <p className="mt-3 text-[10px] font-medium text-muted-foreground">
+                            Client details and uploads are available inside Assets.
+                        </p>
+                    )}
+                </div>
             </td>
         </tr>
     );
@@ -1111,7 +1036,34 @@ function AssetSection({ title, icon: Icon, summary, children }: any) {
     );
 }
 
-function AssetModal({ project, onClose }: any) {
+function AssetModal({ project, onClose, onRespond, isResponding }: any) {
+    const [showDeclineReason, setShowDeclineReason] = useState(false);
+    const [reason, setReason] = useState("");
+    const [timeLeft, setTimeLeft] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (project.assignmentStatus === 'accepted' || project.assignmentStatus === 'rejected' || !project.assignmentExpiresAt) {
+            setTimeLeft(null);
+            return;
+        }
+
+        const interval = setInterval(() => {
+            const now = Date.now();
+            const diff = project.assignmentExpiresAt - now;
+            if (diff <= 0) {
+                setTimeLeft("EXPIRED");
+                clearInterval(interval);
+            } else {
+                const minutes = Math.floor(diff / 60000);
+                const seconds = Math.floor((diff % 60000) / 1000);
+                setTimeLeft(`${minutes}:${seconds.toString().padStart(2, '0')}`);
+            }
+        }, 1000);
+
+        return () => clearInterval(interval);
+    }, [project.assignmentStatus, project.assignmentExpiresAt]);
+
+    const isPending = project.assignmentStatus !== 'accepted' && project.assignmentStatus !== 'rejected';
     const resourceSummary = summarizeProjectResources(project);
     const scriptText = (project as any).scriptText;
     const clientReferenceFiles = (project.referenceFiles || []).filter((file: any) => !file?.uploadedBy);
@@ -1127,7 +1079,7 @@ function AssetModal({ project, onClose }: any) {
         },
         {
             key: "scripts",
-            title: "Scripts",
+            title: "Scripts & Directions",
             icon: FileText,
             summary: resourceSummary[1],
             files: project.scripts || [],
@@ -1135,8 +1087,17 @@ function AssetModal({ project, onClose }: any) {
             text: scriptText,
         },
         {
+            key: "pm_assets",
+            title: "Manager Guidelines",
+            icon: Briefcase,
+            summary: resourceSummary[5],
+            files: [...(project.pmFiles || []), ...pmReferenceFiles],
+            links: [],
+            remarks: project.pmRemarks,
+        },
+        {
             key: "audio",
-            title: "Audio",
+            title: "Audio Assets",
             icon: Music,
             summary: resourceSummary[2],
             files: project.audioFiles || [],
@@ -1158,15 +1119,21 @@ function AssetModal({ project, onClose }: any) {
             files: (project as any).bRoleFiles || [],
             links: [],
         },
-        {
-            key: "pm",
-            title: "PM Files",
-            icon: Briefcase,
-            summary: resourceSummary[5],
-            files: [...(project.pmFiles || []), ...pmReferenceFiles],
-            links: [],
-        },
     ];
+
+    const handleAccept = async () => {
+        await onRespond(project.id, 'accepted');
+        onClose();
+    };
+
+    const handleDecline = async () => {
+        if (!reason.trim()) {
+            toast.error("Please provide a reason for declining.");
+            return;
+        }
+        await onRespond(project.id, 'rejected', reason);
+        onClose();
+    };
 
     return (
         <motion.div 
@@ -1176,29 +1143,122 @@ function AssetModal({ project, onClose }: any) {
         >
             <motion.div 
                 initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-                className="w-full max-w-7xl bg-card border border-border/50 rounded-2xl shadow-3xl overflow-hidden flex flex-col max-h-[88vh]"
+                className="w-full max-w-7xl bg-card border border-border/50 rounded-2xl shadow-3xl overflow-hidden flex flex-col max-h-[92vh]"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="p-8 border-b border-border/50 flex items-center justify-between">
+                <div className="p-8 border-b border-border/50 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                     <div>
-                        <h2 className="text-2xl font-black text-foreground">Project Assets</h2>
-                        <p className="text-sm text-muted-foreground mt-1">{project.name}</p>
-                        <div className="mt-3 flex flex-wrap gap-2">
-                            <span className="rounded-full border border-border/50 bg-muted/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                Client: {project.clientName || "Direct Client"}
-                            </span>
-                            <span className="rounded-full border border-border/50 bg-muted/20 px-3 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground">
-                                Type: {project.videoFormat || project.videoType || "Not set"}
-                            </span>
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-2xl font-black text-foreground">
+                                {isPending ? "Project Assignment Briefing" : "Project Command Center"}
+                            </h2>
+                            {isPending && timeLeft && (
+                                <div className={cn(
+                                    "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border flex items-center gap-2",
+                                    timeLeft === 'EXPIRED' ? "bg-rose-500/10 text-rose-500 border-rose-500/20" : "bg-primary/10 text-primary border-primary/20"
+                                )}>
+                                    <Timer size={12} className={timeLeft !== 'EXPIRED' ? "animate-pulse" : ""} />
+                                    {timeLeft === 'EXPIRED' ? "Expired" : `Expires in ${timeLeft}`}
+                                </div>
+                            )}
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1 font-bold">{project.name}</p>
+                        <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                            <div className="px-4 py-3 rounded-xl border border-border/50 bg-muted/20">
+                                <p className="text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground mb-1">Brand/Client</p>
+                                <p className="text-xs font-bold text-foreground truncate">{project.brand || project.clientName || "Direct Client"}</p>
+                            </div>
+                            <div className="px-4 py-3 rounded-xl border border-border/50 bg-muted/20">
+                                <p className="text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground mb-1">Video Type</p>
+                                <p className="text-xs font-bold text-foreground truncate">{project.videoFormat || project.videoType || "Standard"}</p>
+                            </div>
+                            <div className="px-4 py-3 rounded-xl border border-border/50 bg-muted/20">
+                                <p className="text-[9px] font-black uppercase tracking-[0.15em] text-muted-foreground mb-1">Status</p>
+                                <div className="flex items-center gap-1.5">
+                                    <div className={cn("h-1.5 w-1.5 rounded-full", isPending ? "bg-amber-500 animate-pulse" : "bg-emerald-500")} />
+                                    <p className="text-xs font-bold text-foreground">{isPending ? "Pending Assignment" : "Active Project"}</p>
+                                </div>
+                            </div>
+                            <div className="px-4 py-3 rounded-xl border border-primary/20 bg-primary/5">
+                                <p className="text-[9px] font-black uppercase tracking-[0.15em] text-primary mb-1">Total Payout</p>
+                                <p className="text-sm font-black text-primary">{formatCurrency(project.editorPrice)}</p>
+                            </div>
                         </div>
                     </div>
-                    <button onClick={onClose} className="h-12 w-12 rounded-2xl bg-muted hover:bg-muted/80 transition-colors flex items-center justify-center"><X size={20}/></button>
+                    <div className="flex items-center gap-3">
+                        <button onClick={onClose} className="h-12 w-12 rounded-2xl bg-muted hover:bg-muted/80 transition-colors flex items-center justify-center text-muted-foreground"><X size={20}/></button>
+                    </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-8">
+                <div className="flex-1 overflow-y-auto p-8 space-y-8">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                        {/* Project Description Section */}
+                        <div className="md:col-span-2 rounded-2xl border border-border/50 bg-muted/5 p-8 space-y-6 relative overflow-hidden group">
+                            {isPending && (
+                                <div className="absolute top-0 right-0 p-12 opacity-[0.03] -rotate-12 group-hover:opacity-[0.05] transition-all">
+                                    <FileText size={160} />
+                                </div>
+                            )}
+                            <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-primary">
+                                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <FileText size={16} />
+                                </div>
+                                Project Overview & Scope
+                            </div>
+                            <div className="space-y-4 relative z-10">
+                                <p className="text-base leading-relaxed text-foreground/90 whitespace-pre-wrap font-medium">
+                                    {project.description || "No project description provided by the client."}
+                                </p>
+                                {isPending && (
+                                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 text-xs text-primary/80 font-bold flex items-center gap-3">
+                                        <AlertCircle size={16} />
+                                        Please review the scope and technical requirements before accepting this assignment.
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+
+                        {/* Technical Specs Card */}
+                        <div className="rounded-2xl border border-border/50 bg-card p-8 space-y-6 shadow-xl shadow-black/5">
+                            <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-primary">
+                                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <Settings size={16} />
+                                </div>
+                                Production Specs
+                            </div>
+                            <div className="space-y-5">
+                                {[
+                                    { label: "Aspect Ratio", value: project.aspectRatio || "Not specified", icon: Layers },
+                                    { label: "Est. Duration", value: project.duration ? `${project.duration} seconds` : "Flexible", icon: Clock },
+                                    { label: "Final Format", value: project.videoFormat || "MP4/MOV", icon: Film },
+                                    { label: "Deadline", value: project.deadline ? new Date(project.deadline).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }) : "ASAP", icon: Timer },
+                                ].map((spec, i) => (
+                                    <div key={i} className="flex items-center justify-between group/spec">
+                                        <div className="flex items-center gap-4">
+                                            <div className="h-10 w-10 rounded-xl bg-muted/50 border border-border/50 flex items-center justify-center text-muted-foreground group-hover/spec:text-primary transition-all group-hover/spec:scale-110">
+                                                <spec.icon size={16} />
+                                            </div>
+                                            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{spec.label}</span>
+                                        </div>
+                                        <span className="text-xs font-black text-foreground">{spec.value}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
                         {groupedAssets.map((section) => (
                             <AssetSection key={section.key} title={section.title} icon={section.icon} summary={section.summary}>
+                                {section.remarks && (
+                                    <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <AlertCircle size={14} className="text-amber-500" />
+                                            <p className="text-[10px] font-black uppercase tracking-widest text-amber-600">PM Remarks</p>
+                                        </div>
+                                        <p className="text-xs leading-relaxed text-foreground font-medium italic">"{section.remarks}"</p>
+                                    </div>
+                                )}
                                 {section.text && (
                                     <div className="rounded-xl border border-border/50 bg-background/60 p-4">
                                         <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Pasted Brief</p>
@@ -1237,10 +1297,70 @@ function AssetModal({ project, onClose }: any) {
                         ))}
                     </div>
                 </div>
+
+                {/* Assignment Response Footer */}
+                {isPending && (
+                    <div className="p-8 bg-muted/20 border-t border-border/50">
+                        {showDeclineReason ? (
+                            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-4 max-w-2xl mx-auto">
+                                <div className="space-y-2">
+                                    <label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground ml-1">Reason for declining</label>
+                                    <Textarea 
+                                        placeholder="Please let us know why you are declining this project..."
+                                        className="min-h-[100px] text-sm rounded-2xl bg-background border-border/50 focus:border-primary/50 shadow-inner p-4"
+                                        value={reason}
+                                        onChange={e => setReason(e.target.value)}
+                                    />
+                                </div>
+                                <div className="flex gap-4">
+                                    <button 
+                                        onClick={() => setShowDeclineReason(false)}
+                                        className="flex-1 h-14 rounded-2xl bg-muted text-foreground font-black text-xs hover:bg-muted/80 transition-all"
+                                    >
+                                        Go Back
+                                    </button>
+                                    <button 
+                                        disabled={!reason.trim() || isResponding}
+                                        onClick={handleDecline}
+                                        className="flex-[2] h-14 rounded-2xl bg-destructive text-destructive-foreground font-black text-xs hover:brightness-110 transition-all flex items-center justify-center gap-2"
+                                    >
+                                        {isResponding ? <Loader2 className="animate-spin" size={18} /> : "Confirm & Decline Assignment"}
+                                    </button>
+                                </div>
+                            </motion.div>
+                        ) : (
+                            <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
+                                <button 
+                                    disabled={isResponding}
+                                    onClick={handleAccept}
+                                    className="w-full sm:w-80 h-16 rounded-2xl bg-emerald-500 text-white font-black text-sm shadow-xl shadow-emerald-500/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-3 group/btn"
+                                >
+                                    {isResponding ? <Loader2 className="animate-spin" size={20} /> : (
+                                        <>
+                                            <CheckCircle2 size={20} className="group-hover:scale-110 transition-transform" /> 
+                                            Accept & Start Project
+                                        </>
+                                    )}
+                                </button>
+                                <button 
+                                    disabled={isResponding}
+                                    onClick={() => setShowDeclineReason(true)}
+                                    className="w-full sm:w-48 h-16 rounded-2xl bg-muted/50 border border-border/50 text-muted-foreground font-black text-xs hover:bg-muted active:scale-95 transition-all"
+                                >
+                                    Decline Project
+                                </button>
+                            </div>
+                        )}
+                        <p className="text-center text-[10px] text-muted-foreground mt-4 font-bold uppercase tracking-widest opacity-60">
+                            Once accepted, the project will move to your active workspace and direct uploads will be enabled.
+                        </p>
+                    </div>
+                )}
             </motion.div>
         </motion.div>
     );
 }
+
 function FinanceCard({ project }: any) {
     return (
         <div className="bg-card border border-border/50 rounded-xl p-6 flex flex-col gap-4 shadow-sm hover:shadow-md transition-all">
