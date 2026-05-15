@@ -104,7 +104,6 @@ import {
   updateSystemSettings,
   settleProjectPayment,
   addProjectLog,
-  bulkSettleEditorDues,
   assignProjectManager,
   updateUserDetails,
   assignManagerToClient,
@@ -6235,3 +6234,4 @@ export function AdminDashboard() {
     </div>
   );
 }
+

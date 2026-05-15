@@ -1,7 +1,8 @@
 "use client";
 
 import { useAuth } from "@/lib/context/auth-context";
-import { addProjectLog, bulkSettleEditorDues, settleProjectPayment } from "@/app/actions/admin-actions";
+import { addProjectLog, settleProjectPayment } from "@/app/actions/admin-actions";
+import { initiateEditorPayout, bulkInitiateEditorPayouts } from "@/app/actions/payout-actions";
 import { db } from "@/lib/firebase/config";
 import { Project } from "@/types/schema";
 import { collection, doc, onSnapshot, orderBy, query, updateDoc, where } from "firebase/firestore";
@@ -15,6 +16,8 @@ export default function PMFinancePage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [payoutProcessing, setPayoutProcessing] = useState<Record<string, boolean>>({});
+  const [isBulkSettleLoading, setIsBulkSettleLoading] = useState(false);
 
   useEffect(() => {
     if (!user?.uid) return;
@@ -65,16 +68,28 @@ export default function PMFinancePage() {
   };
 
   const handleSettleEditor = async (projectId: string) => {
-    if (!user?.uid) return;
+    if (payoutProcessing[projectId]) return;
+
     try {
-      await updateDoc(doc(db, "projects", projectId), {
-        editorPaid: true,
-        editorPaidAt: Date.now(),
-      });
-      await addProjectLog(projectId, "PAYMENT_MARKED", { uid: user.uid, displayName: user.displayName || "PM", designation: "Project Manager" }, "Editor payment completed.");
-      toast.success("Editor payout settled");
-    } catch {
-      toast.error("Failed to settle editor payout");
+      setPayoutProcessing(prev => ({ ...prev, [projectId]: true }));
+      const result = await initiateEditorPayout(projectId);
+
+      if (result.success) {
+        toast.success("Payout initiated successfully via RazorpayX");
+        await addProjectLog(
+          projectId, 
+          "PAYMENT_INITIATED", 
+          { uid: user?.uid || 'system', displayName: user?.displayName || 'PM' }, 
+          `Editor payout of ₹${result.payout?.amount ? result.payout.amount / 100 : 'unknown'} initiated via RazorpayX. Payout ID: ${result.payoutId}`
+        );
+      } else {
+        toast.error(result.error || "Failed to initiate payout");
+      }
+    } catch (error: any) {
+      console.error("Payout error:", error);
+      toast.error(error.message || "An unexpected error occurred during payout");
+    } finally {
+      setPayoutProcessing(prev => ({ ...prev, [projectId]: false }));
     }
   };
 
@@ -83,10 +98,17 @@ export default function PMFinancePage() {
     if (editorPendingProjects.length === 0) return;
     if (!confirm(`Settle all ${editorPendingProjects.length} pending editor payouts?`)) return;
 
-    const ids = editorPendingProjects.map((p) => p.id);
-    const res = await bulkSettleEditorDues(ids, { uid: user.uid, displayName: user.displayName || "PM", designation: "Project Manager" });
-    if (res.success) toast.success("All editor payouts settled");
-    else toast.error("Failed to settle all editor payouts");
+    try {
+      setIsBulkSettleLoading(true);
+      const ids = editorPendingProjects.map((p) => p.id);
+      const res = await bulkInitiateEditorPayouts(ids);
+      if (res.success) toast.success(res.message);
+      else toast.error("Failed to initiate automated payouts");
+    } catch (err) {
+      toast.error("An unexpected error occurred during bulk settlement");
+    } finally {
+      setIsBulkSettleLoading(false);
+    }
   };
 
   if (loading) {
@@ -161,9 +183,10 @@ export default function PMFinancePage() {
             {editorPendingProjects.length > 0 && (
               <button
                 onClick={handleSettleAllEditor}
-                className="h-8 px-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white text-[10px] font-bold uppercase tracking-widest"
+                disabled={isBulkSettleLoading}
+                className="h-8 px-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white text-[10px] font-bold uppercase tracking-widest disabled:opacity-50"
               >
-                Settle All
+                {isBulkSettleLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : "Settle All"}
               </button>
             )}
           </div>
@@ -181,9 +204,10 @@ export default function PMFinancePage() {
                   </div>
                   <button
                     onClick={() => handleSettleEditor(p.id)}
-                    className="h-8 px-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white text-[10px] font-bold uppercase tracking-widest"
+                    disabled={payoutProcessing[p.id]}
+                    className="h-8 px-3 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-white text-[10px] font-bold uppercase tracking-widest disabled:opacity-50"
                   >
-                    Settle
+                    {payoutProcessing[p.id] ? <Loader2 className="h-3 w-3 animate-spin" /> : "Settle"}
                   </button>
                 </div>
               ))
@@ -227,3 +251,4 @@ export default function PMFinancePage() {
     </div>
   );
 }
+

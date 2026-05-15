@@ -989,7 +989,18 @@ export async function markAllNotificationsAsRead(userId: string) {
  * Auto-assigns an editor to a project based on client-specific priority
  * Called when PM selects "Auto Assign" option from the dashboard
  */
-export async function autoAssignEditor(projectId: string, editorPrice: number, deadline?: string) {
+/**
+ * Auto-assigns an editor to a project based on client-specific priority
+ * Called when PM selects "Auto Assign" option from the dashboard
+ */
+export async function autoAssignEditor(projectId: string, editorPrice: number, deadline?: string): Promise<{ 
+    success: boolean; 
+    error?: string; 
+    editorId?: string; 
+    editorName?: string; 
+    priority?: number; 
+}> {
+
     try {
         // 1. Get project data
         const projectRef = adminDb.collection('projects').doc(projectId);

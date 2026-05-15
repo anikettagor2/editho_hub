@@ -42,11 +42,12 @@ import {
     Link as LinkIcon,
     Wallet
 } from "lucide-react";
-import { EditorSettlementModal } from "@/components/qr-payment-modal";
+import { Modal } from "@/components/ui/modal";
 import { db } from "@/lib/firebase/config";
 import { collection, query, orderBy, onSnapshot, updateDoc, doc, where, arrayUnion } from "firebase/firestore";
 import { UploadService } from "@/lib/services/upload-service";
 import { UploadDraftModal } from "./upload-draft-modal";
+import { EditorSettlementModal } from "@/components/qr-payment-modal";
 import { Project, User } from "@/types/schema";
 import { 
     assignEditor,
@@ -55,9 +56,9 @@ import {
     toggleProjectAutoPay,
     settleProjectPayment,
     deleteProject,
-    bulkSettleEditorDues,
     settleEditorPayment
 } from "@/app/actions/admin-actions";
+import { initiateEditorPayout, bulkInitiateEditorPayouts } from "@/app/actions/payout-actions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { motion, AnimatePresence } from "framer-motion";
@@ -194,7 +195,11 @@ export function ProjectManagerDashboard() {
     const [reviewProject, setReviewProject] = useState<Project | null>(null);
     
     const [previewFile, setPreviewFile] = useState<{ url: string; type: string; name: string } | null>(null);
+    const [payoutProcessing, setPayoutProcessing] = useState<Record<string, boolean>>({});
+
+    // Settlement Modal
     const [isSettlementModalOpen, setIsSettlementModalOpen] = useState(false);
+    const [settlementProject, setSettlementProject] = useState<Project | null>(null);
 
     useEffect(() => {
         setLoading(true);
@@ -276,13 +281,17 @@ export function ProjectManagerDashboard() {
         try {
             const res = await autoAssignEditor(selectedProject.id, Number(editorPriceInput), assignDeadline);
             if (res.success) {
-                toast.success(`Auto-assigned to ${res.editorName} (Priority ${res.priority})`);
+                // Type safety check for editor details in the response
+                const editorName = (res as any).editorName || "Editor";
+                const priority = (res as any).priority || "N/A";
+                
+                toast.success(`Auto-assigned to ${editorName} (Priority ${priority})`);
                 setIsAssignModalOpen(false);
                 setSelectedProject(null);
                 setEditorPriceInput("");
                 setAssignDeadline("");
             } else {
-                toast.error(res.error || "Auto-assign failed");
+                toast.error((res as any).error || "Auto-assign failed");
             }
         } catch (err) {
             toast.error("Something went wrong. Please try again.");
@@ -305,16 +314,29 @@ export function ProjectManagerDashboard() {
     };
 
     const handleReimburseEditor = async (projectId: string) => {
+        if (payoutProcessing[projectId]) return;
+
         try {
-            await updateDoc(doc(db, "projects", projectId), {
-                editorPaid: true,
-                editorPaidAt: Date.now()
-            });
-            const { addProjectLog } = await import("@/app/actions/admin-actions");
-            await addProjectLog(projectId, 'PAYMENT_MARKED', { uid: user?.uid || 'system', displayName: user?.displayName || 'PM' }, 'Editor payment completed.');
-            toast.success("Editor payment marked as complete");
-        } catch (error) {
-            toast.error("Failed to update payment status");
+            setPayoutProcessing(prev => ({ ...prev, [projectId]: true }));
+            const result = await initiateEditorPayout(projectId);
+
+            if (result.success) {
+                toast.success("Payout initiated successfully via RazorpayX");
+                const { addProjectLog } = await import("@/app/actions/admin-actions");
+                await addProjectLog(
+                    projectId, 
+                    'PAYMENT_INITIATED', 
+                    { uid: user?.uid || 'system', displayName: user?.displayName || 'PM' }, 
+                    `Editor payout of ₹${result.payout?.amount ? result.payout.amount / 100 : 'unknown'} initiated via RazorpayX. Payout ID: ${result.payoutId}`
+                );
+            } else {
+                toast.error(result.error || "Failed to initiate payout");
+            }
+        } catch (error: any) {
+            console.error("Payout error:", error);
+            toast.error(error.message || "An unexpected error occurred during payout");
+        } finally {
+            setPayoutProcessing(prev => ({ ...prev, [projectId]: false }));
         }
     };
 
@@ -322,17 +344,13 @@ export function ProjectManagerDashboard() {
         const editorProjects = projects.filter(p => p.assignedEditorId === editorId && p.clientHasDownloaded && !p.editorPaid);
         if (editorProjects.length === 0) return;
         
-        if(!confirm(`Settle all ${editorProjects.length} pending payments for this editor?`)) return;
+        if(!confirm(`Settle all ${editorProjects.length} pending payouts for this editor?`)) return;
         
         const pids = editorProjects.map(p => p.id);
-        const res = await bulkSettleEditorDues(pids, { 
-            uid: user!.uid, 
-            displayName: user!.displayName || "PM", 
-            designation: 'Project Manager' 
-        });
+        const res = await bulkInitiateEditorPayouts(pids);
         
-        if(res.success) toast.success("All payments settled");
-        else toast.error("Failed to settle payments");
+        if(res.success) toast.success(res.message);
+        else toast.error("Failed to initiate automated payouts");
     };
 
     const handleOpenReview = async (projectId: string) => {
@@ -1005,13 +1023,16 @@ export function ProjectManagerDashboard() {
                                                         
                                                         {project.assignedEditorId && !project.editorPaid && (
                                                             <DropdownMenuItem 
-                                                                onClick={() => {
-                                                                    setSelectedProject(project);
-                                                                    setIsSettlementModalOpen(true);
-                                                                }}
+                                                                onClick={() => handleReimburseEditor(project.id)}
                                                                 className="text-sm cursor-pointer text-blue-600"
+                                                                disabled={payoutProcessing[project.id]}
                                                             >
-                                                                <Wallet className="mr-2 h-4 w-4" /> Settle Editor Dues
+                                                                {payoutProcessing[project.id] ? (
+                                                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                                ) : (
+                                                                    <Wallet className="mr-2 h-4 w-4" />
+                                                                )}
+                                                                {payoutProcessing[project.id] ? 'Processing...' : 'Settle Editor Dues'}
                                                             </DropdownMenuItem>
                                                         )}
                                                         
@@ -2015,10 +2036,31 @@ export function ProjectManagerDashboard() {
                                 
                                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                                     <div className="p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
-                                        <p className="text-xs text-emerald-600">Editor Pay</p>
-                                        <p className="text-lg font-bold text-emerald-600 tabular-nums">
-                                            ₹{inspectProject.editorPrice?.toLocaleString() || '0'}
-                                        </p>
+                                        <div className="flex items-center justify-between">
+                                            <div>
+                                                <p className="text-xs text-emerald-600">Editor Pay</p>
+                                                <p className="text-lg font-bold text-emerald-600 tabular-nums">
+                                                    ₹{inspectProject.editorPrice?.toLocaleString() || '0'}
+                                                </p>
+                                            </div>
+                                            {!inspectProject.editorPaid && inspectProject.status === 'completed' && (
+                                                <button
+                                                    onClick={() => {
+                                                        setSettlementProject(inspectProject);
+                                                        setIsSettlementModalOpen(true);
+                                                    }}
+                                                    className="px-3 py-1.5 bg-emerald-500 text-white text-[10px] font-black uppercase tracking-widest rounded hover:bg-emerald-600 transition-all active:scale-95 shadow-sm shadow-emerald-500/20"
+                                                >
+                                                    Settle
+                                                </button>
+                                            )}
+                                            {inspectProject.editorPaid && (
+                                                <div className="flex items-center gap-1 text-emerald-600">
+                                                    <CheckCircle2 className="h-3 w-3" />
+                                                    <span className="text-[10px] font-bold uppercase">Settled</span>
+                                                </div>
+                                            )}
+                                        </div>
                                     </div>
                                     <div className="p-3 bg-primary/10 border border-primary/20 rounded-lg">
                                         <p className="text-xs text-primary">Platform Fee</p>
@@ -2118,6 +2160,29 @@ export function ProjectManagerDashboard() {
                 } : null}
             />
 
+            {settlementProject && (
+                <EditorSettlementModal
+                    isOpen={isSettlementModalOpen}
+                    onClose={() => {
+                        setIsSettlementModalOpen(false);
+                        setSettlementProject(null);
+                    }}
+                    projectId={settlementProject.id}
+                    projectName={settlementProject.name || "Untitled Project"}
+                    editorAmount={settlementProject.editorPrice || 0}
+                    editorName={users.find(u => u.uid === settlementProject.assignedEditorId)?.displayName || "Editor"}
+                    editorUpiId={users.find(u => u.uid === settlementProject.assignedEditorId)?.upiDetails?.vpa}
+                    editorBankDetails={users.find(u => u.uid === settlementProject.assignedEditorId)?.bankDetails}
+                    onMarkAsPaid={async () => {
+                        await settleEditorPayment(settlementProject.id);
+                        if (inspectProject?.id === settlementProject.id) {
+                            setInspectProject({ ...inspectProject, editorPaid: true, editorPaidAt: Date.now() });
+                        }
+                    }}
+                    alreadyPaid={settlementProject.editorPaid}
+                />
+            )}
+
             {/* Multiple Upload Draft Modals for Editor */}
             {openDraftModals
                 .filter((modal) => modal.projectId && modal.projectName)
@@ -2132,18 +2197,8 @@ export function ProjectManagerDashboard() {
                 />
             ))}
 
-            {selectedProject && (
-                <EditorSettlementModal
-                    isOpen={isSettlementModalOpen}
-                    onClose={() => setIsSettlementModalOpen(false)}
-                    project={selectedProject}
-                    onSettled={() => {
-                        setIsSettlementModalOpen(false);
-                        toast.success("Editor payment marked as settled!");
-                    }}
-                />
-            )}
 
         </div>
     );
 }
+
