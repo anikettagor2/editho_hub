@@ -39,8 +39,10 @@ import {
     Copy,
     ImageIcon,
     FileText,
-    Link as LinkIcon
+    Link as LinkIcon,
+    Wallet
 } from "lucide-react";
+import { EditorSettlementModal } from "@/components/qr-payment-modal";
 import { db } from "@/lib/firebase/config";
 import { collection, query, orderBy, onSnapshot, updateDoc, doc, where, arrayUnion } from "firebase/firestore";
 import { UploadService } from "@/lib/services/upload-service";
@@ -53,7 +55,8 @@ import {
     toggleProjectAutoPay,
     settleProjectPayment,
     deleteProject,
-    bulkSettleEditorDues
+    bulkSettleEditorDues,
+    settleEditorPayment
 } from "@/app/actions/admin-actions";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
@@ -191,6 +194,7 @@ export function ProjectManagerDashboard() {
     const [reviewProject, setReviewProject] = useState<Project | null>(null);
     
     const [previewFile, setPreviewFile] = useState<{ url: string; type: string; name: string } | null>(null);
+    const [isSettlementModalOpen, setIsSettlementModalOpen] = useState(false);
 
     useEffect(() => {
         setLoading(true);
@@ -996,6 +1000,18 @@ export function ProjectManagerDashboard() {
                                                                 className="text-sm cursor-pointer text-emerald-600"
                                                             >
                                                                 <IndianRupee className="mr-2 h-4 w-4" /> Mark Payment Complete
+                                                            </DropdownMenuItem>
+                                                        )}
+                                                        
+                                                        {project.assignedEditorId && !project.editorPaid && (
+                                                            <DropdownMenuItem 
+                                                                onClick={() => {
+                                                                    setSelectedProject(project);
+                                                                    setIsSettlementModalOpen(true);
+                                                                }}
+                                                                className="text-sm cursor-pointer text-blue-600"
+                                                            >
+                                                                <Wallet className="mr-2 h-4 w-4" /> Settle Editor Dues
                                                             </DropdownMenuItem>
                                                         )}
                                                         
@@ -2115,6 +2131,18 @@ export function ProjectManagerDashboard() {
                     onSuccess={() => setOpenDraftModals((prev) => prev.filter((m) => m.id !== modal.id))}
                 />
             ))}
+
+            {selectedProject && (
+                <EditorSettlementModal
+                    isOpen={isSettlementModalOpen}
+                    onClose={() => setIsSettlementModalOpen(false)}
+                    project={selectedProject}
+                    onSettled={() => {
+                        setIsSettlementModalOpen(false);
+                        toast.success("Editor payment marked as settled!");
+                    }}
+                />
+            )}
 
         </div>
     );

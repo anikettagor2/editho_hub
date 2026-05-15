@@ -124,7 +124,6 @@ export function DashboardSidebar({}: DashboardSidebarProps) {
       case 'admin':
         return [
           { href: "/dashboard", label: "Admin Dashboard", icon: LayoutDashboard },
-          { href: "/dashboard/auto-assign", label: "Auto Assign", icon: Zap },
           { href: "/dashboard/invoices", label: "Invoices", icon: FileText },
           { href: "/dashboard/invoice-settings", label: "Invoice Settings", icon: ReceiptText },
           { href: "/dashboard/settings", label: "Settings", icon: Settings },

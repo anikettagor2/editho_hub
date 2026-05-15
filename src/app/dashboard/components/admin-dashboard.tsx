@@ -7,6 +7,7 @@ import {
   orderBy,
   onSnapshot,
   updateDoc,
+  writeBatch,
   doc,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
@@ -63,6 +64,7 @@ import {
   Settings,
   Phone,
   Download,
+  Wallet,
 } from "lucide-react";
 
 import { cn, safeJsonParse } from "@/lib/utils";
@@ -106,8 +108,9 @@ import {
   assignProjectManager,
   updateUserDetails,
   assignManagerToClient,
+  settleEditorPayment,
 } from "@/app/actions/admin-actions";
-import { initiateEditorPayout } from "@/app/actions/payout-actions";
+import { initiateEditorPayout, bulkInitiateEditorPayouts } from "@/app/actions/payout-actions";
 import { AdminOverviewGraphs } from "./admin-overview-graphs";
 import { AdminPerformanceTab } from "./admin-performance";
 import { ClientDocuments } from "./client-documents";
@@ -421,6 +424,7 @@ export function AdminDashboard() {
   const [projectCurrentPage, setProjectCurrentPage] = useState(1);
 
   const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
+
   const [assignEditorPrice, setAssignEditorPrice] = useState<string>("");
   const [assignDeadline, setAssignDeadline] = useState<string>("");
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -507,6 +511,8 @@ export function AdminDashboard() {
   const [assignedPM, setAssignedPM] = useState<User | null>(null);
   const [isChangingPM, setIsChangingPM] = useState(false);
   const [selectedNewPM, setSelectedNewPM] = useState<string>("");
+  const [isChangingSE, setIsChangingSE] = useState(false);
+  const [selectedNewSE, setSelectedNewSE] = useState<string>("");
 
   // Edit Team Member Modal State
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
@@ -556,12 +562,15 @@ export function AdminDashboard() {
   useEffect(() => {
     if (!selectedClient || !isClientProfileModalOpen) return;
 
-    // Load assigned SE
-    if (selectedClient.createdBy) {
-      const se = users.find((u) => u.uid === selectedClient.createdBy);
+    // Load assigned SE (use managedBy first, fall back to createdBy)
+    const seId = (selectedClient as any).managedBy || selectedClient.createdBy;
+    if (seId) {
+      const se = users.find((u) => u.uid === seId);
       setAssignedSE(se || null);
+      setSelectedNewSE(seId);
     } else {
       setAssignedSE(null);
+      setSelectedNewSE("");
     }
 
     // Load assigned PM
@@ -635,6 +644,62 @@ export function AdminDashboard() {
       toast.error(error.message || "Failed to change project manager");
     } finally {
       setIsChangingPM(false);
+    }
+  };
+
+  const handleChangeClientSE = async () => {
+    if (!selectedClient || !selectedNewSE) {
+      toast.error("Please select a sales executive");
+      return;
+    }
+
+    const currentSEId = (selectedClient as any).managedBy || selectedClient.createdBy;
+    if (selectedNewSE === currentSEId) {
+      toast.info("No change in Sales Executive selection");
+      return;
+    }
+
+    setIsChangingSE(true);
+    try {
+      const now = Date.now();
+      // Update the client user document with the new SE (both managedBy and createdBy)
+      await updateDoc(doc(db, "users", selectedClient.uid), {
+        managedBy: selectedNewSE,
+        createdBy: selectedNewSE,
+        updatedAt: now,
+      });
+
+      // Propagate assignedSEId to all projects belonging to this client so that
+      // PM Team Management and project records are kept in sync
+      const clientProjects = projects.filter((p) => p.clientId === selectedClient.uid);
+      if (clientProjects.length > 0) {
+        const batch = writeBatch(db);
+        for (const p of clientProjects) {
+          batch.update(doc(db, "projects", p.id), {
+            assignedSEId: selectedNewSE,
+            updatedAt: now,
+          });
+        }
+        await batch.commit();
+      }
+
+      const newSEData = users.find((u) => u.uid === selectedNewSE);
+      toast.success(
+        `Sales Executive changed to ${newSEData?.displayName || "Unknown"}.` +
+        (clientProjects.length > 0 ? ` Updated ${clientProjects.length} project(s).` : ""),
+      );
+
+      // Update local state so the modal reflects the change immediately
+      setSelectedClient({
+        ...selectedClient,
+        createdBy: selectedNewSE,
+        managedBy: selectedNewSE,
+      } as any);
+      setAssignedSE(newSEData || null);
+    } catch (error: any) {
+      toast.error(error.message || "Failed to change sales executive");
+    } finally {
+      setIsChangingSE(false);
     }
   };
 
@@ -937,14 +1002,10 @@ export function AdminDashboard() {
       return;
 
     const pids = editorProjects.map((p) => p.id);
-    const res = await bulkSettleEditorDues(pids, {
-      uid: currentUser!.uid,
-      displayName: currentUser!.displayName || "Admin",
-      designation: currentUser?.role === "admin" ? "Admin" : "Project Manager",
-    });
+    const res = await bulkInitiateEditorPayouts(pids);
 
-    if (res.success) toast.success(`Settled all dues for editor.`);
-    else toast.error("Failed to settle dues");
+    if (res.success) toast.success(res.message);
+    else toast.error("Failed to initiate automated payouts");
   };
 
   const handleUpdateProject = async () => {
@@ -1213,24 +1274,24 @@ export function AdminDashboard() {
             setIsClientProfileModalOpen(false);
             setSelectedClient(null);
           }}
-          title="Client Profile Management"
-          maxWidth="max-w-lg"
+          title="Client Assignment Management"
+          maxWidth="max-w-xl"
         >
-          <div className="space-y-6">
-            {/* Client Info */}
-            <div className="p-4 rounded-xl bg-muted/50 border border-border space-y-2">
+          <div className="space-y-5 mt-2">
+            {/* Client Identity Card */}
+            <div className="p-4 rounded-xl bg-muted/50 border border-border">
               <div className="flex items-start gap-3">
-                <Avatar className="w-12 h-12 border border-border">
+                <Avatar className="w-12 h-12 border border-border shrink-0">
                   <AvatarImage src={selectedClient.photoURL || undefined} />
                   <AvatarFallback className="bg-primary/20 text-primary font-bold">
                     {selectedClient.displayName?.[0]}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex-1">
-                  <p className="text-sm font-bold text-foreground">
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-bold text-foreground truncate">
                     {selectedClient.displayName}
                   </p>
-                  <p className="text-xs text-muted-foreground">
+                  <p className="text-xs text-muted-foreground truncate">
                     {selectedClient.email}
                   </p>
                   {selectedClient.phoneNumber && (
@@ -1238,112 +1299,157 @@ export function AdminDashboard() {
                       +91 {selectedClient.phoneNumber}
                     </p>
                   )}
-                </div>
-              </div>
-            </div>
-
-            {/* Sales Executive Info */}
-            <div className="space-y-2">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                Assigned Sales Executive
-              </Label>
-              <div className="p-3 rounded-lg bg-muted/50 border border-border">
-                {assignedSE ? (
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">
-                      {assignedSE.displayName}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {assignedSE.email}
-                    </p>
+                  <div className="flex items-center gap-2 mt-2">
+                    <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-primary/10 text-primary border border-primary/20">
+                      CLIENT
+                    </span>
+                    <span className="text-[9px] font-bold text-muted-foreground uppercase">
+                      {projects.filter(p => p.clientId === selectedClient.uid).length} projects
+                    </span>
                   </div>
-                ) : (
-                  <p className="text-sm text-amber-400">Not assigned</p>
-                )}
-              </div>
-            </div>
-
-            {/* Project Manager Selection */}
-            <div className="space-y-2">
-              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                Change Project Manager
-              </Label>
-              <select
-                value={selectedNewPM}
-                onChange={(e) => setSelectedNewPM(e.target.value)}
-                className="w-full h-11 px-4 rounded-lg border border-border bg-muted/50 text-sm text-foreground focus:border-primary/50 focus:outline-none transition-all appearance-none cursor-pointer font-medium"
-              >
-                <option value="">-- Select Project Manager --</option>
-                {users
-                  .filter((u) => u.role === "project_manager")
-                  .map((pm) => (
-                    <option key={pm.uid} value={pm.uid}>
-                      {pm.displayName}{" "}
-                      {pm.uid === selectedClient.assignedManagerId
-                        ? "(Current)"
-                        : ""}
-                    </option>
-                  ))}
-              </select>
-            </div>
-
-            {/* Current PM Info */}
-            {assignedPM && (
-              <div className="space-y-2">
-                <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  Currently Assigned PM
-                </Label>
-                <div className="p-3 rounded-lg bg-blue-500/5 border border-blue-500/20">
-                  <p className="text-sm font-semibold text-foreground">
-                    {assignedPM.displayName}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {assignedPM.email}
-                  </p>
-                  <p className="text-[10px] text-blue-400 mt-1 font-semibold">
-                    {
-                      projects.filter(
-                        (p) =>
-                          p.clientId === selectedClient.uid &&
-                          p.assignedPMId === assignedPM.uid,
-                      ).length
-                    }{" "}
-                    Active Projects
-                  </p>
                 </div>
               </div>
-            )}
-
-            <div className="flex gap-2 pt-2">
-              <Button
-                className="flex-1"
-                variant="outline"
-                onClick={() => {
-                  setIsClientProfileModalOpen(false);
-                  setSelectedClient(null);
-                }}
-              >
-                Close
-              </Button>
-              <Button
-                className="flex-1"
-                onClick={handleChangeClientPM}
-                disabled={
-                  isChangingPM ||
-                  !selectedNewPM ||
-                  selectedNewPM === selectedClient.assignedManagerId
-                }
-              >
-                {isChangingPM ? (
-                  <>
-                    <RefreshCw className="h-3.5 w-3.5 animate-spin mr-2" />
-                    Updating...
-                  </>
-                ) : (
-                  "Update Manager"
-                )}
-              </Button>
             </div>
+
+            {/* Two-column assignment grid */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+
+              {/* ── Sales Executive Block ── */}
+              <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
+                <div className="flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                    <TrendingUp className="h-3.5 w-3.5 text-amber-500" />
+                  </div>
+                  <h4 className="text-[11px] font-black uppercase tracking-widest text-amber-500">
+                    Sales Executive
+                  </h4>
+                </div>
+
+                {/* Current SE */}
+                <div className="p-2.5 rounded-lg bg-card border border-border">
+                  {assignedSE ? (
+                    <>
+                      <p className="text-xs font-bold text-foreground">{assignedSE.displayName}</p>
+                      <p className="text-[10px] text-muted-foreground">{assignedSE.email}</p>
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-amber-400 font-semibold">Not assigned</p>
+                  )}
+                </div>
+
+                {/* SE Dropdown */}
+                <div className="space-y-1.5">
+                  <Label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Reassign To
+                  </Label>
+                  <select
+                    value={selectedNewSE}
+                    onChange={(e) => setSelectedNewSE(e.target.value)}
+                    className="w-full h-9 px-3 rounded-lg border border-border bg-muted/50 text-xs text-foreground focus:border-amber-500/50 focus:outline-none transition-all appearance-none cursor-pointer font-medium"
+                  >
+                    <option value="">-- Select SE --</option>
+                    {users
+                      .filter((u) => u.role === "sales_executive")
+                      .map((se) => {
+                        const currentSEId = (selectedClient as any).managedBy || selectedClient.createdBy;
+                        return (
+                          <option key={se.uid} value={se.uid}>
+                            {se.displayName}{se.uid === currentSEId ? " (Current)" : ""}
+                          </option>
+                        );
+                      })}
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleChangeClientSE}
+                  disabled={isChangingSE || !selectedNewSE || selectedNewSE === ((selectedClient as any).managedBy || selectedClient.createdBy)}
+                  className="w-full h-8 rounded-lg text-[10px] font-black uppercase tracking-widest bg-amber-500/10 border border-amber-500/20 text-amber-500 hover:bg-amber-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5"
+                >
+                  {isChangingSE ? (
+                    <><RefreshCw className="h-3 w-3 animate-spin" /> Updating...</>
+                  ) : (
+                    "Update SE"
+                  )}
+                </button>
+              </div>
+
+              {/* ── Project Manager Block ── */}
+              <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
+                <div className="flex items-center gap-2">
+                  <div className="h-7 w-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                    <Briefcase className="h-3.5 w-3.5 text-blue-500" />
+                  </div>
+                  <h4 className="text-[11px] font-black uppercase tracking-widest text-blue-500">
+                    Project Manager
+                  </h4>
+                </div>
+
+                {/* Current PM */}
+                <div className="p-2.5 rounded-lg bg-card border border-border">
+                  {assignedPM ? (
+                    <>
+                      <p className="text-xs font-bold text-foreground">{assignedPM.displayName}</p>
+                      <p className="text-[10px] text-muted-foreground">{assignedPM.email}</p>
+                      <p className="text-[10px] text-blue-400 font-semibold mt-0.5">
+                        {projects.filter(p => p.clientId === selectedClient.uid && p.assignedPMId === assignedPM.uid).length} active projects
+                      </p>
+                    </>
+                  ) : (
+                    <p className="text-[11px] text-amber-400 font-semibold">Not assigned</p>
+                  )}
+                </div>
+
+                {/* PM Dropdown */}
+                <div className="space-y-1.5">
+                  <Label className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+                    Reassign To
+                  </Label>
+                  <select
+                    value={selectedNewPM}
+                    onChange={(e) => setSelectedNewPM(e.target.value)}
+                    className="w-full h-9 px-3 rounded-lg border border-border bg-muted/50 text-xs text-foreground focus:border-blue-500/50 focus:outline-none transition-all appearance-none cursor-pointer font-medium"
+                  >
+                    <option value="">-- Select PM --</option>
+                    {users
+                      .filter((u) => u.role === "project_manager")
+                      .map((pm) => (
+                        <option key={pm.uid} value={pm.uid}>
+                          {pm.displayName}{pm.uid === selectedClient.assignedManagerId ? " (Current)" : ""}
+                        </option>
+                      ))}
+                  </select>
+                </div>
+
+                <button
+                  onClick={handleChangeClientPM}
+                  disabled={isChangingPM || !selectedNewPM || selectedNewPM === selectedClient.assignedManagerId}
+                  className="w-full h-8 rounded-lg text-[10px] font-black uppercase tracking-widest bg-blue-500/10 border border-blue-500/20 text-blue-500 hover:bg-blue-500/20 disabled:opacity-40 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-1.5"
+                >
+                  {isChangingPM ? (
+                    <><RefreshCw className="h-3 w-3 animate-spin" /> Updating...</>
+                  ) : (
+                    "Update PM"
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Info note */}
+            <p className="text-[10px] text-muted-foreground text-center font-medium">
+              Changes are applied in real-time and visible to all active users immediately.
+            </p>
+
+            <Button
+              className="w-full"
+              variant="outline"
+              onClick={() => {
+                setIsClientProfileModalOpen(false);
+                setSelectedClient(null);
+              }}
+            >
+              Close
+            </Button>
           </div>
         </Modal>
       )}
@@ -1830,7 +1936,7 @@ export function AdminDashboard() {
                         className="px-6 py-5 text-muted-foreground text-[11px] font-medium uppercase tracking-tight"
                         suppressHydrationWarning
                       >
-                        {new Date(project.updatedAt).toLocaleDateString()} â€”{" "}
+                        {new Date(project.updatedAt).toLocaleDateString()} -{" "}
                         {new Date(project.updatedAt).toLocaleTimeString([], {
                           hour: "2-digit",
                           minute: "2-digit",
@@ -2184,6 +2290,15 @@ export function AdminDashboard() {
                                       Settle Payment
                                     </DropdownMenuItem>
                                   )}
+                                    {project.assignedEditorId && !project.editorPaid && (
+                                      <DropdownMenuItem
+                                        className="p-2.5 text-xs text-blue-500 hover:bg-blue-500/10 transition-colors cursor-pointer rounded-lg font-bold"
+                                        onClick={() => handleReimburseEditor(project.id)}
+                                      >
+                                        <Wallet className="mr-2.5 h-3.5 w-3.5" />{" "}
+                                        Settle Editor Dues
+                                      </DropdownMenuItem>
+                                    )}
                                 <DropdownMenuSeparator className="my-1 bg-border" />
                               </>
                             )}
@@ -2973,7 +3088,7 @@ export function AdminDashboard() {
                                 {u.displayName}
                               </div>
                               <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mt-0.5">
-                                {u.role} â€” UID: {u.uid.slice(0, 8)}
+                                {u.role} - UID: {u.uid.slice(0, 8)}
                               </div>
                             </div>
                           </div>
@@ -3088,7 +3203,7 @@ export function AdminDashboard() {
                                 {u.displayName}
                               </div>
                               <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mt-0.5">
-                                Editor Request â€”{" "}
+                                Editor Request -{" "}
                                 {new Date(u.createdAt).toLocaleDateString()}
                               </div>
                             </div>
@@ -4722,220 +4837,302 @@ export function AdminDashboard() {
               <div className="lg:col-span-8 space-y-6">
                 {/* Role-Specific Boxes */}
                 {selectedUserDetail.role === "client" && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div className="bg-muted/30 border border-border rounded-2xl p-6 space-y-6 relative overflow-hidden group/card">
-                      <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover/card:opacity-[0.08] transition-opacity">
-                        <Layers className="h-12 w-12" />
-                      </div>
-                      <h5 className="text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
-                        <IndianRupee className="h-4 w-4" /> Financial
-                        Credibility
-                      </h5>
-                      <div className="space-y-4 relative z-10">
-                        <div className="p-4 bg-card border border-border rounded-xl flex items-center justify-between hover:border-primary/30 transition-colors">
-                          <div className="flex flex-col">
-                            <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">
-                              Lifetime Investment
-                            </span>
-                            <span className="text-2xl font-black text-foreground tracking-tighter">
-                              ₹
-                              {(
-                                selectedUserDetail.lifetimeTotal || 0
-                              ).toLocaleString()}
-                            </span>
-                          </div>
-                          <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                            <TrendingUp className="h-5 w-5" />
-                          </div>
+                  <div className="space-y-6">
+
+                    {/* Row 1: Financial + Credit (2-col grid) */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+
+                      {/* Financial Credibility */}
+                      <div className="bg-muted/30 border border-border rounded-2xl p-6 space-y-6 relative overflow-hidden group/card">
+                        <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover/card:opacity-[0.08] transition-opacity">
+                          <Layers className="h-12 w-12" />
                         </div>
-                        <div className="p-4 bg-card border border-border rounded-xl flex items-center justify-between hover:border-red-500/30 transition-colors">
-                          <div className="flex flex-col">
-                            <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">
-                              Outstanding Liability
-                            </span>
-                            <span className="text-2xl font-black text-red-500 tracking-tighter">
-                              ₹
-                              {(
-                                selectedUserDetail.pendingOutstanding || 0
-                              ).toLocaleString()}
-                            </span>
+                        <h5 className="text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                          <IndianRupee className="h-4 w-4" /> Financial Credibility
+                        </h5>
+                        <div className="space-y-4 relative z-10">
+                          <div className="p-4 bg-card border border-border rounded-xl flex items-center justify-between hover:border-primary/30 transition-colors">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Lifetime Investment</span>
+                              <span className="text-2xl font-black text-foreground tracking-tighter">
+                                ₹{(selectedUserDetail.lifetimeTotal || 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
+                              <TrendingUp className="h-5 w-5" />
+                            </div>
                           </div>
-                          <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500">
-                            <AlertCircle className="h-5 w-5" />
+                          <div className="p-4 bg-card border border-border rounded-xl flex items-center justify-between hover:border-red-500/30 transition-colors">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Outstanding Liability</span>
+                              <span className="text-2xl font-black text-red-500 tracking-tighter">
+                                ₹{(selectedUserDetail.pendingOutstanding || 0).toLocaleString()}
+                              </span>
+                            </div>
+                            <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500">
+                              <AlertCircle className="h-5 w-5" />
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="bg-muted/30 border border-border rounded-2xl p-6 space-y-6">
-                      <h5 className="text-[11px] font-black uppercase tracking-widest text-emerald-500 flex items-center gap-2">
-                        <Zap className="h-4 w-4" /> Credit Parameters
-                      </h5>
-                      <div className="space-y-4">
-                        <div className="p-4 bg-card border border-border rounded-xl space-y-2">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] font-bold text-muted-foreground uppercase">
-                              Credit Ceiling
-                            </span>
-                            <span className="text-[10px] font-black text-primary">
-                              ₹
-                              {(
-                                selectedUserDetail.creditLimit || 5000
-                              ).toLocaleString()}
-                            </span>
-                          </div>
-                          <input
-                            type="number"
-                            defaultValue={
-                              selectedUserDetail.creditLimit || 5000
-                            }
-                            onBlur={async (e) => {
-                              const val = parseInt(e.target.value) || 0;
-                              try {
-                                await updateDoc(
-                                  doc(db, "users", selectedUserDetail.uid),
-                                  {
+
+                      {/* Credit Parameters */}
+                      <div className="bg-muted/30 border border-border rounded-2xl p-6 space-y-6">
+                        <h5 className="text-[11px] font-black uppercase tracking-widest text-emerald-500 flex items-center gap-2">
+                          <Zap className="h-4 w-4" /> Credit Parameters
+                        </h5>
+                        <div className="space-y-4">
+                          <div className="p-4 bg-card border border-border rounded-xl space-y-2">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-bold text-muted-foreground uppercase">Credit Ceiling</span>
+                              <span className="text-[10px] font-black text-primary">
+                                ₹{(selectedUserDetail.creditLimit || 5000).toLocaleString()}
+                              </span>
+                            </div>
+                            <input
+                              type="number"
+                              defaultValue={selectedUserDetail.creditLimit || 5000}
+                              onBlur={async (e) => {
+                                const val = parseInt(e.target.value) || 0;
+                                try {
+                                  await updateDoc(doc(db, "users", selectedUserDetail.uid), {
                                     payLater: selectedUserDetail.payLater,
                                     creditLimit: val,
                                     updatedAt: Date.now(),
-                                  },
-                                );
-                                toast.success("Limit Updated");
-                              } catch (err) {
-                                toast.error("Failed");
-                              }
-                            }}
-                            className="w-full h-10 bg-muted border border-border rounded-xl px-4 text-xs font-bold focus:outline-none focus:border-primary/50 transition-colors"
-                          />
-                        </div>
-                        <div className="flex items-center justify-between p-4 bg-card border border-border rounded-xl">
-                          <div className="flex flex-col">
-                            <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">
-                              Pay-Later Access
-                            </span>
-                            <span className="text-[10px] font-black text-primary uppercase mt-1">
-                              {selectedUserDetail.payLater
-                                ? "Enabled"
-                                : "Disabled"}
-                            </span>
-                          </div>
-                          <button
-                            onClick={async () => {
-                              const newVal = !selectedUserDetail.payLater;
-                              // Optimistically update local state for the modal
-                              setSelectedUserDetail({
-                                ...selectedUserDetail,
-                                payLater: newVal,
-                              });
-
-                              try {
-                                const res = await togglePayLater(
-                                  selectedUserDetail.uid,
-                                  newVal,
-                                );
-                                if (res.success) {
-                                  toast.success(
-                                    `Pay Later ${newVal ? "Enabled" : "Disabled"}`,
-                                  );
-                                } else {
-                                  // Revert local state if failed
-                                  setSelectedUserDetail({
-                                    ...selectedUserDetail,
-                                    payLater: !newVal,
                                   });
-                                  toast.error(res.error || "Update Failed");
+                                  toast.success("Limit Updated");
+                                } catch (err) {
+                                  toast.error("Failed");
                                 }
-                              } catch (err) {
-                                setSelectedUserDetail({
-                                  ...selectedUserDetail,
-                                  payLater: !newVal,
-                                });
-                                toast.error("Update Failed");
-                              }
-                            }}
-                            className={cn(
-                              "h-6 w-12 rounded-full border transition-all relative p-1",
-                              selectedUserDetail.payLater
-                                ? "bg-primary border-primary/50"
-                                : "bg-muted border-border",
-                            )}
-                          >
-                            <div
-                              className={cn(
-                                "h-3.5 w-3.5 rounded-full bg-white transition-all shadow-sm",
-                                selectedUserDetail.payLater
-                                  ? "translate-x-6"
-                                  : "translate-x-0",
-                              )}
+                              }}
+                              className="w-full h-10 bg-muted border border-border rounded-xl px-4 text-xs font-bold focus:outline-none focus:border-primary/50 transition-colors"
                             />
-                          </button>
-                        </div>
-                        <div className="p-4 bg-card border border-border rounded-xl space-y-3">
-                          <div className="flex items-center justify-between">
-                            <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">
-                              Sales Pricing Matrix
-                            </span>
-                            <span className="text-[9px] font-black text-primary uppercase tracking-widest">
-                              All Formats
-                            </span>
                           </div>
-                          {selectedUserDetail.multiTierRates &&
-                          Object.keys(selectedUserDetail.multiTierRates)
-                            .length > 0 ? (
-                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                              {Object.entries(
-                                selectedUserDetail.multiTierRates,
-                              ).map(([formatKey, tiers]: any) => (
-                                <div
-                                  key={formatKey}
-                                  className="rounded-lg border border-border p-2.5 bg-muted/30"
-                                >
-                                  <p className="text-[10px] font-black text-foreground uppercase tracking-wider mb-2">
-                                    {formatKey.replace(/_/g, " ")}
-                                  </p>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {(tiers || []).map(
-                                      (tier: any, idx: number) => (
+                          <div className="flex items-center justify-between p-4 bg-card border border-border rounded-xl">
+                            <div className="flex flex-col">
+                              <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Pay-Later Access</span>
+                              <span className="text-[10px] font-black text-primary uppercase mt-1">
+                                {selectedUserDetail.payLater ? "Enabled" : "Disabled"}
+                              </span>
+                            </div>
+                            <button
+                              onClick={async () => {
+                                const newVal = !selectedUserDetail.payLater;
+                                setSelectedUserDetail({ ...selectedUserDetail, payLater: newVal });
+                                try {
+                                  const res = await togglePayLater(selectedUserDetail.uid, newVal);
+                                  if (res.success) {
+                                    toast.success(`Pay Later ${newVal ? "Enabled" : "Disabled"}`);
+                                  } else {
+                                    setSelectedUserDetail({ ...selectedUserDetail, payLater: !newVal });
+                                    toast.error(res.error || "Update Failed");
+                                  }
+                                } catch (err) {
+                                  setSelectedUserDetail({ ...selectedUserDetail, payLater: !newVal });
+                                  toast.error("Update Failed");
+                                }
+                              }}
+                              className={cn(
+                                "h-6 w-12 rounded-full border transition-all relative p-1",
+                                selectedUserDetail.payLater ? "bg-primary border-primary/50" : "bg-muted border-border",
+                              )}
+                            >
+                              <div className={cn(
+                                "h-3.5 w-3.5 rounded-full bg-white transition-all shadow-sm",
+                                selectedUserDetail.payLater ? "translate-x-6" : "translate-x-0",
+                              )} />
+                            </button>
+                          </div>
+                          <div className="p-4 bg-card border border-border rounded-xl space-y-3">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Sales Pricing Matrix</span>
+                              <span className="text-[9px] font-black text-primary uppercase tracking-widest">All Formats</span>
+                            </div>
+                            {selectedUserDetail.multiTierRates && Object.keys(selectedUserDetail.multiTierRates).length > 0 ? (
+                              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                {Object.entries(selectedUserDetail.multiTierRates).map(([formatKey, tiers]: any) => (
+                                  <div key={formatKey} className="rounded-lg border border-border p-2.5 bg-muted/30">
+                                    <p className="text-[10px] font-black text-foreground uppercase tracking-wider mb-2">
+                                      {formatKey.replace(/_/g, " ")}
+                                    </p>
+                                    <div className="flex flex-wrap gap-1.5">
+                                      {(tiers || []).map((tier: any, idx: number) => (
                                         <span
                                           key={`${formatKey}-${idx}`}
                                           className="text-[9px] font-bold px-2 py-0.5 rounded-md border border-primary/20 bg-primary/10 text-primary"
                                         >
-                                          {tier?.label || `Tier ${idx + 1}`}: ₹
-                                          {(tier?.price || 0).toLocaleString()}
+                                          {tier?.label || `Tier ${idx + 1}`}: ₹{(tier?.price || 0).toLocaleString()}
                                         </span>
-                                      ),
-                                    )}
+                                      ))}
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : selectedUserDetail.customRates &&
-                            Object.keys(selectedUserDetail.customRates).length >
-                              0 ? (
-                            <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                              {Object.entries(
-                                selectedUserDetail.customRates,
-                              ).map(([formatKey, price]: any) => (
-                                <div
-                                  key={formatKey}
-                                  className="rounded-lg border border-border p-2.5 bg-muted/30 flex items-center justify-between"
-                                >
-                                  <p className="text-[10px] font-black text-foreground uppercase tracking-wider">
-                                    {formatKey.replace(/_/g, " ")}
-                                  </p>
-                                  <p className="text-[10px] font-black text-emerald-500">
-                                    ₹{Number(price || 0).toLocaleString()}
-                                  </p>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <div className="rounded-lg border border-dashed border-border p-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                              No Sales Pricing Configured
-                            </div>
-                          )}
+                                ))}
+                              </div>
+                            ) : selectedUserDetail.customRates && Object.keys(selectedUserDetail.customRates).length > 0 ? (
+                              <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                                {Object.entries(selectedUserDetail.customRates).map(([formatKey, price]: any) => (
+                                  <div key={formatKey} className="rounded-lg border border-border p-2.5 bg-muted/30 flex items-center justify-between">
+                                    <p className="text-[10px] font-black text-foreground uppercase tracking-wider">
+                                      {formatKey.replace(/_/g, " ")}
+                                    </p>
+                                    <p className="text-[10px] font-black text-emerald-500">₹{Number(price || 0).toLocaleString()}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="rounded-lg border border-dashed border-border p-3 text-center text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
+                                No Sales Pricing Configured
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
-                    </div>
+
+                    </div>{/* end 2-col grid */}
+
+                    {/* Row 2: Team Assignment (full width) */}
+                    <div className="bg-muted/30 border border-border rounded-2xl p-6 space-y-4">
+                      <h5 className="text-[11px] font-black uppercase tracking-widest text-primary flex items-center gap-2">
+                        <Users className="h-4 w-4" /> Team Assignment
+                      </h5>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+
+                        {/* Sales Executive */}
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <div className="h-6 w-6 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                              <TrendingUp className="h-3 w-3 text-amber-500" />
+                            </div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-amber-500">Sales Executive</span>
+                          </div>
+                          <div className="px-3 py-2 rounded-lg bg-card border border-border text-xs">
+                            {(() => {
+                              const seId = (selectedUserDetail as any).managedBy || selectedUserDetail.createdBy;
+                              const se = users.find(u => u.uid === seId);
+                              return se ? (
+                                <span className="font-semibold text-foreground">{se.displayName} <span className="text-muted-foreground font-normal">({se.email})</span></span>
+                              ) : (
+                                <span className="text-amber-400 font-semibold">Not Assigned</span>
+                              );
+                            })()}
+                          </div>
+                          <div className="flex gap-2">
+                            <select
+                              id={`se-select-${selectedUserDetail.uid}`}
+                              defaultValue={(selectedUserDetail as any).managedBy || selectedUserDetail.createdBy || ""}
+                              className="flex-1 h-9 px-3 rounded-lg border border-border bg-muted text-xs text-foreground focus:border-amber-500/50 focus:outline-none transition-all appearance-none cursor-pointer font-medium"
+                            >
+                              <option value="">-- Select SE --</option>
+                              {users.filter(u => u.role === "sales_executive").map(se => {
+                                const currentSEId = (selectedUserDetail as any).managedBy || selectedUserDetail.createdBy;
+                                return (
+                                  <option key={se.uid} value={se.uid}>
+                                    {se.displayName}{se.uid === currentSEId ? " (Current)" : ""}
+                                  </option>
+                                );
+                              })}
+                            </select>
+                            <button
+                              onClick={async () => {
+                                const sel = document.getElementById(`se-select-${selectedUserDetail.uid}`) as HTMLSelectElement;
+                                const newSEId = sel?.value;
+                                if (!newSEId) { toast.error("Select a Sales Executive"); return; }
+                                const currentSEId = (selectedUserDetail as any).managedBy || selectedUserDetail.createdBy;
+                                if (newSEId === currentSEId) { toast.info("No change"); return; }
+                                try {
+                                  const now = Date.now();
+                                  await updateDoc(doc(db, "users", selectedUserDetail.uid), {
+                                    managedBy: newSEId,
+                                    createdBy: newSEId,
+                                    updatedAt: now,
+                                  });
+                                  // Propagate assignedSEId to all this client's projects
+                                  const clientProjs = projects.filter(p => p.clientId === selectedUserDetail.uid);
+                                  if (clientProjs.length > 0) {
+                                    const seBatch = writeBatch(db);
+                                    for (const p of clientProjs) {
+                                      seBatch.update(doc(db, "projects", p.id), { assignedSEId: newSEId, updatedAt: now });
+                                    }
+                                    await seBatch.commit();
+                                  }
+                                  const newSE = users.find(u => u.uid === newSEId);
+                                  setSelectedUserDetail({ ...selectedUserDetail, createdBy: newSEId, managedBy: newSEId } as any);
+                                  toast.success(`SE → ${newSE?.displayName || "Updated"}${clientProjs.length > 0 ? ` · ${clientProjs.length} project(s) updated` : ""}`);
+                                } catch (e: any) { toast.error(e.message || "Failed"); }
+                              }}
+                              className="h-9 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest bg-amber-500/10 border border-amber-500/20 text-amber-500 hover:bg-amber-500/20 transition-all whitespace-nowrap"
+                            >
+                              Assign
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Project Manager */}
+                        <div className="space-y-3">
+                          <div className="flex items-center gap-2">
+                            <div className="h-6 w-6 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                              <Briefcase className="h-3 w-3 text-blue-500" />
+                            </div>
+                            <span className="text-[10px] font-black uppercase tracking-widest text-blue-500">Project Manager</span>
+                          </div>
+                          <div className="px-3 py-2 rounded-lg bg-card border border-border text-xs">
+                            {(() => {
+                              const pm = users.find(u => u.uid === selectedUserDetail.assignedManagerId);
+                              return pm ? (
+                                <span className="font-semibold text-foreground">{pm.displayName} <span className="text-muted-foreground font-normal">· {projects.filter(p => p.clientId === selectedUserDetail.uid && p.assignedPMId === pm.uid).length} projects</span></span>
+                              ) : (
+                                <span className="text-amber-400 font-semibold">Not Assigned</span>
+                              );
+                            })()}
+                          </div>
+                          <div className="flex gap-2">
+                            <select
+                              id={`pm-select-${selectedUserDetail.uid}`}
+                              defaultValue={selectedUserDetail.assignedManagerId || ""}
+                              className="flex-1 h-9 px-3 rounded-lg border border-border bg-muted text-xs text-foreground focus:border-blue-500/50 focus:outline-none transition-all appearance-none cursor-pointer font-medium"
+                            >
+                              <option value="">-- Select PM --</option>
+                              {users.filter(u => u.role === "project_manager").map(pm => (
+                                <option key={pm.uid} value={pm.uid}>
+                                  {pm.displayName}{pm.uid === selectedUserDetail.assignedManagerId ? " (Current)" : ""}
+                                </option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={async () => {
+                                const sel = document.getElementById(`pm-select-${selectedUserDetail.uid}`) as HTMLSelectElement;
+                                const newPMId = sel?.value;
+                                if (!newPMId) { toast.error("Select a Project Manager"); return; }
+                                if (newPMId === selectedUserDetail.assignedManagerId) { toast.info("No change"); return; }
+                                try {
+                                  const assignResult = await assignManagerToClient(selectedUserDetail.uid, newPMId, {
+                                    uid: currentUser!.uid,
+                                    displayName: currentUser!.displayName || "Admin",
+                                  });
+                                  if (!assignResult.success) { toast.error(assignResult.error || "Failed"); return; }
+                                  const clientProjects = projects.filter(p => p.clientId === selectedUserDetail.uid && p.assignedPMId !== newPMId);
+                                  for (const project of clientProjects) {
+                                    await assignProjectManager(project.id, newPMId, {
+                                      uid: currentUser!.uid,
+                                      displayName: currentUser!.displayName || "Admin",
+                                      designation: "Admin",
+                                    });
+                                  }
+                                  const newPM = users.find(u => u.uid === newPMId);
+                                  setSelectedUserDetail({ ...selectedUserDetail, assignedManagerId: newPMId });
+                                  toast.success(`PM → ${newPM?.displayName || "Updated"}. ${clientProjects.length} projects transferred.`);
+                                } catch (e: any) { toast.error(e.message || "Failed"); }
+                              }}
+                              className="h-9 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest bg-blue-500/10 border border-blue-500/20 text-blue-500 hover:bg-blue-500/20 transition-all whitespace-nowrap"
+                            >
+                              Assign
+                            </button>
+                          </div>
+                        </div>
+
+                      </div>
+                    </div>{/* end Team Assignment */}
+
                   </div>
                 )}
 
@@ -5645,7 +5842,7 @@ export function AdminDashboard() {
                           Declined
                         </div>
                         <p className="text-xs text-red-400 font-bold italic">
-                          â€œ{inspectProject.editorDeclineReason}â€
+                          "{inspectProject.editorDeclineReason}"
                         </p>
                       </div>
                     )}

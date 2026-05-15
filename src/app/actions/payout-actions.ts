@@ -154,3 +154,27 @@ export async function initiateEditorPayout(projectId: string) {
         return { success: false, error: error.message };
     }
 }
+
+/**
+ * Initiates multiple payouts for an editor's completed projects.
+ */
+export async function bulkInitiateEditorPayouts(projectIds: string[]) {
+    const results = [];
+    for (const projectId of projectIds) {
+        try {
+            const res = await initiateEditorPayout(projectId);
+            results.push({ projectId, ...res });
+        } catch (error: any) {
+            results.push({ projectId, success: false, error: error.message });
+        }
+    }
+    
+    revalidatePath("/dashboard");
+    const successCount = results.filter(r => r.success).length;
+    return { 
+        success: successCount > 0, 
+        results, 
+        message: `Successfully initiated ${successCount} of ${projectIds.length} payouts.` 
+    };
+}
+

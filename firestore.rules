@@ -43,7 +43,22 @@ service cloud.firestore {
     match /users/{userId} {
       allow read: if isAuthenticated();
       allow create: if isAuthenticated(); // Allow creation (e.g. sign up)
-      allow update: if isAuthenticated() && (request.auth.uid == userId || isAdmin());
+      allow update: if isAuthenticated() && (
+        request.auth.uid == userId || 
+        isAdmin() ||
+        // PM can update clients they directly manage (matched via either assignment field)
+        (hasRole(['project_manager']) && (
+          resource.data.managedByPM == request.auth.uid ||
+          resource.data.assignedManagerId == request.auth.uid
+        )) ||
+        // Any PM can write ONLY the safe editor-config fields on a client document.
+        // This allows saving auto-assign priorities regardless of which PM field is set.
+        (hasRole(['project_manager']) &&
+          resource.data.role == 'client' &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['assignedEditorPriority', 'defaultEditorRate'])
+        )
+      );
       allow delete: if isAdmin() || hasRole(['project_manager']);
     }
 

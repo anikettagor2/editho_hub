@@ -130,6 +130,7 @@ export async function addProjectLog(projectId: string, event: string, user: { ui
 /**
  * Triggered when a client creates a project.
  * Automatically assigns a PM if the client doesn't have one.
+ * Automatically assigns the best editor based on client's past ratings.
  */
 export async function handleProjectCreated(projectId: string) {
     try {
@@ -151,7 +152,6 @@ export async function handleProjectCreated(projectId: string) {
             const pmsSnap = await adminDb.collection('users').where('role', '==', 'project_manager').get();
             if (!pmsSnap.empty) {
                 // For simplicity, pick one with fewest projects or just first one
-                // Real implementation would count active projects
                 pmId = pmsSnap.docs[0].id;
 
                 // Assign PM to client permanently
@@ -159,6 +159,54 @@ export async function handleProjectCreated(projectId: string) {
                     managedByPM: pmId
                 });
             }
+        }
+
+        // AUTO-ASSIGN EDITOR LOGIC (PM-Driven)
+        let autoAssignedEditorId = null;
+        let autoAssignedPrice = 0;
+        
+        try {
+            const priorities = clientData?.assignedEditorPriority || [];
+            if (priorities.length > 0) {
+                // Determine the "Price" to match rules against.
+                // We prefer pricingTierPrice if it exists (saved during project creation), 
+                // otherwise fall back to budget.
+                const projectPrice = project?.pricingTierPrice || project?.budget || project?.totalCost || 0;
+                
+                // 1. Try to find price-specific rules
+                let rulesToConsider = priorities.filter((p: any) => p.targetPrice === projectPrice);
+                
+                // 2. If no price-specific rules, fall back to general rules (those without targetPrice)
+                if (rulesToConsider.length === 0) {
+                    rulesToConsider = priorities.filter((p: any) => !p.targetPrice);
+                }
+
+                if (rulesToConsider.length > 0) {
+                    // Sort by priority ascending (1 is highest)
+                    const sortedPriorities = [...rulesToConsider].sort((a, b) => a.priority - b.priority);
+                    
+                    for (const p of sortedPriorities) {
+                        const editorSnap = await adminDb.collection('users').doc(p.editorId).get();
+                        const editorData = editorSnap.data();
+                        if (editorSnap.exists && editorData?.status !== 'inactive') {
+                            autoAssignedEditorId = p.editorId;
+                            
+                            // If the rule has a fixed editorFee, use it.
+                            // Otherwise, calculate based on the client's default editor rate.
+                            if (p.editorFee) {
+                                autoAssignedPrice = p.editorFee;
+                            } else {
+                                const budget = project?.budget || project?.totalCost || 0;
+                                const rate = clientData?.defaultEditorRate || 50;
+                                autoAssignedPrice = Math.floor(budget * (rate / 100));
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        } catch (autoAssignErr) {
+            console.error('Error in auto-assign logic:', autoAssignErr);
         }
 
         if (pmId) {
@@ -195,6 +243,25 @@ export async function handleProjectCreated(projectId: string) {
                     error: pmNotifyResult.error,
                 });
             }
+            
+            // Execute auto-assignment if an editor was found
+            if (autoAssignedEditorId) {
+                await assignEditor(
+                    projectId, 
+                    autoAssignedEditorId, 
+                    autoAssignedPrice, 
+                    project?.deadline, 
+                    'admin' // System auto-assignment
+                );
+                
+                await addProjectLog(
+                    projectId,
+                    'AUTO_ASSIGNED',
+                    { uid: 'system', displayName: 'System Auto-Assign', designation: 'System' },
+                    `Editor auto-assigned based on client feedback. Price set to ₹${autoAssignedPrice}`
+                );
+            }
+
         } else {
             await addProjectLog(
                 projectId,
@@ -916,180 +983,94 @@ export async function markAllNotificationsAsRead(userId: string) {
     }
 }
 
-/**
- * Gets auto-assign settings
- */
-export async function getAutoAssignSettings() {
-    try {
-        const snap = await adminDb.collection('settings').doc('autoAssign').get();
-        if (!snap.exists) return { success: true, data: { editors: [], globalMaxProjects: 5, isEnabled: true } };
-        return { success: true, data: snap.data() };
-    } catch (error: any) {
-        return { success: false, error: error.message };
-    }
-}
+
 
 /**
- * Updates auto-assign settings
- */
-export async function updateAutoAssignSettings(settings: any) {
-    try {
-        await adminDb.collection('settings').doc('autoAssign').set(settings, { merge: true });
-        return { success: true };
-    } catch (error: any) {
-        return { success: false, error: error.message };
-    }
-}
-
-/**
- * Auto-assigns an editor to a project based on priority and availability
- * Called when PM selects "Auto Assign" option
+ * Auto-assigns an editor to a project based on client-specific priority
+ * Called when PM selects "Auto Assign" option from the dashboard
  */
 export async function autoAssignEditor(projectId: string, editorPrice: number, deadline?: string) {
     try {
-        // 1. Get auto-assign settings
-        const settingsSnap = await adminDb.collection('settings').doc('autoAssign').get();
-        const settings = settingsSnap.data();
-        
-        if (!settings || !settings.isEnabled) {
-            return { success: false, error: "Auto-assign is not enabled" };
-        }
-
-        const editors = settings.editors || [];
-        if (editors.length === 0) {
-            return { success: false, error: "No editors in auto-assign pool" };
-        }
-
-        // 2. Get project data
+        // 1. Get project data
         const projectRef = adminDb.collection('projects').doc(projectId);
         const projectSnap = await projectRef.get();
         if (!projectSnap.exists) {
             return { success: false, error: "Project not found" };
         }
         const projectData = projectSnap.data();
+        const clientUID = projectData?.clientId;
 
-        // 3. Get all active projects to check workload
-        const projectsSnap = await adminDb.collection('projects')
-            .where('status', 'not-in', ['completed', 'archived'])
-            .get();
-        
-        // Count active projects per editor
-        const editorWorkload: Record<string, number> = {};
-        projectsSnap.docs.forEach(doc => {
-            const data = doc.data();
-            if (data.assignedEditorId) {
-                editorWorkload[data.assignedEditorId] = (editorWorkload[data.assignedEditorId] || 0) + 1;
-            }
-        });
+        if (!clientUID) {
+            return { success: false, error: "Client ID not found for this project" };
+        }
 
-        // 4. Get editor user data for status check
-        const editorIds = editors.map((e: any) => e.editorId);
-        const editorUsersSnap = await adminDb.collection('users')
-            .where(admin.firestore.FieldPath.documentId(), 'in', editorIds)
-            .get();
-        
-        const editorUsers: Record<string, any> = {};
-        editorUsersSnap.docs.forEach(doc => {
-            editorUsers[doc.id] = doc.data();
-        });
+        // 2. Get client data to find priority list
+        const clientSnap = await adminDb.collection('users').doc(clientUID).get();
+        if (!clientSnap.exists) {
+            return { success: false, error: "Client not found" };
+        }
+        const clientData = clientSnap.data();
+        const priorities = clientData?.assignedEditorPriority || [];
 
-        // 5. Sort by priority and find first available editor
-        const sortedEditors = [...editors]
-            .filter((e: any) => e.isActive !== false)
-            .sort((a: any, b: any) => a.priority - b.priority);
+        if (priorities.length === 0) {
+            return { success: false, error: "No priority editors defined for this client. Please set them in Team Management." };
+        }
 
+        // Calculate price if not provided or zero
+        let finalEditorPrice = editorPrice;
+        if (!finalEditorPrice || finalEditorPrice <= 0) {
+            const budget = projectData?.budget || projectData?.totalCost || 0;
+            const rate = clientData?.defaultEditorRate || 50;
+            finalEditorPrice = Math.floor(budget * (rate / 100));
+        }
+
+        // 3. Find first available editor in the priority list
         let selectedEditor = null;
-        for (const editorConfig of sortedEditors) {
-            const workload = editorWorkload[editorConfig.editorId] || 0;
-            const maxProjects = editorConfig.maxProjects || settings.globalMaxProjects || 5;
-            const editorUser = editorUsers[editorConfig.editorId];
+        const sortedPriorities = [...priorities].sort((a, b) => a.priority - b.priority);
 
-            // Check availability: not at capacity and not offline
-            if (workload < maxProjects) {
-                // Optional: Check if editor is not offline (if you want strict checking)
-                // const status = editorUser?.availabilityStatus || 'offline';
-                // if (status === 'offline') continue;
-                
+        for (const p of sortedPriorities) {
+            const editorSnap = await adminDb.collection('users').doc(p.editorId).get();
+            if (editorSnap.exists && editorSnap.data()?.status !== 'inactive') {
                 selectedEditor = {
-                    ...editorConfig,
-                    displayName: editorUser?.displayName || 'Editor'
+                    editorId: p.editorId,
+                    priority: p.priority,
+                    displayName: editorSnap.data()?.displayName || 'Editor'
                 };
                 break;
             }
         }
 
         if (!selectedEditor) {
-            return { success: false, error: "No available editors. All editors are at max capacity." };
+            return { success: false, error: "No priority editors are currently active for this client." };
         }
 
-        // 6. Assign the editor (similar to assignEditor function)
-        let members = projectData?.members || [];
-        if (!members.includes(selectedEditor.editorId)) {
-            members.push(selectedEditor.editorId);
-        }
+        // 4. Assign the editor
+        const res = await assignEditor(projectId, selectedEditor.editorId, finalEditorPrice, deadline, 'project_manager');
+        
+        if (res.success) {
+            // Log with priority info
+            const pmSnap = await adminDb.collection('users').doc(projectData?.assignedPMId || 'unknown').get();
+            const pmName = pmSnap.exists ? pmSnap.data()?.displayName : 'PM';
 
-        const now = Date.now();
-        const fiveMinutes = 5 * 60 * 1000;
-
-        const updateData: any = {
-            assignedEditorId: selectedEditor.editorId,
-            assignmentStatus: 'pending',
-            assignmentAt: now,
-            assignmentExpiresAt: now + fiveMinutes,
-            status: 'pending_assignment',
-            members: members,
-            editorPrice: editorPrice,
-            autoAssigned: true,
-            updatedAt: now
-        };
-
-        if (deadline) {
-            updateData.deadline = deadline;
-        }
-
-        await projectRef.update(updateData);
-
-        // 7. Add log
-        const pmSnap = await adminDb.collection('users').doc(projectData?.assignedPMId || 'unknown').get();
-        const pmName = pmSnap.exists ? pmSnap.data()?.displayName : 'PM';
-
-        await addProjectLog(
-            projectId,
-            'PROJECT_ASSIGNED',
-            { uid: projectData?.assignedPMId || 'pm', displayName: pmName, designation: 'Project Manager' },
-            `Editor ${selectedEditor.displayName} auto-assigned to project (Priority ${selectedEditor.priority}).`
-        );
-
-        // 8. Send notifications
-        const [clientAssignResult, editorAssignResult] = await Promise.all([
-            notifyClientEditorAssigned(projectId),
-            notifyEditorProjectAssigned(projectId, selectedEditor.editorId, pmName, deadline),
-        ]);
-
-        if (!clientAssignResult.success) {
-            console.error('[WhatsApp] Client auto-assignment notification failed', {
+            await addProjectLog(
                 projectId,
-                error: clientAssignResult.error,
-            });
-        }
+                'AUTO_ASSIGNED',
+                { uid: projectData?.assignedPMId || 'pm', displayName: pmName, designation: 'Project Manager' },
+                `Editor ${selectedEditor.displayName} auto-assigned based on client priority (Priority ${selectedEditor.priority}).`
+            );
 
-        if (!editorAssignResult.success) {
-            console.error('[WhatsApp] Editor auto-assignment notification failed', {
-                projectId,
+            return { 
+                success: true, 
                 editorId: selectedEditor.editorId,
-                error: editorAssignResult.error,
-            });
+                editorName: selectedEditor.displayName,
+                priority: selectedEditor.priority 
+            };
+        } else {
+            return res;
         }
 
-        revalidatePath('/dashboard');
-        return { 
-            success: true, 
-            editorId: selectedEditor.editorId,
-            editorName: selectedEditor.displayName,
-            priority: selectedEditor.priority
-        };
     } catch (error: any) {
-        console.error('Auto-assign error:', error);
+        console.error('Error in autoAssignEditor:', error);
         return { success: false, error: error.message };
     }
 }
@@ -1116,6 +1097,7 @@ export async function assignManagerToClient(clientId: string, managerId: string,
         // Update client with manager assignment
         await clientRef.update({
             assignedManagerId: managerId,
+            managedByPM: managerId, // Ensure visibility in Team Management dashboard
             updatedAt: Date.now()
         });
 
@@ -1320,6 +1302,7 @@ export async function assignClientPM(clientId: string, pmId: string) {
     try {
         await adminDb.collection('users').doc(clientId).update({
             managedByPM: pmId,
+            assignedManagerId: pmId, // Sync with the UI field
             updatedAt: Date.now()
         });
         revalidatePath('/dashboard');
@@ -1334,4 +1317,62 @@ export async function assignClientPM(clientId: string, pmId: string) {
  */
 export async function setDownloadLimitToThree() {
     return await updateSystemSettings({ downloadLimit: 3 });
+}
+
+/**
+ * Saves editor priority configuration for a client.
+ * Uses Admin SDK to bypass Firestore client-side security rules — any PM can call this.
+ */
+export async function saveClientEditorPriority(
+    clientId: string,
+    priorities: { editorId: string; priority: number; targetPrice?: number; editorFee?: number }[],
+    defaultEditorRate: number
+) {
+    try {
+        await adminDb.collection('users').doc(clientId).update({
+            assignedEditorPriority: priorities,
+            defaultEditorRate: defaultEditorRate,
+        });
+        return { success: true };
+    } catch (error: any) {
+        console.error('[saveClientEditorPriority]', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Marks an editor's payment as settled for a specific project.
+ * Uses Admin SDK — bypasses Firestore rules.
+ * The editor dashboard reflects this automatically via real-time listener on projects.
+ */
+export async function settleEditorPayment(
+    projectId: string,
+    user: { uid: string; displayName: string; designation?: string }
+) {
+    try {
+        const projectRef = adminDb.collection('projects').doc(projectId);
+        const projectSnap = await projectRef.get();
+        if (!projectSnap.exists) {
+            return { success: false, error: 'Project not found' };
+        }
+        const now = Date.now();
+        await projectRef.update({
+            editorPaid: true,
+            editorPaidAt: now,
+            updatedAt: now,
+            logs: admin.firestore.FieldValue.arrayUnion({
+                event: 'EDITOR_PAYMENT_SETTLED',
+                user: user.uid,
+                userName: user.displayName,
+                designation: user.designation || 'Admin',
+                timestamp: now,
+                details: `Editor payment manually marked as settled by ${user.displayName}.`,
+            }),
+        });
+        revalidatePath('/dashboard');
+        return { success: true };
+    } catch (error: any) {
+        console.error('[settleEditorPayment]', error);
+        return { success: false, error: error.message };
+    }
 }

@@ -8,58 +8,158 @@ import { useEffect, useMemo, useState } from "react";
 import { Users, Loader2, IndianRupee, FolderOpen, FileText } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
+import { ClientPriorityManager } from "./client-priority-manager";
 
 export default function TeamManagementPage() {
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [clients, setClients] = useState<User[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [editors, setEditors] = useState<User[]>([]);
+  const [salesExecs, setSalesExecs] = useState<User[]>([]);
+  // Full users list (for SE name lookup fallback even if role changed)
+  const [allUsers, setAllUsers] = useState<User[]>([]);
 
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!user?.uid || !user?.role) return;
 
-    const clientsQ = query(
-      collection(db, "users"),
-      where("role", "==", "client"),
-      where("managedByPM", "==", user.uid)
-    );
+    let projectsQ;
 
-    const projectsQ = query(
-      collection(db, "projects"),
-      where("assignedPMId", "==", user.uid),
-      orderBy("createdAt", "desc")
-    );
+    if (user.role === "admin") {
+      const clientsQ = query(
+        collection(db, "users"),
+        where("role", "==", "client")
+      );
+      projectsQ = query(
+        collection(db, "projects"),
+        orderBy("createdAt", "desc")
+      );
 
-    const unsubClients = onSnapshot(clientsQ, (snap) => {
-      setClients(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as User)));
-      setLoading(false);
-    });
+      const unsubClients = onSnapshot(clientsQ, (snap) => {
+        setClients(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as User)));
+        setLoading(false);
+      });
 
-    const unsubProjects = onSnapshot(projectsQ, (snap) => {
-      setProjects(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Project)));
-    });
+      const unsubProjects = onSnapshot(projectsQ, (snap) => {
+        setProjects(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Project)));
+      });
 
-    return () => {
-      unsubClients();
-      unsubProjects();
-    };
-  }, [user?.uid]);
+      const editorsQ = query(collection(db, "users"), where("role", "==", "editor"));
+      const unsubEditors = onSnapshot(editorsQ, (snap) => {
+        setEditors(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as User)));
+      });
+
+      const salesExecsQ = query(collection(db, "users"), where("role", "==", "sales_executive"));
+      const unsubSalesExecs = onSnapshot(salesExecsQ, (snap) => {
+        setSalesExecs(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as User)));
+      });
+
+      const allUsersQ = collection(db, "users");
+      const unsubAllUsers = onSnapshot(allUsersQ, (snap) => {
+        setAllUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as User)));
+      });
+
+      return () => {
+        unsubClients();
+        unsubProjects();
+        unsubEditors();
+        unsubSalesExecs();
+        unsubAllUsers();
+      };
+    } else {
+      // PM view: query by managedByPM (primary) AND assignedManagerId (fallback for legacy/missed clients)
+      // Two separate queries merged and deduplicated client-side.
+      const clientsByPMQ = query(
+        collection(db, "users"),
+        where("role", "==", "client"),
+        where("managedByPM", "==", user.uid)
+      );
+      const clientsByManagerIdQ = query(
+        collection(db, "users"),
+        where("role", "==", "client"),
+        where("assignedManagerId", "==", user.uid)
+      );
+
+      projectsQ = query(
+        collection(db, "projects"),
+        where("assignedPMId", "==", user.uid),
+        orderBy("createdAt", "desc")
+      );
+
+      // Merge clients from both queries, deduplicating by uid
+      const clientMap = new Map<string, User>();
+
+      const unsubClientsByPM = onSnapshot(clientsByPMQ, (snap) => {
+        snap.docs.forEach((d) => clientMap.set(d.id, { uid: d.id, ...d.data() } as User));
+        setClients(Array.from(clientMap.values()));
+        setLoading(false);
+      });
+
+      const unsubClientsByManagerId = onSnapshot(clientsByManagerIdQ, (snap) => {
+        snap.docs.forEach((d) => clientMap.set(d.id, { uid: d.id, ...d.data() } as User));
+        setClients(Array.from(clientMap.values()));
+        setLoading(false);
+      });
+
+      const unsubProjects = onSnapshot(projectsQ, (snap) => {
+        setProjects(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Project)));
+      });
+
+      const editorsQ = query(collection(db, "users"), where("role", "==", "editor"));
+      const unsubEditors = onSnapshot(editorsQ, (snap) => {
+        setEditors(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as User)));
+      });
+
+      const salesExecsQ = query(collection(db, "users"), where("role", "==", "sales_executive"));
+      const unsubSalesExecs = onSnapshot(salesExecsQ, (snap) => {
+        setSalesExecs(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as User)));
+      });
+
+      // Also listen for all users for SE name fallback
+      const allUsersQ = collection(db, "users");
+      const unsubAllUsers = onSnapshot(allUsersQ, (snap) => {
+        setAllUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as User)));
+      });
+
+      return () => {
+        unsubClientsByPM();
+        unsubClientsByManagerId();
+        unsubProjects();
+        unsubEditors();
+        unsubSalesExecs();
+        unsubAllUsers();
+      };
+    }
+  }, [user?.uid, user?.role]);
 
   const teamData = useMemo(() => {
     const byClient = new Map<string, {
       clientId: string;
       clientName: string;
       clientEmail: string;
+      salesExecName?: string;
+      assignedEditorPriority: { editorId: string; priority: number; targetPrice?: number; editorFee?: number }[];
+      defaultEditorRate?: number;
       totalProjects: number;
       totalPendingDues: number;
       pendingProjects: { id: string; name: string; pending: number }[];
     }>();
 
     for (const c of clients) {
+      // SE name lookup: first check salesExecs (role=sales_executive), then fallback to allUsers
+      const seId = (c as any).managedBy || c.createdBy;
+      const seFromExecs = seId ? salesExecs.find(s => s.uid === seId) : undefined;
+      const seFromAll = seId ? allUsers.find(u => u.uid === seId) : undefined;
+      const seUser = seFromExecs || seFromAll;
+      const salesExecName = seUser?.displayName || undefined;
+
       byClient.set(c.uid, {
         clientId: c.uid,
         clientName: c.displayName || "Unknown Client",
         clientEmail: c.email || "N/A",
+        salesExecName,
+        assignedEditorPriority: c.assignedEditorPriority || [],
+        defaultEditorRate: c.defaultEditorRate,
         totalProjects: 0,
         totalPendingDues: 0,
         pendingProjects: [],
@@ -74,6 +174,7 @@ export default function TeamManagementPage() {
           clientId: cid,
           clientName: p.clientName || "Unknown Client",
           clientEmail: "N/A",
+          assignedEditorPriority: [],
           totalProjects: 0,
           totalPendingDues: 0,
           pendingProjects: [],
@@ -91,7 +192,7 @@ export default function TeamManagementPage() {
     }
 
     return Array.from(byClient.values()).sort((a, b) => b.totalPendingDues - a.totalPendingDues);
-  }, [clients, projects]);
+  }, [clients, projects, salesExecs, allUsers]);
 
   const totals = useMemo(() => {
     return teamData.reduce(
@@ -113,8 +214,8 @@ export default function TeamManagementPage() {
     );
   }
 
-  if (user?.role !== "project_manager") {
-    return <div className="p-8 text-sm text-muted-foreground">Access restricted to Project Managers.</div>;
+  if (user?.role !== "project_manager" && user?.role !== "admin") {
+    return <div className="p-8 text-sm text-muted-foreground">Access restricted to Project Managers and Admins.</div>;
   }
 
   return (
@@ -165,7 +266,24 @@ export default function TeamManagementPage() {
                   <tr key={item.clientId} className="hover:bg-muted/20 transition-colors align-top">
                     <td className="px-4 py-4">
                       <div className="font-semibold text-foreground">{item.clientName}</div>
-                      <div className="text-xs text-muted-foreground">{item.clientEmail}</div>
+                      <div className="text-xs text-muted-foreground mb-1">{item.clientEmail}</div>
+                      {item.salesExecName && (
+                        <div className="text-[10px] font-semibold text-amber-600/90 dark:text-amber-500/90 mb-3 bg-amber-500/10 inline-block px-1.5 py-0.5 rounded">
+                          SE: {item.salesExecName}
+                        </div>
+                      )}
+                      <div className={item.salesExecName ? "" : "mt-2"}>
+                        <ClientPriorityManager 
+                        clientId={item.clientId}
+                        clientName={item.clientName}
+                        assignedPriority={item.assignedEditorPriority}
+                        defaultRate={item.defaultEditorRate}
+                        editors={editors}
+                        multiTierRates={clients.find(c => c.uid === item.clientId)?.multiTierRates}
+                        customRates={clients.find(c => c.uid === item.clientId)?.customRates}
+                        salesExecName={item.salesExecName}
+                      />
+                      </div>
                     </td>
                     <td className="px-4 py-4 text-sm font-bold text-foreground tabular-nums">{item.totalProjects}</td>
                     <td className="px-4 py-4 text-sm font-bold tabular-nums text-amber-500">₹{item.totalPendingDues.toLocaleString()}</td>

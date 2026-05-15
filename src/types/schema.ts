@@ -21,6 +21,13 @@ export interface User {
     createdBy?: string; // UID of sales exec or admin who created this user
     managedBy?: string; // UID of sales exec managing this client
     assignedManagerId?: string; // UID of project manager assigned to this client
+    assignedEditorPriority?: { 
+        editorId: string; 
+        priority: number; 
+        targetPrice?: number; // The project budget/price this priority applies to
+        editorFee?: number;   // The fixed fee to pay the editor for this project price
+    }[]; // Ordered priority of editors for auto-assign set by PM
+    defaultEditorRate?: number; // Default percentage rate (0-100) for auto-assigning editors
     payLater?: boolean; // New feature: allows client to skip immediate payment
     creditLimit?: number; // Maximum pending dues allowed for Pay Later
     deletionRequested?: boolean; // When user requests account deletion, pending admin approval

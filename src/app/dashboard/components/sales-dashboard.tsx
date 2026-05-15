@@ -245,6 +245,7 @@ export function SalesDashboard() {
             if (finalPMId && finalPMId !== "automatic") {
                 await updateDoc(doc(db, "users", data.user.uid), {
                     managedByPM: finalPMId,
+                    assignedManagerId: finalPMId, // Keep fields in sync
                     updatedAt: Date.now()
                 });
             }

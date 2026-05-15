@@ -626,11 +626,13 @@ export default function NewProjectPage() {
             : referenceLinks;
 
         // Prepare pricing tier info
-        const pricingTierInfo = availablePrices.length > 0 ? {
-            selectedPricingTier: selectedPriceIndex,
-            pricingTierLabel: availablePrices[selectedPriceIndex].label || `Option ${selectedPriceIndex + 1}`,
-            pricingTierPrice: availablePrices[selectedPriceIndex].price
-        } : {};
+        const pricingTierInfo = {
+            pricingTierPrice: basePrice,
+            ...(availablePrices.length > 0 ? {
+                selectedPricingTier: selectedPriceIndex,
+                pricingTierLabel: availablePrices[selectedPriceIndex].label || `Option ${selectedPriceIndex + 1}`,
+            } : {})
+        };
 
         const projectData = {
             name,

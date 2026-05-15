@@ -26,6 +26,7 @@ import { preloadVideosIntoMemory } from "@/lib/video-preload";
 import { IndicatorCard } from "@/components/ui/indicator-card";
 import { VideoPlayer } from "@/components/video-player";
 import { handleFileDownload } from "@/lib/download-utils";
+import { PaymentButton } from "@/components/payment-button";
 
 
 const CLIENT_VIDEO_TYPE_ALIASES: Record<string, string[]> = {
@@ -125,105 +126,6 @@ export function ClientDashboard() {
     const [previewFile, setPreviewFile] = useState<{ url: string; type: string; name: string } | null>(null);
     const [draftProjectIds, setDraftProjectIds] = useState<string[]>([]);
     const [activeTab, setActiveTab] = useState<"projects" | "finance">("projects");
-
-    const [isProcessingPayment, setIsProcessingPayment] = useState(false);
-
-    // Initial Payment Logic Helper
-    const loadRazorpay = () => {
-        return new Promise((resolve) => {
-            if (window.hasOwnProperty("Razorpay")) { resolve(true); return; }
-            const script = document.createElement("script");
-            script.src = "https://checkout.razorpay.com/v1/checkout.js";
-            script.onload = () => resolve(true);
-            script.onerror = () => resolve(false);
-            document.body.appendChild(script);
-        });
-    };
-
-    const handleInitiatePayment = async (project: Project) => {
-        const baseAmount = Math.max(0, (project.totalCost || 0) - (project.amountPaid || 0));
-        if (baseAmount <= 0) { toast.success("Project is already fully paid."); return; }
-        const totalWithGst = withGst(baseAmount);
-        
-        setIsProcessingPayment(true);
-        const loadingToast = toast.loading("Initiating payment...");
-
-        try {
-            // 1. Load SDK
-            const loaded = await loadRazorpay();
-            if (!loaded) throw new Error("Failed to load payment gateway. Check your connection.");
-
-            // 2. Create Order
-            const orderRes = await fetch("/api/create-order", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    amount: totalWithGst,
-                    projectId: project.id
-                })
-            });
-
-            const order = await safeJsonParse(orderRes);
-            if (!orderRes.ok) throw new Error(order?.error || "Failed to create payment order.");
-
-            // 3. Open Checkout
-            const options = {
-                key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "",
-                amount: order.amount,
-                currency: order.currency,
-                name: "EditoHub",
-                description: `Final Settlement for ${project.name}`,
-                order_id: order.id,
-                prefill: {
-                    name: user?.displayName || "",
-                    email: user?.email || ""
-                },
-                theme: { color: "#3B82F6" },
-                handler: async function (response: any) {
-                    const verifyToast = toast.loading("Verifying payment...");
-                    try {
-                        const verifyRes = await fetch("/api/verify-payment", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({
-                                razorpay_order_id: response.razorpay_order_id,
-                                razorpay_payment_id: response.razorpay_payment_id,
-                                razorpay_signature: response.razorpay_signature,
-                                projectId: project.id,
-                                amount: totalWithGst, 
-                                accountingAmount: baseAmount,
-                                taxRate: 18,
-                                paymentType: "final"
-                            })
-                        });
-
-                        const verifyData = await safeJsonParse(verifyRes);
-                        if (!verifyRes.ok) throw new Error(verifyData?.error || "Verification failed.");
-                        
-                        toast.dismiss(verifyToast);
-                        toast.success("Payment successful! Your dashboard will update shortly.");
-                        setIsProjectModalOpen(false);
-                    } catch (err: any) {
-                        toast.dismiss(verifyToast);
-                        toast.error(err.message);
-                    }
-                },
-                modal: { ondismiss: () => setIsProcessingPayment(false) }
-            };
-
-            const rzp = new (window as any).Razorpay(options);
-            rzp.on("payment.failed", function (resp: any) {
-                toast.error(`Payment failed: ${resp.error.description}`);
-                setIsProcessingPayment(false);
-            });
-            rzp.open();
-            toast.dismiss(loadingToast);
-        } catch (err: any) {
-            toast.dismiss(loadingToast);
-            toast.error(err.message);
-            setIsProcessingPayment(false);
-        }
-    };
 
     // Fetch projects
     useEffect(() => {
@@ -500,9 +402,11 @@ export function ClientDashboard() {
                                 ) : (
                                     <AnimatePresence mode="popLayout">
                                         {filteredProjects.map((project, idx) => {
-                                            const costWithGst = withGst(project.totalCost || 0);
-                                            const isPaid = project.paymentStatus === "full_paid";
-                                            const isPartial = project.paymentStatus === "half_paid";
+                                                const amountPaid = project.amountPaid || 0;
+                                                const totalCost = project.totalCost || 0;
+                                                const isPaid = amountPaid >= totalCost;
+                                                const remainingBase = Math.max(0, totalCost - amountPaid);
+                                                const remainingWithGst = withGst(remainingBase);
                                             const pmName = project.assignedPMId
                                                 ? allUsers.find((u) => u.uid === project.assignedPMId)?.displayName || "PM"
                                                 : assignedPM?.displayName || "—";
@@ -522,7 +426,7 @@ export function ClientDashboard() {
                                                     </td>
                                                     <td className="px-4 py-3">
                                                         <div>
-                                                            <span className="text-sm font-semibold text-foreground">{formatInr(costWithGst)}</span>
+                                                            <span className="text-sm font-semibold text-foreground">{formatInr(withGst(project.totalCost || 0))}</span>
                                                             <p className="text-[10px] text-muted-foreground">Base: {formatInr(project.totalCost || 0)} + 18% GST</p>
                                                         </div>
                                                     </td>
@@ -534,16 +438,18 @@ export function ClientDashboard() {
                                                     </td>
                                                     <td className="px-4 py-3 hidden sm:table-cell">
                                                         <div className="flex flex-col gap-1">
-                                                            <PaymentBadge paid={isPaid} partial={!isPaid && isPartial} />
+                                                            <PaymentBadge paid={isPaid} partial={!isPaid && (amountPaid > 0)} />
                                                             {!isPaid && (["completed", "completed_pending_payment", "approved"].includes(project.status)) && (
-                                                                <button 
-                                                                    disabled={isProcessingPayment}
-                                                                    onClick={(e) => { e.stopPropagation(); handleInitiatePayment(project); }}
-                                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-colors whitespace-nowrap disabled:opacity-50"
-                                                                >
-                                                                    {isProcessingPayment ? <RefreshCw className="h-2.5 w-2.5 animate-spin" /> : <CreditCard className="h-2.5 w-2.5" />} 
-                                                                    Pay Now
-                                                                </button>
+                                                                <PaymentButton 
+                                                                    projectId={project.id!}
+                                                                    projectName={project.name}
+                                                                    user={user}
+                                                                    amount={remainingWithGst}
+                                                                    accountingAmount={remainingBase}
+                                                                    description={`Payment for ${project.name}`}
+                                                                    allowPayLaterBypass={false}
+                                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-colors whitespace-nowrap h-auto w-auto shadow-none"
+                                                                />
                                                             )}
                                                         </div>
                                                     </td>
@@ -638,14 +544,18 @@ export function ClientDashboard() {
                                     {projects.length === 0 ? (
                                         <tr><td colSpan={8} className="px-4 py-12 text-center text-sm text-muted-foreground">No projects found</td></tr>
                                     ) : projects.map((project, idx) => {
+                                        const amountPaid = project.amountPaid || 0;
+                                        const totalCost = project.totalCost || 0;
+                                        const isPaid = amountPaid >= totalCost;
+                                        const remainingBase = Math.max(0, totalCost - amountPaid);
+                                        const remainingWithGst = withGst(remainingBase);
+                                        const isCompleted = ["completed", "completed_pending_payment", "approved"].includes(project.status);
+                                        
                                         const base = project.totalCost || 0;
                                         const gstAmt = base * GST_RATE;
                                         const total = base + gstAmt;
-                                        const paid = project.amountPaid || 0;
-                                        const paidWithGst = withGst(paid);
+                                        const paidWithGst = withGst(amountPaid);
                                         const balance = Math.max(0, total - paidWithGst);
-                                        const isPaid = project.paymentStatus === "full_paid";
-                                        const isCompleted = ["completed", "completed_pending_payment", "approved"].includes(project.status);
                                         const projectInvoices = invoices.filter((inv) => inv.projectId === project.id);
 
                                         return (
@@ -666,19 +576,21 @@ export function ClientDashboard() {
                                                     </span>
                                                 </td>
                                                 <td className="px-4 py-3">
-                                                    <PaymentBadge paid={isPaid} partial={!isPaid && project.paymentStatus === "half_paid"} />
+                                                    <PaymentBadge paid={isPaid} partial={!isPaid && (amountPaid > 0)} />
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <div className="flex items-center gap-2">
                                                         {!isPaid && isCompleted && (
-                                                            <button
-                                                                disabled={isProcessingPayment}
-                                                                onClick={() => handleInitiatePayment(project)}
-                                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-bold border border-red-500/20 hover:bg-red-500/20 transition-colors whitespace-nowrap disabled:opacity-50"
-                                                            >
-                                                                {isProcessingPayment ? <RefreshCw className="h-3 w-3 animate-spin" /> : <CreditCard className="h-3.5 w-3.5" />} 
-                                                                Pay Now
-                                                            </button>
+                                                            <PaymentButton
+                                                                projectId={project.id!}
+                                                                projectName={project.name}
+                                                                user={user}
+                                                                amount={remainingWithGst}
+                                                                accountingAmount={remainingBase}
+                                                                description={`Payment for ${project.name}`}
+                                                                allowPayLaterBypass={false}
+                                                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 text-red-500 text-xs font-bold border border-red-500/20 hover:bg-red-500/20 transition-colors whitespace-nowrap h-auto w-auto shadow-none"
+                                                            />
                                                         )}
                                                         {projectInvoices.length > 0 && (
                                                             <Link href={`/dashboard/invoices/${projectInvoices[0].id}`}>
@@ -931,6 +843,8 @@ export function ClientDashboard() {
                     createdAt: selectedProject.createdAt
                 } : null}
             />
+
+            {/* Razorpay payments are handled by the PaymentButton component directly */}
         </div>
     );
 }
