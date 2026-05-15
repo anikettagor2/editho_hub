@@ -164,19 +164,16 @@ export async function handleProjectCreated(projectId: string) {
         // AUTO-ASSIGN EDITOR LOGIC (PM-Driven)
         let autoAssignedEditorId = null;
         let autoAssignedPrice = 0;
+        let selectedPriority = 999;
         
         try {
             const priorities = clientData?.assignedEditorPriority || [];
             if (priorities.length > 0) {
                 // Determine the "Price" to match rules against.
-                // We prefer pricingTierPrice if it exists (saved during project creation), 
-                // otherwise fall back to budget.
                 const projectPrice = project?.pricingTierPrice || project?.budget || project?.totalCost || 0;
                 
-                // 1. Try to find price-specific rules
+                // 1. Filter by price-specific rules or fallback to general rules
                 let rulesToConsider = priorities.filter((p: any) => p.targetPrice === projectPrice);
-                
-                // 2. If no price-specific rules, fall back to general rules (those without targetPrice)
                 if (rulesToConsider.length === 0) {
                     rulesToConsider = priorities.filter((p: any) => !p.targetPrice);
                 }
@@ -187,21 +184,37 @@ export async function handleProjectCreated(projectId: string) {
                     
                     for (const p of sortedPriorities) {
                         const editorSnap = await adminDb.collection('users').doc(p.editorId).get();
+                        if (!editorSnap.exists) continue;
+                        
                         const editorData = editorSnap.data();
-                        if (editorSnap.exists && editorData?.status !== 'inactive') {
-                            autoAssignedEditorId = p.editorId;
-                            
-                            // If the rule has a fixed editorFee, use it.
-                            // Otherwise, calculate based on the client's default editor rate.
-                            if (p.editorFee) {
-                                autoAssignedPrice = p.editorFee;
-                            } else {
-                                const budget = project?.budget || project?.totalCost || 0;
-                                const rate = clientData?.defaultEditorRate || 50;
-                                autoAssignedPrice = Math.floor(budget * (rate / 100));
-                            }
-                            break;
+                        
+                        // Availability Checks:
+                        // 1. Status must be active
+                        // 2. Presence must be 'online'
+                        if (editorData?.status !== 'active' || editorData?.availabilityStatus !== 'online') continue;
+                        
+                        // 3. Workload check (maxProjectLimit)
+                        const maxLimit = editorData?.maxProjectLimit || 5;
+                        const activeProjectsSnap = await adminDb.collection('projects')
+                            .where('assignedEditorId', '==', p.editorId)
+                            .where('status', 'in', ['editor_assigned', 'in_production', 'review'])
+                            .get();
+                        
+                        if (activeProjectsSnap.size >= maxLimit) continue;
+
+                        // Found a suitable editor
+                        autoAssignedEditorId = p.editorId;
+                        selectedPriority = p.priority;
+                        
+                        // Determine price
+                        if (p.editorFee) {
+                            autoAssignedPrice = p.editorFee;
+                        } else {
+                            const budget = project?.budget || project?.totalCost || 0;
+                            const rate = clientData?.defaultEditorRate || 50;
+                            autoAssignedPrice = Math.floor(budget * (rate / 100));
                         }
+                        break;
                     }
                 }
             }
@@ -258,7 +271,7 @@ export async function handleProjectCreated(projectId: string) {
                     projectId,
                     'AUTO_ASSIGNED',
                     { uid: 'system', displayName: 'System Auto-Assign', designation: 'System' },
-                    `Editor auto-assigned based on client feedback. Price set to ₹${autoAssignedPrice}`
+                    `Editor auto-assigned based on client priority (Priority ${selectedPriority}). Price set to ₹${autoAssignedPrice}`
                 );
             }
 
@@ -1027,32 +1040,71 @@ export async function autoAssignEditor(projectId: string, editorPrice: number, d
             return { success: false, error: "No priority editors defined for this client. Please set them in Team Management." };
         }
 
-        // Calculate price if not provided or zero
-        let finalEditorPrice = editorPrice;
-        if (!finalEditorPrice || finalEditorPrice <= 0) {
+        // Calculate fallback price if needed
+        const calculateFallbackPrice = () => {
             const budget = projectData?.budget || projectData?.totalCost || 0;
             const rate = clientData?.defaultEditorRate || 50;
-            finalEditorPrice = Math.floor(budget * (rate / 100));
-        }
+            return Math.floor(budget * (rate / 100));
+        };
+
+        let finalEditorPrice = editorPrice;
 
         // 3. Find first available editor in the priority list
         let selectedEditor = null;
-        const sortedPriorities = [...priorities].sort((a, b) => a.priority - b.priority);
+        
+        // Determine the "Price" to match rules against.
+        const projectPrice = projectData?.pricingTierPrice || projectData?.budget || projectData?.totalCost || 0;
+        
+        // Filter priorities by matching targetPrice or general rules
+        let rulesToConsider = priorities.filter((p: any) => p.targetPrice === projectPrice);
+        if (rulesToConsider.length === 0) {
+            rulesToConsider = priorities.filter((p: any) => !p.targetPrice);
+        }
+
+        const sortedPriorities = [...rulesToConsider].sort((a, b) => a.priority - b.priority);
 
         for (const p of sortedPriorities) {
             const editorSnap = await adminDb.collection('users').doc(p.editorId).get();
-            if (editorSnap.exists && editorSnap.data()?.status !== 'inactive') {
-                selectedEditor = {
-                    editorId: p.editorId,
-                    priority: p.priority,
-                    displayName: editorSnap.data()?.displayName || 'Editor'
-                };
-                break;
+            if (!editorSnap.exists) continue;
+            
+            const editorData = editorSnap.data();
+            
+            // Availability Checks:
+            // 1. Status must be active
+            // 2. Presence must be 'online'
+            if (editorData?.status !== 'active' || editorData?.availabilityStatus !== 'online') continue;
+            
+            // 3. Workload check (maxProjectLimit)
+            const maxLimit = editorData?.maxProjectLimit || 5;
+            const activeProjectsSnap = await adminDb.collection('projects')
+                .where('assignedEditorId', '==', p.editorId)
+                .where('status', 'in', ['editor_assigned', 'in_production', 'review'])
+                .get();
+            
+            if (activeProjectsSnap.size >= maxLimit) continue;
+
+            // Use rule-specific fee if price wasn't explicitly overridden by PM in dashboard,
+            // OR if the provided price was 0 (auto-calculate).
+            // Actually, if a rule matched, its editorFee is the most specific configuration we have.
+            if ((!finalEditorPrice || finalEditorPrice <= 0) && p.editorFee) {
+                finalEditorPrice = p.editorFee;
             }
+
+            selectedEditor = {
+                editorId: p.editorId,
+                priority: p.priority,
+                displayName: editorData?.displayName || 'Editor'
+            };
+            break;
+        }
+
+        // Final fallback if price still not determined
+        if (!finalEditorPrice || finalEditorPrice <= 0) {
+            finalEditorPrice = calculateFallbackPrice();
         }
 
         if (!selectedEditor) {
-            return { success: false, error: "No priority editors are currently active for this client." };
+            return { success: false, error: "No priority editors are currently available (online and under project limit) for this client." };
         }
 
         // 4. Assign the editor

@@ -5,7 +5,7 @@ import { db } from "@/lib/firebase/config";
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { Project, User } from "@/types/schema";
 import { useEffect, useMemo, useState } from "react";
-import { Users, Loader2, IndianRupee, FolderOpen, FileText } from "lucide-react";
+import { Users, Loader2, IndianRupee, FolderOpen, Mail } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ClientPriorityManager } from "./client-priority-manager";
@@ -143,6 +143,7 @@ export default function TeamManagementPage() {
       totalProjects: number;
       totalPendingDues: number;
       pendingProjects: { id: string; name: string; pending: number }[];
+      salesExecEmail?: string;
     }>();
 
     for (const c of clients) {
@@ -152,12 +153,14 @@ export default function TeamManagementPage() {
       const seFromAll = seId ? allUsers.find(u => u.uid === seId) : undefined;
       const seUser = seFromExecs || seFromAll;
       const salesExecName = seUser?.displayName || undefined;
+      const salesExecEmail = seUser?.email || undefined;
 
       byClient.set(c.uid, {
         clientId: c.uid,
         clientName: c.displayName || "Unknown Client",
         clientEmail: c.email || "N/A",
         salesExecName,
+        salesExecEmail,
         assignedEditorPriority: c.assignedEditorPriority || [],
         defaultEditorRate: c.defaultEditorRate,
         totalProjects: 0,
@@ -268,10 +271,49 @@ export default function TeamManagementPage() {
                       <div className="font-semibold text-foreground">{item.clientName}</div>
                       <div className="text-xs text-muted-foreground mb-1">{item.clientEmail}</div>
                       {item.salesExecName && (
-                        <div className="text-[10px] font-semibold text-amber-600/90 dark:text-amber-500/90 mb-3 bg-amber-500/10 inline-block px-1.5 py-0.5 rounded">
-                          SE: {item.salesExecName}
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className="text-[10px] font-semibold text-amber-600/90 dark:text-amber-500/90 bg-amber-500/10 inline-block px-1.5 py-0.5 rounded">
+                            SE: {item.salesExecName}
+                          </div>
+                          {item.salesExecEmail && (
+                            <a 
+                              href={`mailto:${item.salesExecEmail}?subject=Pricing Configuration Required for ${item.clientName}`}
+                              className="text-muted-foreground hover:text-primary transition-colors"
+                              title={`Contact ${item.salesExecName} (${item.salesExecEmail})`}
+                            >
+                              <Mail className="h-3.5 w-3.5" />
+                            </a>
+                          )}
                         </div>
                       )}
+                      
+                      <div className="flex flex-wrap gap-1.5 mb-3">
+                        {item.assignedEditorPriority.length > 0 ? (
+                          <span className="text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-1.5 py-0.5 rounded-full border border-emerald-500/20">
+                            Priority Set ({item.assignedEditorPriority.length})
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-bold bg-muted text-muted-foreground px-1.5 py-0.5 rounded-full border border-border">
+                            No Priority
+                          </span>
+                        )}
+
+                        {(clients.find(c => c.uid === item.clientId)?.multiTierRates || clients.find(c => c.uid === item.clientId)?.customRates) ? (
+                          <span className="text-[10px] font-bold bg-blue-500/10 text-blue-600 dark:text-blue-400 px-1.5 py-0.5 rounded-full border border-blue-500/20">
+                            Pricing Set
+                          </span>
+                        ) : (
+                          <a 
+                            href={item.salesExecEmail ? `mailto:${item.salesExecEmail}?subject=Pricing Configuration Required for ${item.clientName}` : "#"}
+                            className="text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-500/20 hover:bg-amber-500/20 transition-all flex items-center gap-1 group"
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-pulse" />
+                            No Pricing
+                            <span className="hidden group-hover:inline ml-1 opacity-70">- Click to contact SE</span>
+                          </a>
+                        )}
+                      </div>
+
                       <div className={item.salesExecName ? "" : "mt-2"}>
                         <ClientPriorityManager 
                         clientId={item.clientId}
