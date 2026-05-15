@@ -170,13 +170,15 @@ export async function handleProjectCreated(projectId: string) {
             const priorities = clientData?.assignedEditorPriority || [];
             if (priorities.length > 0) {
                 // Determine the "Price" to match rules against.
-                const projectPrice = project?.pricingTierPrice || project?.budget || project?.totalCost || 0;
+                const projectPrice = Number(project?.pricingTierPrice || project?.budget || project?.totalCost || 0);
                 
                 // 1. Filter by price-specific rules or fallback to general rules
-                let rulesToConsider = priorities.filter((p: any) => p.targetPrice === projectPrice);
+                let rulesToConsider = priorities.filter((p: any) => Number(p.targetPrice) === projectPrice);
                 if (rulesToConsider.length === 0) {
                     rulesToConsider = priorities.filter((p: any) => !p.targetPrice);
                 }
+
+                console.log(`[AutoAssign] Found ${priorities.length} total rules. ${rulesToConsider.length} rules match price ${projectPrice}`);
 
                 if (rulesToConsider.length > 0) {
                     // Sort by priority ascending (1 is highest)
@@ -189,9 +191,15 @@ export async function handleProjectCreated(projectId: string) {
                         const editorData = editorSnap.data();
                         
                         // Availability Checks:
-                        // 1. Status must be active
-                        // 2. Presence must be 'online'
-                        if (editorData?.status !== 'active' || editorData?.availabilityStatus !== 'online') continue;
+                        // 1. Status must not be explicitly inactive (allow undefined/active)
+                        // 2. Presence must be explicitly 'online'
+                        const isInactive = editorData?.status === 'inactive';
+                        const isOnline = editorData?.availabilityStatus === 'online';
+                        
+                        if (isInactive || !isOnline) {
+                            console.log(`Skipping editor ${p.editorId}: status=${editorData?.status}, availability=${editorData?.availabilityStatus}`);
+                            continue;
+                        }
                         
                         // 3. Workload check (maxProjectLimit)
                         const maxLimit = editorData?.maxProjectLimit || 5;
@@ -200,18 +208,21 @@ export async function handleProjectCreated(projectId: string) {
                             .where('status', 'in', ['editor_assigned', 'in_production', 'review'])
                             .get();
                         
-                        if (activeProjectsSnap.size >= maxLimit) continue;
+                        if (activeProjectsSnap.size >= maxLimit) {
+                            console.log(`Skipping editor ${p.editorId}: Workload limit reached (${activeProjectsSnap.size}/${maxLimit})`);
+                            continue;
+                        }
 
                         // Found a suitable editor
                         autoAssignedEditorId = p.editorId;
                         selectedPriority = p.priority;
                         
-                        // Determine price
+                        // Determine price - ensure it's a number
                         if (p.editorFee) {
-                            autoAssignedPrice = p.editorFee;
+                            autoAssignedPrice = Number(p.editorFee);
                         } else {
-                            const budget = project?.budget || project?.totalCost || 0;
-                            const rate = clientData?.defaultEditorRate || 50;
+                            const budget = Number(project?.budget || project?.totalCost || 0);
+                            const rate = Number(clientData?.defaultEditorRate || 50);
                             autoAssignedPrice = Math.floor(budget * (rate / 100));
                         }
                         break;
@@ -1053,10 +1064,10 @@ export async function autoAssignEditor(projectId: string, editorPrice: number, d
         let selectedEditor = null;
         
         // Determine the "Price" to match rules against.
-        const projectPrice = projectData?.pricingTierPrice || projectData?.budget || projectData?.totalCost || 0;
+        const projectPrice = Number(projectData?.pricingTierPrice || projectData?.budget || projectData?.totalCost || 0);
         
         // Filter priorities by matching targetPrice or general rules
-        let rulesToConsider = priorities.filter((p: any) => p.targetPrice === projectPrice);
+        let rulesToConsider = priorities.filter((p: any) => Number(p.targetPrice) === projectPrice);
         if (rulesToConsider.length === 0) {
             rulesToConsider = priorities.filter((p: any) => !p.targetPrice);
         }
@@ -1070,9 +1081,12 @@ export async function autoAssignEditor(projectId: string, editorPrice: number, d
             const editorData = editorSnap.data();
             
             // Availability Checks:
-            // 1. Status must be active
-            // 2. Presence must be 'online'
-            if (editorData?.status !== 'active' || editorData?.availabilityStatus !== 'online') continue;
+            // 1. Status must not be explicitly inactive (allow undefined/active)
+            // 2. Presence must be explicitly 'online'
+            const isInactive = editorData?.status === 'inactive';
+            const isOnline = editorData?.availabilityStatus === 'online';
+            
+            if (isInactive || !isOnline) continue;
             
             // 3. Workload check (maxProjectLimit)
             const maxLimit = editorData?.maxProjectLimit || 5;
@@ -1085,9 +1099,8 @@ export async function autoAssignEditor(projectId: string, editorPrice: number, d
 
             // Use rule-specific fee if price wasn't explicitly overridden by PM in dashboard,
             // OR if the provided price was 0 (auto-calculate).
-            // Actually, if a rule matched, its editorFee is the most specific configuration we have.
             if ((!finalEditorPrice || finalEditorPrice <= 0) && p.editorFee) {
-                finalEditorPrice = p.editorFee;
+                finalEditorPrice = Number(p.editorFee);
             }
 
             selectedEditor = {
