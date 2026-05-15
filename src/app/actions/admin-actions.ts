@@ -1065,9 +1065,9 @@ export async function autoAssignEditor(projectId: string, editorPrice: number, d
                 editorName: selectedEditor.displayName,
                 priority: selectedEditor.priority 
             };
-        } else {
-            return res;
         }
+        
+        return { success: false, error: res.error || "Assignment failed" };
 
     } catch (error: any) {
         console.error('Error in autoAssignEditor:', error);
