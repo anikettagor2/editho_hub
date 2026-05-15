@@ -2174,7 +2174,11 @@ export function ProjectManagerDashboard() {
                     editorUpiId={users.find(u => u.uid === settlementProject.assignedEditorId)?.upiDetails?.vpa}
                     editorBankDetails={users.find(u => u.uid === settlementProject.assignedEditorId)?.bankDetails}
                     onMarkAsPaid={async () => {
-                        await settleEditorPayment(settlementProject.id);
+                        await settleEditorPayment(settlementProject.id, { 
+                            uid: user!.uid, 
+                            displayName: user!.displayName || 'PM', 
+                            designation: 'Project Manager' 
+                        });
                         if (inspectProject?.id === settlementProject.id) {
                             setInspectProject({ ...inspectProject, editorPaid: true, editorPaidAt: Date.now() });
                         }
