@@ -73,7 +73,7 @@ import {
     DropdownMenuSeparator, 
     DropdownMenuLabel 
 } from "@/components/ui/dropdown-menu";
-import { Modal } from "@/components/ui/modal";
+
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Label } from "@/components/ui/label";
 import { FilePreview } from "@/components/file-preview";
