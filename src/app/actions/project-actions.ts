@@ -95,15 +95,19 @@ async function purgeProjectAssets(projectId: string, projectData: any): Promise<
     const rawUrls = (projectData.rawFiles || []).map((f: any) => f?.url).filter(Boolean);
     const referenceUrls = (projectData.referenceFiles || []).map((f: any) => f?.url).filter(Boolean);
     const scriptUrls = (projectData.scripts || []).map((f: any) => f?.url).filter(Boolean);
+    const audioUrls = (projectData.audioFiles || []).map((f: any) => f?.url).filter(Boolean);
+    const bRoleUrls = ((projectData.bRoleFiles || projectData.broleFiles || []) as any[]).map((f: any) => f?.url).filter(Boolean);
     const footageUrl = projectData.footageLink;
 
-    const allUrls = [...rawUrls, ...referenceUrls, ...scriptUrls, footageUrl].filter(Boolean);
+    const allUrls = [...rawUrls, ...referenceUrls, ...scriptUrls, ...audioUrls, ...bRoleUrls, footageUrl].filter(Boolean);
     await Promise.all(allUrls.map((u) => deleteStorageFileByUrl(u)));
 
     await adminDb.collection("projects").doc(projectId).update({
         rawFiles: [],
         referenceFiles: [],
         scripts: [],
+        audioFiles: [],
+        bRoleFiles: [],
         assetsPurgedAt: Date.now(),
         updatedAt: Date.now(),
     });
@@ -191,7 +195,9 @@ export async function registerDownload(projectId: string, revisionId: string) {
 
         console.log(`[registerDownload] Updating project status to: ${newStatus}`);
 
-        // First successful client download starts retention timer for project assets.
+        const isFirstSuccessfulClientDownload = !projectData.clientHasDownloaded;
+
+        // Keep a retention timestamp for audit/history, even though raw assets are purged immediately now.
         if (!projectData.downloadRetentionStartedAt) {
             projectUpdate.downloadRetentionStartedAt = now;
             projectUpdate.assetsCleanupAfter = now + ASSET_PURGE_DELAY_MS;
@@ -199,10 +205,13 @@ export async function registerDownload(projectId: string, revisionId: string) {
 
         await projectRef.update(projectUpdate);
 
-        // If assets cleanup timer has elapsed and not purged yet, purge assets now.
-        const cleanupDue = (projectData.assetsCleanupAfter || 0) <= now;
-        if (cleanupDue && !projectData.assetsPurgedAt) {
+        if (newStatus === 'completed' && !projectData.assetsPurgedAt) {
             await purgeProjectAssets(projectId, projectData);
+        }
+
+        if (newStatus === 'completed' && isFirstSuccessfulClientDownload) {
+            const { handleProjectCompleted } = await import("./notification-actions");
+            await handleProjectCompleted(projectId);
         }
 
         let downloadUrl = data.videoUrl || "";

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import {
   collection,
   query,
@@ -340,7 +340,10 @@ export function AdminDashboard() {
   const handleEditUser = (uid: string) => {
     const user = users.find((u) => u.uid === uid);
     if (user) {
-      setEditUser(user);
+      setEditUser({
+        ...user,
+        whatsappNumber: user.whatsappNumber || user.phoneNumber || "",
+      });
       setIsEditUserModalOpen(true);
     }
   };
@@ -354,7 +357,8 @@ export function AdminDashboard() {
         {
           displayName: editUser.displayName,
           email: editUser.email,
-          phoneNumber: editUser.phoneNumber,
+          phoneNumber: editUser.phoneNumber || editUser.whatsappNumber,
+          whatsappNumber: editUser.whatsappNumber || editUser.phoneNumber,
           role: editUser.role,
         },
         {
@@ -516,6 +520,49 @@ export function AdminDashboard() {
   // Edit Team Member Modal State
   const [isEditUserModalOpen, setIsEditUserModalOpen] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
+
+  // Scroll Sync for Table
+  const tableContainerRef = useRef<HTMLDivElement>(null);
+  const topScrollRef = useRef<HTMLDivElement>(null);
+  const [tableWidth, setTableWidth] = useState(0);
+
+  useEffect(() => {
+    const tableContainer = tableContainerRef.current;
+    const topScroll = topScrollRef.current;
+    if (!tableContainer || !topScroll) return;
+
+    const handleTableScroll = () => {
+      if (topScroll.scrollLeft !== tableContainer.scrollLeft) {
+        topScroll.scrollLeft = tableContainer.scrollLeft;
+      }
+    };
+
+    const handleTopScroll = () => {
+      if (tableContainer.scrollLeft !== topScroll.scrollLeft) {
+        tableContainer.scrollLeft = topScroll.scrollLeft;
+      }
+    };
+
+    tableContainer.addEventListener("scroll", handleTableScroll);
+    topScroll.addEventListener("scroll", handleTopScroll);
+
+    const observer = new ResizeObserver((entries) => {
+      for (let entry of entries) {
+        setTableWidth(entry.target.scrollWidth);
+      }
+    });
+
+    if (tableContainerRef.current) {
+      observer.observe(tableContainerRef.current);
+    }
+    setTableWidth(tableContainer.scrollWidth);
+
+    return () => {
+      tableContainer.removeEventListener("scroll", handleTableScroll);
+      topScroll.removeEventListener("scroll", handleTopScroll);
+      observer.disconnect();
+    };
+  }, [activeTab, projects, users]);
 
   useEffect(() => {
     setLoading(true);
@@ -1222,10 +1269,10 @@ export function AdminDashboard() {
                 WhatsApp Number
               </Label>
               <Input
-                value={editUser.phoneNumber || ""}
+                value={editUser.whatsappNumber || ""}
                 onChange={(e) =>
                   handleEditUserChange(
-                    "phoneNumber",
+                    "whatsappNumber",
                     e.target.value.replace(/\D/g, "").slice(0, 10),
                   )
                 }
@@ -1487,87 +1534,44 @@ export function AdminDashboard() {
         </motion.div>
       )}
 
-      {/* Dashboard Header */}
-      <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-8 pb-8 border-b border-border">
-        <motion.div
-          initial={{ opacity: 0, x: -20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="space-y-2"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <div className="px-2 py-0.5 rounded bg-primary/10 border border-primary/20">
-              <span className="text-[10px] font-bold text-primary uppercase tracking-widest">
-                Management Hub
-              </span>
-            </div>
-            <div className="flex items-center gap-2 ml-2">
-              <div className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">
-                Live Updates
-              </span>
-            </div>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="flex justify-end"
+      >
+        <div className="max-w-full overflow-x-auto scrollbar-none rounded-xl border border-border bg-muted/40 p-1">
+          <div className="flex items-center gap-1">
+            {[
+              { key: "overview", label: "Overview" },
+              { key: "projects", label: "Projects" },
+              { key: "users", label: "Users" },
+              { key: "team", label: "Team" },
+              { key: "clients", label: "Client Profiles" },
+              { key: "terminations", label: "Terminations" },
+              { key: "requests", label: "Requests" },
+              { key: "whatsapp", label: "WhatsApp" },
+              { key: "finance", label: "Finance" },
+              { key: "performance", label: "Performance" },
+            ].map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => {
+                  setActiveTab(tab.key as any);
+                  setSearchQuery("");
+                }}
+                className={cn(
+                  "px-4 md:px-5 py-2 text-[11px] md:text-xs font-heading font-semibold tracking-wide rounded-lg transition-all whitespace-nowrap",
+                  activeTab === tab.key
+                    ? "bg-background text-foreground border border-fuchsia-500/70 ring-1 ring-fuchsia-500/30 shadow-[0_0_18px_rgba(217,70,239,0.24)]"
+                    : "text-foreground/70 hover:text-foreground hover:bg-background/70",
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
-          <h1 className="text-4xl md:text-5xl font-heading font-bold tracking-tight text-foreground leading-tight">
-            {currentUser?.role === "admin" ? "Admin" : "Management"}{" "}
-            <span className="text-muted-foreground">Dashboard</span>
-          </h1>
-          <div className="flex items-center gap-6 pt-2">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Shield className="h-3.5 w-3.5" />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                {currentUser?.role === "admin"
-                  ? "Administrator"
-                  : "Project Manager"}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <RefreshCw className="h-3.5 w-3.5" />
-              <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Data Updated
-              </span>
-            </div>
-          </div>
-        </motion.div>
-
-        <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          animate={{ opacity: 1, x: 0 }}
-          className="max-w-full"
-        >
-          <div className="inline-flex max-w-full overflow-x-auto scrollbar-none rounded-xl border border-border bg-muted/40 p-1">
-            <div className="flex items-center gap-1">
-              {[
-                { key: "overview", label: "Overview" },
-                { key: "projects", label: "Projects" },
-                { key: "users", label: "Users" },
-                { key: "team", label: "Team" },
-                { key: "clients", label: "Client Profiles" },
-                { key: "terminations", label: "Terminations" },
-                { key: "requests", label: "Requests" },
-                { key: "whatsapp", label: "WhatsApp" },
-                { key: "finance", label: "Finance" },
-                { key: "performance", label: "Performance" },
-              ].map((tab) => (
-                <button
-                  key={tab.key}
-                  onClick={() => {
-                    setActiveTab(tab.key as any);
-                    setSearchQuery("");
-                  }}
-                  className={cn(
-                    "px-4 md:px-5 py-2 text-[11px] md:text-xs font-heading font-semibold tracking-wide rounded-lg transition-all whitespace-nowrap",
-                    activeTab === tab.key
-                      ? "bg-background text-foreground border border-fuchsia-500/70 ring-1 ring-fuchsia-500/30 shadow-[0_0_18px_rgba(217,70,239,0.24)]"
-                      : "text-foreground/70 hover:text-foreground hover:bg-background/70",
-                  )}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </motion.div>
-      </div>
+        </div>
+      </motion.div>
 
       {/* Graphs - Shown above numbers on overview */}
       {activeTab === "overview" && (
@@ -1662,54 +1666,11 @@ export function AdminDashboard() {
           <div className="flex items-center gap-3">
             {activeTab === "projects" && (
               <>
-                {/* Desktop Filter Bar */}
-                <div className="hidden lg:flex bg-muted/50 border border-border rounded-lg p-1 flex-wrap">
-                  {[
-                    { key: "all", label: "All" },
-                    { key: "active", label: "Editing" },
-                    { key: "in_review", label: "In Review" },
-                    { key: "pending", label: "Pending" },
-                    { key: "completed", label: "Completed" },
-                    { key: "pay_later", label: "Pay Later" },
-                    { key: "payment_pending", label: "Payment Due" },
-                  ].map((f) => (
-                    <button
-                      key={f.key}
-                      onClick={() => setProjectFilter(f.key as any)}
-                      className={cn(
-                        "px-3 py-1 text-[9px] font-bold uppercase tracking-widest rounded transition-all",
-                        projectFilter === f.key
-                          ? "bg-background text-foreground shadow-sm"
-                          : "text-muted-foreground hover:text-foreground",
-                      )}
-                    >
-                      {f.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Mobile Dropdown */}
-                <div className="lg:hidden">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <button className="h-10 px-4 rounded-xl border border-border bg-muted/50 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all flex items-center gap-2">
-                        <Filter className="h-3.5 w-3.5" />
-                        {([
-                          { key: "all", label: "All" },
-                          { key: "active", label: "Editing" },
-                          { key: "in_review", label: "In Review" },
-                          { key: "pending", label: "Pending" },
-                          { key: "completed", label: "Completed" },
-                          { key: "pay_later", label: "Pay Later" },
-                          { key: "payment_pending", label: "Payment Due" },
-                        ].find(f => f.key === projectFilter)?.label) || "Filter"}
-                        <ChevronDown className="h-3 w-3 ml-1 opacity-50" />
-                      </button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-56 bg-background/95 backdrop-blur-xl border-border/50 rounded-2xl p-2 z-[150]">
-                      <DropdownMenuLabel className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-3 py-2">Filter Projects</DropdownMenuLabel>
-                      <DropdownMenuSeparator className="bg-border/50 my-1" />
-                      {[
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button className="h-10 px-4 rounded-xl border border-border bg-muted/50 text-[10px] font-black uppercase tracking-widest text-muted-foreground hover:text-foreground transition-all flex items-center gap-2">
+                      <Filter className="h-3.5 w-3.5" />
+                      {([
                         { key: "all", label: "All" },
                         { key: "active", label: "Editing" },
                         { key: "in_review", label: "In Review" },
@@ -1717,22 +1678,42 @@ export function AdminDashboard() {
                         { key: "completed", label: "Completed" },
                         { key: "pay_later", label: "Pay Later" },
                         { key: "payment_pending", label: "Payment Due" },
-                      ].map((f) => (
-                        <DropdownMenuItem
-                          key={f.key}
-                          onClick={() => setProjectFilter(f.key as any)}
-                          className={cn(
-                            "flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer mb-0.5 last:mb-0",
-                            projectFilter === f.key ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
-                          )}
-                        >
-                          {f.label}
-                          {projectFilter === f.key && <CheckCircle2 className="h-3.5 w-3.5" />}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
+                      ].find((f) => f.key === projectFilter)?.label) || "Filter"}
+                      <ChevronDown className="h-3 w-3 ml-1 opacity-50" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56 bg-background/95 backdrop-blur-xl border-border/50 rounded-2xl p-2 z-[150]">
+                    <DropdownMenuLabel className="text-[10px] font-black text-muted-foreground uppercase tracking-widest px-3 py-2">
+                      Filter Projects
+                    </DropdownMenuLabel>
+                    <DropdownMenuSeparator className="bg-border/50 my-1" />
+                    {[
+                      { key: "all", label: "All" },
+                      { key: "active", label: "Editing" },
+                      { key: "in_review", label: "In Review" },
+                      { key: "pending", label: "Pending" },
+                      { key: "completed", label: "Completed" },
+                      { key: "pay_later", label: "Pay Later" },
+                      { key: "payment_pending", label: "Payment Due" },
+                    ].map((f) => (
+                      <DropdownMenuItem
+                        key={f.key}
+                        onClick={() => setProjectFilter(f.key as any)}
+                        className={cn(
+                          "flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer mb-0.5 last:mb-0",
+                          projectFilter === f.key
+                            ? "bg-primary/10 text-primary"
+                            : "text-muted-foreground hover:bg-muted/50 hover:text-foreground",
+                        )}
+                      >
+                        {f.label}
+                        {projectFilter === f.key && (
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                        )}
+                      </DropdownMenuItem>
+                    ))}
+                  </DropdownMenuContent>
+                </DropdownMenu>
 
                 <Button
                   variant="outline"
@@ -1884,7 +1865,16 @@ export function AdminDashboard() {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
+        {/* Top Scrollbar - Synchronized with the table below */}
+        <div 
+          ref={topScrollRef}
+          className="overflow-x-auto overflow-y-hidden w-full h-[6px] transition-opacity duration-300"
+          style={{ opacity: tableWidth > (tableContainerRef.current?.offsetWidth || 0) ? 1 : 0 }}
+        >
+          <div style={{ width: tableWidth, height: '1px' }} />
+        </div>
+
+        <div ref={tableContainerRef} className="overflow-x-auto">
           <AnimatePresence mode="wait">
             {activeTab === "overview" && (
               <motion.table
@@ -2936,14 +2926,14 @@ export function AdminDashboard() {
                                   </span>
                                 )}
                                 <button
-                                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500 transition-all opacity-0 group-hover:opacity-100"
+                                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500 transition-all opacity-100"
                                   title="Edit team member"
                                   onClick={() => handleEditUser(u.uid)}
                                 >
                                   <Edit className="h-3.5 w-3.5" />
                                 </button>
                                 <button
-                                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-all opacity-100"
                                   onClick={() => handleDeleteUser(u.uid)}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -3001,14 +2991,14 @@ export function AdminDashboard() {
                                   </span>
                                 )}
                                 <button
-                                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500 transition-all opacity-0 group-hover:opacity-100"
+                                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-blue-500/10 text-muted-foreground hover:text-blue-500 transition-all opacity-100"
                                   title="Edit team member"
                                   onClick={() => handleEditUser(u.uid)}
                                 >
                                   <Edit className="h-3.5 w-3.5" />
                                 </button>
                                 <button
-                                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-all opacity-0 group-hover:opacity-100"
+                                  className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-red-500/10 text-muted-foreground hover:text-red-500 transition-all opacity-100"
                                   onClick={() => handleDeleteUser(u.uid)}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -4500,29 +4490,7 @@ export function AdminDashboard() {
           </AnimatePresence>
         </div>
 
-        <div className="p-6 border-t border-border bg-muted/30 flex items-center justify-between">
-          <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest">
-            Operational Scope:{" "}
-            {activeTab === "users"
-              ? filteredUsers.length
-              : filteredProjects.length}{" "}
-            units indexed
-          </span>
-          <div className="flex items-center gap-2">
-            <button
-              className="h-9 px-4 rounded-lg border border-border bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-widest hover:text-foreground hover:bg-muted disabled:opacity-30 transition-all active:scale-[0.98]"
-              disabled
-            >
-              Back
-            </button>
-            <button
-              className="h-9 px-4 rounded-lg border border-border bg-muted/50 text-[10px] font-bold text-muted-foreground uppercase tracking-widest hover:text-foreground hover:bg-muted disabled:opacity-30 transition-all active:scale-[0.98]"
-              disabled
-            >
-              Next
-            </button>
-          </div>
-        </div>
+
       </motion.div>
 
       {/* Modals */}

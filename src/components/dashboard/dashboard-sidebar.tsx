@@ -171,10 +171,7 @@ export function DashboardSidebar({}: DashboardSidebarProps) {
       {/* Navigation */}
       <div className="flex-1 overflow-y-auto space-y-8 py-6 px-4 scrollbar-none">
         <div className="space-y-2">
-          <div className="px-4 flex items-center justify-between mb-2">
-              <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-[0.25em]">Operational</span>
-              <Activity className="h-3 w-3 text-muted-foreground/50" />
-          </div>
+
           <nav className="space-y-0.5">
             {links.map((link) => {
               const Icon = link.icon;
