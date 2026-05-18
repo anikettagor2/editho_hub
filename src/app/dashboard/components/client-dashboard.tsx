@@ -2,7 +2,8 @@
 
 import { useState, useEffect } from "react";
 import { useAuth } from "@/lib/context/auth-context";
-import { db } from "@/lib/firebase/config";
+import { db, storage } from "@/lib/firebase/config";
+import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { collection, query, where, onSnapshot, orderBy, doc, updateDoc, getDoc, setDoc } from "firebase/firestore";
 import { Project, User, Invoice } from "@/types/schema";
 import { cn, safeJsonParse } from "@/lib/utils";
@@ -126,6 +127,7 @@ export function ClientDashboard() {
     const [previewFile, setPreviewFile] = useState<{ url: string; type: string; name: string } | null>(null);
     const [draftProjectIds, setDraftProjectIds] = useState<string[]>([]);
     const [activeTab, setActiveTab] = useState<"projects" | "finance">("projects");
+    const [isUploadingFiles, setIsUploadingFiles] = useState(false);
 
     // Fetch projects
     useEffect(() => {
@@ -234,6 +236,47 @@ export function ClientDashboard() {
             await handleFileDownload(url, fileName || "download");
         } catch (error: any) {
             toast.error(error.message || "Download initialization failed.");
+        }
+    };
+
+    const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        if (!e.target.files || !e.target.files.length || !selectedProject) return;
+        setIsUploadingFiles(true);
+        const newFiles = Array.from(e.target.files);
+        const uploadedFileLinks = [];
+        const loadingToast = toast.loading("Uploading files...");
+        
+        try {
+            for (const file of newFiles) {
+                const fileRef = ref(storage, `projects/${selectedProject.id}/client_uploads/${Date.now()}_${file.name}`);
+                const uploadTask = await uploadBytesResumable(fileRef, file);
+                const downloadURL = await getDownloadURL(uploadTask.ref);
+                uploadedFileLinks.push({
+                    name: file.name,
+                    url: downloadURL,
+                    type: file.type || 'application/octet-stream',
+                    uploadedAt: Date.now()
+                });
+            }
+
+            const projectRef = doc(db, "projects", selectedProject.id);
+            const currentRawFiles = selectedProject.rawFiles || [];
+            await updateDoc(projectRef, {
+                rawFiles: [...currentRawFiles, ...uploadedFileLinks]
+            });
+            
+            setSelectedProject({
+                ...selectedProject,
+                rawFiles: [...currentRawFiles, ...uploadedFileLinks]
+            });
+            
+            toast.success("Files uploaded successfully", { id: loadingToast });
+        } catch (error) {
+            console.error("Error uploading files:", error);
+            toast.error("Failed to upload files", { id: loadingToast });
+        } finally {
+            setIsUploadingFiles(false);
+            if (e.target) e.target.value = '';
         }
     };
 
@@ -703,7 +746,25 @@ export function ClientDashboard() {
 
                                 {/* Files */}
                                 <div className="bg-muted/30 border border-border rounded-lg p-4 space-y-3">
-                                    <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest">Project Files</p>
+                                    <div className="flex items-center justify-between">
+                                        <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest">Project Files</p>
+                                        <label className="cursor-pointer relative">
+                                            <input 
+                                                type="file" 
+                                                multiple 
+                                                className="hidden" 
+                                                onChange={handleFileUpload} 
+                                                disabled={isUploadingFiles} 
+                                            />
+                                            <div className="h-8 px-3 rounded-md bg-primary text-primary-foreground hover:bg-primary/90 text-xs font-bold flex items-center gap-2 transition-all opacity-100 disabled:opacity-50">
+                                                {isUploadingFiles ? (
+                                                    <><RefreshCw className="h-3.5 w-3.5 animate-spin" /> Uploading...</>
+                                                ) : (
+                                                    <><Plus className="h-3.5 w-3.5" /> Add Files</>
+                                                )}
+                                            </div>
+                                        </label>
+                                    </div>
                                     {selectedProject.rawFiles && selectedProject.rawFiles.length > 0 ? (
                                         <div className="space-y-2 max-h-[200px] overflow-y-auto custom-scrollbar pr-1">
                                             {selectedProject.rawFiles.map((file: any, i: number) => (

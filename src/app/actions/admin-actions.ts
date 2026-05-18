@@ -259,7 +259,7 @@ export async function handleProjectCreated(projectId: string) {
             );
             
             // Await notification so serverless execution does not drop WhatsApp sends.
-            const pmNotifyResult = await notifyPMProjectAssigned(projectId, pmId, seName);
+            const pmNotifyResult = await notifyPMProjectAssigned(projectId, pmId, seName, !!autoAssignedEditorId);
             if (!pmNotifyResult.success) {
                 console.error('[WhatsApp] PM assignment notification failed', {
                     projectId,
@@ -336,7 +336,7 @@ export async function assignProjectManager(projectId: string, pmId: string, upda
         const pmName = pmData?.displayName || 'Project Manager';
         const [clientNotifyResult, pmNotifyResult] = await Promise.all([
             notifyClientPMAssigned(projectId, pmName),
-            notifyPMProjectAssigned(projectId, pmId, updatedBy.displayName || 'Admin'),
+            notifyPMProjectAssigned(projectId, pmId, updatedBy.displayName || 'Admin', false),
         ]);
 
         if (!clientNotifyResult.success) {

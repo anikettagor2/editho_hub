@@ -446,6 +446,9 @@ export function AdminDashboard() {
   const [isReviewSystemOpen, setIsReviewSystemOpen] = useState(false);
   const [reviewProject, setReviewProject] = useState<Project | null>(null);
 
+  // QR Payment Modal State
+  const [qrPaymentModal, setQrPaymentModal] = useState<{editorId: string, amount: number, upiId: string, editorName: string} | null>(null);
+
   // User Creation State
   const [isCreatingUser, setIsCreatingUser] = useState(false);
   const [newUser, setNewUser] = useState({
@@ -933,6 +936,38 @@ export function AdminDashboard() {
     else toast.error("Failed to settle payment");
   };
 
+  const handleSettleAllClientDues = async (clientId: string) => {
+    if (!confirm("Are you sure you want to mark ALL pending Pay Later projects for this client as Settled (fully paid)?")) return;
+
+    const loadingToast = toast.loading("Settling all dues...");
+    try {
+      const clientProjects = projects.filter(
+        (p) => p.clientId === clientId && p.paymentStatus !== "full_paid" && ((p as any).isPayLaterRequest || users.find(u => u.uid === clientId)?.payLater),
+      );
+
+      let successCount = 0;
+      for (const p of clientProjects) {
+        const res = await settleProjectPayment(
+          p.id,
+          currentUser!.uid,
+          currentUser!.displayName || "Admin",
+          currentUser?.role || "admin",
+        );
+        if (res.success) successCount++;
+      }
+
+      if (successCount === clientProjects.length) {
+        toast.success(`Successfully settled ${successCount} projects`, { id: loadingToast });
+      } else if (successCount > 0) {
+        toast.success(`Partially settled ${successCount}/${clientProjects.length} projects`, { id: loadingToast });
+      } else {
+        toast.error("Failed to settle projects", { id: loadingToast });
+      }
+    } catch (e: any) {
+      toast.error(e.message || "Failed to settle dues", { id: loadingToast });
+    }
+  };
+
   const handleDeleteProject = async (projectId: string) => {
     if (!confirm("Proceed with permanent deletion of this project?")) return;
     const result = await deleteProject(projectId);
@@ -1042,7 +1077,7 @@ export function AdminDashboard() {
 
     if (
       !confirm(
-        `Are you sure you want to settle all ${editorProjects.length} pending payouts for this editor?`,
+        `Are you sure you want to settle all ${editorProjects.length} pending payouts for this editor via RazorpayX?`,
       )
     )
       return;
@@ -1052,6 +1087,38 @@ export function AdminDashboard() {
 
     if (res.success) toast.success(res.message);
     else toast.error("Failed to initiate automated payouts");
+  };
+
+  const handleMarkEditorManualPaid = async (editorId: string) => {
+    const editorProjects = projects.filter(
+      (p) =>
+        p.assignedEditorId === editorId &&
+        p.clientHasDownloaded &&
+        !p.editorPaid,
+    );
+    if (editorProjects.length === 0) return;
+
+    if (
+      !confirm(
+        `Are you sure you want to mark ${editorProjects.length} projects as manually paid?`,
+      )
+    )
+      return;
+
+    const loadingToast = toast.loading("Marking projects as paid...");
+    try {
+      const batch = writeBatch(db);
+      for (const p of editorProjects) {
+        batch.update(doc(db, "projects", p.id), {
+          editorPaid: true,
+          updatedAt: Date.now(),
+        });
+      }
+      await batch.commit();
+      toast.success(`Successfully marked ${editorProjects.length} projects as paid`, { id: loadingToast });
+    } catch (err: any) {
+      toast.error(err.message || "Failed to mark projects as paid", { id: loadingToast });
+    }
   };
 
   const handleUpdateProject = async () => {
@@ -4189,8 +4256,8 @@ export function AdminDashboard() {
                                     </span>
                                   </div>
                                   <button
-                                    disabled
-                                    className="w-full md:w-auto h-9 px-4 rounded-lg bg-orange-500/50 text-foreground font-bold uppercase tracking-widest transition-all text-[10px] cursor-not-allowed opacity-50 flex items-center justify-center gap-2"
+                                    onClick={() => handleSettleAllClientDues(client.uid)}
+                                    className="w-full md:w-auto h-9 px-4 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-500 font-bold uppercase tracking-widest transition-all hover:bg-orange-500 hover:text-foreground text-[10px] flex items-center justify-center gap-2 active:scale-95"
                                   >
                                     <CheckCircle2 className="h-3.5 w-3.5" />
                                     Mark All Received
@@ -4356,15 +4423,30 @@ export function AdminDashboard() {
                                       ₹{totalEditorDues.toLocaleString()}
                                     </span>
                                   </div>
-                                  <button
-                                    onClick={() =>
-                                      handleSettleAllDues(editor.uid)
-                                    }
-                                    className="w-full md:w-auto h-9 px-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold uppercase tracking-widest transition-all hover:bg-blue-500 hover:text-foreground text-[10px] flex items-center justify-center gap-2 active:scale-95"
-                                  >
-                                    <RefreshCw className="h-3.5 w-3.5" />
-                                    Settle All Dues
-                                  </button>
+                                  <div className="flex gap-2 w-full md:w-auto">
+                                    <button
+                                      onClick={() => {
+                                        if (editor.upiDetails?.vpa) {
+                                            setQrPaymentModal({ editorId: editor.uid, amount: totalEditorDues, upiId: editor.upiDetails.vpa, editorName: editor.displayName || "Editor" });
+                                        } else {
+                                            toast.error("Editor has no UPI ID configured.");
+                                        }
+                                      }}
+                                      className="flex-1 md:w-auto h-9 px-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-bold uppercase tracking-widest transition-all hover:bg-emerald-500 hover:text-foreground text-[10px] flex items-center justify-center gap-2 active:scale-95"
+                                    >
+                                      <IndianRupee className="h-3.5 w-3.5" />
+                                      Pay Once
+                                    </button>
+                                    <button
+                                      onClick={() =>
+                                        handleSettleAllDues(editor.uid)
+                                      }
+                                      className="flex-1 md:w-auto h-9 px-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold uppercase tracking-widest transition-all hover:bg-blue-500 hover:text-foreground text-[10px] flex items-center justify-center gap-2 active:scale-95"
+                                    >
+                                      <RefreshCw className="h-3.5 w-3.5" />
+                                      Settle All Dues
+                                    </button>
+                                  </div>
                                 </div>
                               </div>
 
@@ -6199,6 +6281,46 @@ export function AdminDashboard() {
           </button>
         </form>
       </Modal>
+
+      {/* QR Payment Modal */}
+      {qrPaymentModal && (
+        <Modal
+          isOpen={!!qrPaymentModal}
+          onClose={() => setQrPaymentModal(null)}
+          title={`Pay ${qrPaymentModal.editorName}`}
+          maxWidth="max-w-md"
+        >
+          <div className="flex flex-col items-center justify-center p-4 space-y-6">
+            <div className="text-center space-y-1">
+                <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">Amount to Pay</p>
+                <p className="text-3xl font-black text-foreground tabular-nums">₹{qrPaymentModal.amount.toLocaleString()}</p>
+            </div>
+            
+            <div className="bg-white p-4 rounded-xl border border-border shadow-sm flex items-center justify-center overflow-hidden w-[200px] h-[200px]">
+                <img 
+                    src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(`upi://pay?pa=${qrPaymentModal.upiId}&pn=${qrPaymentModal.editorName}&am=${qrPaymentModal.amount}&cu=INR`)}`}
+                    alt="UPI QR Code" 
+                    className="w-full h-full object-contain"
+                />
+            </div>
+            
+            <div className="w-full text-center p-3 rounded-lg bg-muted/50 border border-border">
+                <p className="text-xs text-muted-foreground uppercase tracking-widest font-bold">UPI ID</p>
+                <p className="text-sm font-bold mt-1 text-foreground">{qrPaymentModal.upiId}</p>
+            </div>
+
+            <button
+              onClick={() => {
+                  handleMarkEditorManualPaid(qrPaymentModal.editorId);
+                  setQrPaymentModal(null);
+              }}
+              className="w-full h-12 bg-emerald-500 text-white font-black uppercase text-xs tracking-widest rounded-xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+            >
+              <CheckCircle2 className="h-4 w-4" /> Mark as Paid
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

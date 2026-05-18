@@ -645,6 +645,10 @@ export async function notifyPM(
             }
         }
 
+        if (extraData?.isAutoAssignedEditor) {
+            clientName = `${clientName} (auto assigned)`;
+        }
+
         let params: string[];
         if (notificationType === 'pm_project_assigned') {
             const projectValue = formatInrAmount(project.totalCost || project.budget || 0);
@@ -789,8 +793,8 @@ export async function notifyEditorFeedbackReceived(projectId: string, editorId: 
 }
 
 /** Notify PM about new project from SE */
-export async function notifyPMProjectAssigned(projectId: string, pmId: string, _seName: string) {
-    return notifyPM(projectId, pmId, 'pm_project_assigned');
+export async function notifyPMProjectAssigned(projectId: string, pmId: string, _seName: string, isAutoAssignedEditor?: boolean) {
+    return notifyPM(projectId, pmId, 'pm_project_assigned', { isAutoAssignedEditor: isAutoAssignedEditor ? 'true' : '' });
 }
 
 /** Notify PM that editor accepted */
