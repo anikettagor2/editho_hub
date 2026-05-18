@@ -648,7 +648,7 @@ export async function notifyPM(
         let params: string[];
         if (notificationType === 'pm_project_assigned') {
             const projectValue = formatInrAmount(project.totalCost || project.budget || 0);
-            const projectLink = `${normalizeAppBaseUrl()}/dashboard/projects/${projectId}`;
+            const projectLink = `https://www.editohub.com/dashboard`;
             // Template: project_manager_msg
             // {{1}} PM name, {{2}} project name, {{3}} client name, {{4}} value, {{5}} project link
             params = [
