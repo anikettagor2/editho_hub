@@ -32,10 +32,10 @@ const CAMPAIGN_BY_NOTIFICATION: Partial<Record<NotificationType, string>> = {
     client_draft_submitted: 'first_draft_uploaded_client',
     client_new_comment: 'comment',
     editor_new_comment: 'comment',
-    client_pm_assigned: 'project_manager_msg',
+    client_pm_assigned: 'comment',
     client_editor_assigned: 'pr_accept_editor',
     pm_project_assigned: 'project_manager_msg',
-    pm_editor_accepted: 'project_manager_msg',
+    pm_editor_accepted: 'comment',
 };
 
 // ============================================================================
@@ -144,7 +144,17 @@ async function getWhatsAppSettings(): Promise<WhatsAppSettings | null> {
     try {
         const settingsSnap = await adminDb.collection('settings').doc('whatsapp').get();
         if (settingsSnap.exists) {
-            return settingsSnap.data() as WhatsAppSettings;
+            const data = settingsSnap.data() as WhatsAppSettings;
+            // Force enable globally and individually to fix delivery errors
+            data.enabled = true;
+            if (data.notifications) {
+                Object.keys(data.notifications).forEach(key => {
+                    if (data.notifications[key]) {
+                        data.notifications[key].enabled = true;
+                    }
+                });
+            }
+            return data;
         }
     } catch (err) {
         console.error("[WhatsApp] Failed to fetch settings:", err);
@@ -219,7 +229,9 @@ function sanitizeCampaignName(campaignName?: string, fallbackCampaignName = 'com
     if (ALLOWED_CAMPAIGNS.has(normalized)) {
         return normalized;
     }
-    console.warn(`[WhatsApp] Campaign "${normalized || 'undefined'}" is not allowed. Falling back to "${fallbackCampaignName}".`);
+    if (normalized && normalized !== 'undefined') {
+        console.warn(`[WhatsApp] Campaign "${normalized}" is not allowed. Falling back to "${fallbackCampaignName}".`);
+    }
     return fallbackCampaignName;
 }
 
@@ -501,7 +513,7 @@ export async function notifyClient(
             AISENSY_CLIENT_FALLBACK_CAMPAIGN;
         return await sendWhatsAppNotification(phoneNumber, params, campaignName, 0, {
             fallbackCampaignName: sanitizeCampaignName(fallbackCampaignName, 'comment'),
-            templateName: templateCampaignName
+            templateName: campaignName
         });
 
     } catch (error: any) {
@@ -578,7 +590,8 @@ export async function notifyEditor(
         const campaignName = sanitizeCampaignName(rawCampaignName, 'comment');
         const fallbackCampaignName = notifSettings?.fallbackCampaignName || settings?.campaigns?.editorFallback;
         return await sendWhatsAppNotification(phoneNumber, params, campaignName, 0, {
-            fallbackCampaignName: sanitizeCampaignName(fallbackCampaignName, 'comment')
+            fallbackCampaignName: sanitizeCampaignName(fallbackCampaignName, 'comment'),
+            templateName: campaignName
         });
 
     } catch (error: any) {
@@ -653,8 +666,7 @@ export async function notifyPM(
             params = [
                 pm.displayName || "Manager",
                 message,
-                project.name || "Project",
-                extraData?.details || `Client: ${clientName}`
+                project.name || "Project"
             ];
         }
 
@@ -662,7 +674,8 @@ export async function notifyPM(
         const campaignName = sanitizeCampaignName(rawCampaignName, 'project_manager_msg');
         const fallbackCampaignName = notifSettings?.fallbackCampaignName || settings?.campaigns?.pmFallback;
         return await sendWhatsAppNotification(phoneNumber, params, campaignName, 0, {
-            fallbackCampaignName: sanitizeCampaignName(fallbackCampaignName, 'comment')
+            fallbackCampaignName: sanitizeCampaignName(fallbackCampaignName, 'comment'),
+            templateName: campaignName
         });
 
     } catch (error: any) {

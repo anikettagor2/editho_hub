@@ -37,14 +37,32 @@ export async function handleFileDownload(urlOrId: string, filename: string = "vi
             return;
         }
 
-        // For any external remote URL (http/https), use an anchor tag with target="_blank".
-        // This avoids memory limits with large files and avoids CORS issues.
-        // The URLs returned by the backend already have Content-Disposition: attachment.
+        // 3. For remote URLs, fetch as blob to force download dialog and avoid redirection.
+        // Fallback to direct navigation if fetch fails (e.g. CORS or extremely large files).
         if (urlOrId.startsWith("http://") || urlOrId.startsWith("https://")) {
-            console.log(`[DownloadUtils] Remote URL detected, using anchor tag navigation to bypass popup blockers and memory limits`);
-            triggerDirectNavigation(urlOrId, filename);
-            toast.success("Download started!", { id: downloadToastId });
-            return;
+            try {
+                console.log(`[DownloadUtils] Remote URL detected, fetching as blob to force true download...`);
+                toast.loading(`Downloading ${filename}...`, { id: downloadToastId });
+                
+                const response = await fetch(urlOrId);
+                if (!response.ok) throw new Error(`Fetch failed with status: ${response.status}`);
+                
+                const blob = await response.blob();
+                const blobUrl = URL.createObjectURL(blob);
+                
+                triggerDownload(blobUrl, filename);
+                
+                // Cleanup
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+                toast.success("Download started!", { id: downloadToastId });
+                return;
+            } catch (fetchError) {
+                console.error("[DownloadUtils] Fetch failed, falling back to direct navigation:", fetchError);
+                // Fallback to old behavior if CORS blocks the fetch or it fails
+                triggerDirectNavigation(urlOrId, filename);
+                toast.success("Download started (direct link)", { id: downloadToastId });
+                return;
+            }
         }
 
         console.log(`[DownloadUtils] Unrecognized url format, attempting direct navigation anyway: ${urlOrId}`);
