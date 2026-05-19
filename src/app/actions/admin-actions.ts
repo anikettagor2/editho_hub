@@ -539,6 +539,10 @@ export async function respondToAssignment(projectId: string, response: 'accepted
             updatedAt: now
         };
 
+        if (response === 'accepted') {
+            updateData.acceptedAt = now;
+        }
+
         if (response === 'rejected') {
             updateData.editorDeclineReason = reason?.trim() || 'No reason provided';
             updateData.assignedEditorId = admin.firestore.FieldValue.delete();
@@ -1203,7 +1207,7 @@ export async function updateUserDetails(uid: string, updates: Partial<any>, upda
         const userData = userSnap.data();
 
         // Prepare update object - only allow specific fields
-        const allowedFields = ['displayName', 'email', 'phoneNumber', 'whatsappNumber', 'role', 'location', 'portfolio', 'skills', 'skillPrices'];
+        const allowedFields = ['displayName', 'email', 'phoneNumber', 'whatsappNumber', 'role', 'location', 'portfolio', 'skills', 'skillPrices', 'initialPassword'];
         const safeUpdates: any = {
             updatedAt: Date.now(),
             updatedBy: updatedBy.uid
@@ -1225,6 +1229,15 @@ export async function updateUserDetails(uid: string, updates: Partial<any>, upda
             } catch (authError: any) {
                 console.warn('Warning: Could not update Firebase Auth email:', authError.message);
                 // Don't fail the request, just warn
+            }
+        }
+
+        // If initialPassword changed, update Firebase Auth password
+        if (updates.initialPassword) {
+            try {
+                await adminAuth.updateUser(uid, { password: updates.initialPassword });
+            } catch (authError: any) {
+                console.warn('Warning: Could not update Firebase Auth password:', authError.message);
             }
         }
 

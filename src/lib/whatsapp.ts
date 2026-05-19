@@ -850,6 +850,38 @@ export async function notifyPMProjectCompleted(projectId: string, pmId: string, 
     return notifyPM(projectId, pmId, 'pm_project_completed', { client: clientName, details: `Client: ${clientName}` });
 }
 
+/** Notify PM that a project has been assigned for 24 hours */
+export async function notifyPMProjectReminder24h(
+    projectId: string,
+    pmId: string,
+    projectName: string,
+    editorName: string,
+    hoursAgo: number
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const settings = await getWhatsAppSettings();
+        if (settings && !settings.enabled) return { success: true };
+
+        const pmSnap = await adminDb.collection('users').doc(pmId).get();
+        if (!pmSnap.exists) return { success: false, error: 'PM not found' };
+        const pm = pmSnap.data();
+
+        const phoneNumber = pm?.whatsappNumber || pm?.phoneNumber;
+        if (!phoneNumber) return { success: false, error: 'No phone number for PM' };
+
+        const pmName = pm?.displayName || 'Manager';
+        // Template params: {{1}} PM name, {{2}} project name, {{3}} assigned editor name, {{4}} hours ago
+        const params = [pmName, projectName, editorName, `${hoursAgo} hours`];
+
+        return await sendWhatsAppNotification(phoneNumber, params, 'project_reminder_pm', 0, {
+            templateName: 'project_reminder_pm',
+        });
+    } catch (error: any) {
+        console.error('[WhatsApp] notifyPMProjectReminder24h Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
 // ============================================================================
 // LEGACY SUPPORT (Backward compatibility)
 // ============================================================================

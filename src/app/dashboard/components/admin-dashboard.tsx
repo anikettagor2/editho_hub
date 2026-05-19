@@ -360,6 +360,7 @@ export function AdminDashboard() {
           phoneNumber: editUser.phoneNumber || editUser.whatsappNumber,
           whatsappNumber: editUser.whatsappNumber || editUser.phoneNumber,
           role: editUser.role,
+          initialPassword: editUser.initialPassword,
         },
         {
           uid: currentUser!.uid,
@@ -1359,6 +1360,19 @@ export function AdminDashboard() {
                 <option value="sales_executive">Sales Executive</option>
                 <option value="project_manager">Project Manager</option>
               </select>
+            </div>
+            <div>
+              <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
+                Access Password / Key
+              </Label>
+              <Input
+                value={editUser.initialPassword || ""}
+                onChange={(e) =>
+                  handleEditUserChange("initialPassword", e.target.value)
+                }
+                className="w-full font-mono"
+                placeholder="Enter new login password"
+              />
             </div>
             <div className="flex gap-2 pt-2">
               <Button
@@ -5517,6 +5531,89 @@ export function AdminDashboard() {
 
               {/* RIGHT COLUMN: Logistics & Geography (4 Units) */}
               <div className="lg:col-span-4 space-y-6">
+                {/* Security & Credentials Card */}
+                <div className="bg-muted/30 border border-border rounded-2xl p-6 space-y-6 relative overflow-hidden group">
+                  <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
+                    <ShieldCheck className="h-10 w-10 text-primary" />
+                  </div>
+                  <h5 className="text-[11px] font-black uppercase tracking-widest text-primary border-b border-border pb-3 flex items-center gap-2">
+                    <Shield className="h-4 w-4" /> Security & Credentials
+                  </h5>
+                  <div className="space-y-4 relative z-10">
+                    <div className="space-y-2">
+                      <Label className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">
+                        Login Email Address
+                      </Label>
+                      <Input
+                        type="email"
+                        id={`cred-email-${selectedUserDetail.uid}`}
+                        key={`cred-email-${selectedUserDetail.uid}`}
+                        defaultValue={selectedUserDetail.email || ""}
+                        className="w-full h-10 bg-muted border border-border rounded-xl px-4 text-xs font-semibold focus:border-primary/50 transition-colors"
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">
+                        Access Password / Key
+                      </Label>
+                      <Input
+                        type="text"
+                        id={`cred-pass-${selectedUserDetail.uid}`}
+                        key={`cred-pass-${selectedUserDetail.uid}`}
+                        defaultValue={selectedUserDetail.initialPassword || ""}
+                        placeholder="Enter new password"
+                        className="w-full h-10 bg-muted border border-border rounded-xl px-4 text-xs font-mono font-semibold focus:border-primary/50 transition-colors"
+                      />
+                    </div>
+
+                    <Button
+                      onClick={async () => {
+                        const emailInput = document.getElementById(`cred-email-${selectedUserDetail.uid}`) as HTMLInputElement;
+                        const passInput = document.getElementById(`cred-pass-${selectedUserDetail.uid}`) as HTMLInputElement;
+                        const newEmail = emailInput?.value.trim();
+                        const newPass = passInput?.value.trim();
+
+                        if (!newEmail) {
+                          toast.error("Email cannot be empty");
+                          return;
+                        }
+
+                        const loadingToast = toast.loading("Updating credentials...");
+                        try {
+                          const res = await updateUserDetails(
+                            selectedUserDetail.uid,
+                            {
+                              email: newEmail,
+                              ...(newPass ? { initialPassword: newPass } : {}),
+                            },
+                            {
+                              uid: currentUser!.uid,
+                              displayName: currentUser!.displayName || "Admin",
+                            }
+                          );
+
+                          if (res.success) {
+                            toast.success("Credentials updated successfully", { id: loadingToast });
+                            setSelectedUserDetail({
+                              ...selectedUserDetail,
+                              email: newEmail,
+                              ...(newPass ? { initialPassword: newPass } : {}),
+                            });
+                          } else {
+                            toast.error(res.error || "Update failed", { id: loadingToast });
+                          }
+                        } catch (err: any) {
+                          toast.error(err.message || "An unexpected error occurred", { id: loadingToast });
+                        }
+                      }}
+                      className="w-full h-10 bg-primary text-primary-foreground font-black uppercase text-[10px] tracking-widest rounded-xl hover:bg-zinc-200 transition-all shadow-md mt-2"
+                    >
+                      Update Credentials
+                    </Button>
+                  </div>
+                </div>
+
                 <div className="bg-muted/30 border border-border rounded-2xl p-6 space-y-6 relative overflow-hidden group">
                   <div className="absolute top-0 right-0 p-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
                     <Globe className="h-10 w-10" />
