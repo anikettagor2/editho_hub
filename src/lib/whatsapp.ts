@@ -25,6 +25,7 @@ const ALLOWED_CAMPAIGNS = new Set<string>([
     'editor_assigned',
     'pro_delay',
     'pr_accept_editor',
+    'delay_check_editor_client',
 ]);
 
 const CAMPAIGN_BY_NOTIFICATION: Partial<Record<NotificationType, string>> = {
@@ -878,6 +879,76 @@ export async function notifyPMProjectReminder24h(
         });
     } catch (error: any) {
         console.error('[WhatsApp] notifyPMProjectReminder24h Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Notify Editor that their 15-minute acceptance window is expiring in 5 minutes (10 minutes after assignment).
+ * Template params: {{1}} editor name, {{2}} project name, {{3}} dashboard link
+ */
+export async function notifyEditorDelay10m(
+    projectId: string,
+    editorId: string,
+    projectName: string,
+    link: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const settings = await getWhatsAppSettings();
+        if (settings && !settings.enabled) return { success: true };
+
+        const editorSnap = await adminDb.collection('users').doc(editorId).get();
+        if (!editorSnap.exists) return { success: false, error: 'Editor not found' };
+        const editor = editorSnap.data();
+
+        const phoneNumber = editor?.whatsappNumber || editor?.phoneNumber;
+        if (!phoneNumber) return { success: false, error: 'No phone number for editor' };
+
+        const editorName = editor?.displayName || 'Editor';
+
+        // Parameters: {{1}} Editor Name, {{2}} Project Name, {{3}} Dashboard Link
+        const params = [editorName, projectName, link];
+
+        return await sendWhatsAppNotification(phoneNumber, params, 'delay_check_editor_client', 0, {
+            templateName: 'delay_check_editor_client',
+        });
+    } catch (error: any) {
+        console.error('[WhatsApp] notifyEditorDelay10m Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Notify Project Manager that a project was assigned to them and no editor has been assigned for 10 minutes.
+ * Template params: {{1}} PM name, {{2}} project name, {{3}} dashboard link
+ */
+export async function notifyPMDelay10m(
+    projectId: string,
+    pmId: string,
+    projectName: string,
+    link: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const settings = await getWhatsAppSettings();
+        if (settings && !settings.enabled) return { success: true };
+
+        const pmSnap = await adminDb.collection('users').doc(pmId).get();
+        if (!pmSnap.exists) return { success: false, error: 'PM not found' };
+        const pm = pmSnap.data();
+
+        const phoneNumber = pm?.whatsappNumber || pm?.phoneNumber;
+        if (!phoneNumber) return { success: false, error: 'No phone number for PM' };
+
+        const pmName = pm?.displayName || 'Manager';
+
+        // Parameters: {{1}} PM Name, {{2}} Project Name, {{3}} Dashboard Link
+        const params = [pmName, projectName, link];
+
+        return await sendWhatsAppNotification(phoneNumber, params, 'delay_check_editor_client', 0, {
+            templateName: 'delay_check_editor_client',
+        });
+    } catch (error: any) {
+        console.error('[WhatsApp] notifyPMDelay10m Error:', error);
         return { success: false, error: error.message };
     }
 }

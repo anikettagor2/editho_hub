@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import * as admin from 'firebase-admin';
 import { adminDb } from '@/lib/firebase/admin';
-import { notifyPMEditorRejected, notifyPMProjectReminder24h } from '@/lib/whatsapp';
+import { notifyPMEditorRejected, notifyPMProjectReminder24h, notifyEditorDelay10m, notifyPMDelay10m } from '@/lib/whatsapp';
 
 export const dynamic = 'force-dynamic';
 
@@ -122,15 +122,93 @@ export async function GET(request: Request) {
             }
         }
 
-        if (processedCount > 0 || reminderCount > 0) {
+        // Check for 10-minute editor reminder alerts
+        const TEN_MINUTES_MS = 10 * 60 * 1000;
+        const pendingQuery = projectsRef.where('assignmentStatus', '==', 'pending');
+        const pendingSnapshot = await pendingQuery.get();
+        
+        let editor10mAlertCount = 0;
+        if (!pendingSnapshot.empty) {
+            for (const doc of pendingSnapshot.docs) {
+                const projectData = doc.data();
+                const projectId = doc.id;
+                
+                if (!projectData.editor10mAlertSent && projectData.assignmentAt && (now - projectData.assignmentAt >= TEN_MINUTES_MS)) {
+                    if (projectData.assignedEditorId) {
+                        const link = `https://editohub.in/dashboard?project=${projectId}`;
+                        
+                        batch.update(doc.ref, {
+                            editor10mAlertSent: true,
+                            updatedAt: now
+                        });
+                        
+                        void notifyEditorDelay10m(
+                            projectId,
+                            projectData.assignedEditorId,
+                            projectData.name || 'Project',
+                            link
+                        ).catch(err => console.error('[Cron] Failed to send editor 10m alert:', err));
+                        
+                        editor10mAlertCount++;
+                    }
+                }
+            }
+        }
+
+        // Check for 10-minute PM assignment alerts (without auto-assign clients)
+        let pm10mAlertCount = 0;
+        const recentProjectsQuery = projectsRef
+            .where('createdAt', '>=', now - TWENTY_FOUR_HOURS_MS)
+            .where('createdAt', '<=', now - TEN_MINUTES_MS);
+            
+        const recentSnapshot = await recentProjectsQuery.get();
+        if (!recentSnapshot.empty) {
+            for (const doc of recentSnapshot.docs) {
+                const projectData = doc.data();
+                const projectId = doc.id;
+                
+                if (!projectData.pm10mAlertSent && projectData.assignedPMId && !projectData.assignedEditorId) {
+                    if (projectData.clientId) {
+                        const clientSnap = await adminDb.collection('users').doc(projectData.clientId).get();
+                        if (clientSnap.exists) {
+                            const clientData = clientSnap.data();
+                            const priorities = clientData?.assignedEditorPriority || [];
+                            const isAutoAssign = priorities.length > 0;
+                            
+                            if (!isAutoAssign) {
+                                const link = `https://editohub.in/dashboard?project=${projectId}`;
+                                
+                                batch.update(doc.ref, {
+                                    pm10mAlertSent: true,
+                                    updatedAt: now
+                                });
+                                
+                                void notifyPMDelay10m(
+                                    projectId,
+                                    projectData.assignedPMId,
+                                    projectData.name || 'Project',
+                                    link
+                                ).catch(err => console.error('[Cron] Failed to send PM 10m alert:', err));
+                                
+                                pm10mAlertCount++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        if (processedCount > 0 || reminderCount > 0 || editor10mAlertCount > 0 || pm10mAlertCount > 0) {
             await batch.commit();
         }
 
         return NextResponse.json({ 
             success: true, 
-            message: `Processed ${processedCount} expired assignments and ${reminderCount} 24h reminders`,
+            message: `Processed ${processedCount} expired assignments, ${reminderCount} 24h reminders, ${editor10mAlertCount} editor 10m alerts, and ${pm10mAlertCount} PM 10m alerts`,
             processed: processedCount,
-            reminders: reminderCount
+            reminders: reminderCount,
+            editor10mAlerts: editor10mAlertCount,
+            pm10mAlerts: pm10mAlertCount
         });
 
 
