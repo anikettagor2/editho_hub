@@ -567,8 +567,10 @@ export default function NewProjectPage() {
             if (!name) return toast.error("Project name is required.");
             if (wordCount > DESCRIPTION_WORD_LIMIT) return toast.error(`Description cannot exceed ${DESCRIPTION_WORD_LIMIT} words.`);
             setCurrentStep(2);
+            if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
         } else if (currentStep === 2) {
             setCurrentStep(3);
+            if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
         } else if (currentStep === 3) {
             if (rawFiles.length === 0 && footageLinks.length === 0 && !footageLinkInput.trim()) {
                 return toast.error("Please provide either raw files or a Google Drive link.");
@@ -581,11 +583,13 @@ export default function NewProjectPage() {
                 return toast.error(`${failedFiles.length} file(s) failed to upload. Please remove and re-upload them.`);
             }
             setCurrentStep(4);
+            if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
         }
     };
 
     const handlePrevStep = () => {
         setCurrentStep(prev => Math.max(1, prev - 1));
+        if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
     };
 
     // Collect uploaded file data
@@ -802,8 +806,8 @@ export default function NewProjectPage() {
     return (
         <div className="max-w-4xl mx-auto min-h-[calc(100vh-8rem)] flex flex-col gap-8 pb-10">
             {/* Header / Stepper Layer */}
-            <div className="flex flex-col items-center justify-center pt-8 pb-4">
-                 <h1 className="text-4xl font-heading font-black tracking-tight text-foreground mb-8">
+            <div className="flex flex-col items-center justify-center pt-20 sm:pt-8 pb-4 relative z-10">
+                 <h1 className="text-3xl sm:text-4xl font-heading font-black tracking-tight text-foreground mb-8">
                      Create New <span className="text-primary">Project</span>
                  </h1>
 
@@ -1046,7 +1050,7 @@ export default function NewProjectPage() {
                         <div className="space-y-8">
                             <div className="space-y-3">
                                 <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Video Type Format</Label>
-                                <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 gap-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                                     {availableVideoTypes.map(vt => {
                                         const tieredPrices = user?.multiTierRates?.[vt.key];
                                         const fallbackPrice = getResolvedClientRate(user?.customRates, vt.key);
@@ -1085,7 +1089,24 @@ export default function NewProjectPage() {
                             {availablePrices.length > 1 && (
                                 <div className="space-y-3 border border-border rounded-lg p-4">
                                     <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Select Pricing Tier</Label>
-                                    <div className="grid grid-cols-1 xs:grid-cols-2 sm:grid-cols-3 gap-2">
+                                    
+                                    {/* Mobile/Phone Dropdown View */}
+                                    <div className="block sm:hidden">
+                                        <select
+                                            value={selectedPriceIndex}
+                                            onChange={(e) => setSelectedPriceIndex(parseInt(e.target.value))}
+                                            className="w-full h-12 bg-muted/60 border border-border rounded-xl px-3 font-semibold text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
+                                        >
+                                            {availablePrices.map((option, idx) => (
+                                                <option key={idx} value={idx} className="bg-background text-foreground">
+                                                    {option.label || `Tier ${idx + 1}`} - ₹{option.price}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+
+                                    {/* Desktop/Tablet Grid View */}
+                                    <div className="hidden sm:grid grid-cols-2 sm:grid-cols-3 gap-2">
                                         {availablePrices.map((option, idx) => (
                                             <button
                                                 key={idx}
@@ -1112,7 +1133,7 @@ export default function NewProjectPage() {
 
                             <div className="space-y-3 pt-6 border-t border-border">
                                 <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Select Aspect Ratio</Label>
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                                <div className="grid grid-cols-3 gap-2 sm:gap-4">
                                     {ASPECT_RATIOS.map(ar => {
                                         const isSelected = aspectRatio === ar.key;
                                         const is9x16 = ar.key === "9:16";
@@ -1125,28 +1146,28 @@ export default function NewProjectPage() {
                                                 type="button"
                                                 onClick={() => setAspectRatio(ar.key)}
                                                 className={cn(
-                                                    "flex flex-col items-center p-6 rounded-2xl border transition-all group relative overflow-hidden",
+                                                    "flex flex-col items-center p-2.5 sm:p-5 rounded-xl sm:rounded-2xl border transition-all group relative overflow-hidden",
                                                     isSelected
                                                         ? "bg-primary/10 border-primary shadow-[0_0_20px_rgba(var(--primary),0.15)]" 
                                                         : "bg-muted/30 border-border hover:border-border hover:bg-muted/50"
                                                 )}
                                             >
-                                                <div className="mb-4 flex items-center justify-center h-16 w-full">
+                                                <div className="mb-1.5 sm:mb-3 flex items-center justify-center h-10 sm:h-14 w-full">
                                                     <div 
                                                         className={cn(
                                                             "border-2 transition-all duration-300 rounded-sm flex items-center justify-center shadow-lg",
-                                                            isSelected ? "border-primary bg-primary/20 text-primary scale-110" : "border-zinc-700 bg-muted-foreground/10 text-muted-foreground group-hover:border-zinc-500"
+                                                            isSelected ? "border-primary bg-primary/20 text-primary scale-105 sm:scale-110" : "border-zinc-700 bg-muted-foreground/10 text-muted-foreground group-hover:border-zinc-500"
                                                         )}
                                                         style={{
-                                                            width: is9x16 ? '24px' : is16x9 ? '56px' : '40px',
-                                                            height: is9x16 ? '42px' : is16x9 ? '32px' : '40px',
+                                                            width: is9x16 ? '14px' : is16x9 ? '34px' : '24px',
+                                                            height: is9x16 ? '26px' : is16x9 ? '20px' : '24px',
                                                         }}
                                                     >
-                                                        <span className="text-[8px] font-black">{ar.key}</span>
+                                                        <span className="text-[7px] font-black">{ar.key}</span>
                                                     </div>
                                                 </div>
-                                                <span className={cn("text-[10px] font-black uppercase tracking-widest", isSelected ? "text-primary" : "text-foreground/80")}>{ar.label}</span>
-                                                <span className="text-[9px] text-muted-foreground font-bold mt-1">{ar.desc}</span>
+                                                <span className={cn("text-[9px] sm:text-[10px] font-black uppercase tracking-widest", isSelected ? "text-primary" : "text-foreground/80")}>{ar.label}</span>
+                                                <span className="text-[8px] sm:text-[9px] text-muted-foreground font-bold mt-0.5 text-center line-clamp-1">{ar.desc}</span>
                                             </button>
                                         );
                                     })}

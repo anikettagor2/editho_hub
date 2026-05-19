@@ -197,6 +197,32 @@ export function ClientDashboard() {
         return () => unsub();
     }, [user]);
 
+    // Prevent pinch-to-zoom and double-tap zoom on touch devices for a stable dashboard experience
+    useEffect(() => {
+        const preventZoom = (e: TouchEvent) => {
+            if (e.touches.length > 1) {
+                e.preventDefault();
+            }
+        };
+
+        let lastTouchEnd = 0;
+        const preventDoubleTapZoom = (e: TouchEvent) => {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) {
+                e.preventDefault();
+            }
+            lastTouchEnd = now;
+        };
+
+        document.addEventListener("touchstart", preventZoom, { passive: false });
+        document.addEventListener("touchend", preventDoubleTapZoom, { passive: false });
+
+        return () => {
+            document.removeEventListener("touchstart", preventZoom);
+            document.removeEventListener("touchend", preventDoubleTapZoom);
+        };
+    }, []);
+
     // Derived data
     const assignedPMId = userData?.managedByPM || user?.managedByPM || projects.find((p) => p.assignedPMId)?.assignedPMId;
     const assignedPM = assignedPMId ? allUsers.find((u) => u.uid === assignedPMId) : null;
@@ -333,7 +359,7 @@ export function ClientDashboard() {
             </motion.div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
                 <IndicatorCard 
                     label="Total Projects" 
                     value={projects.length} 
