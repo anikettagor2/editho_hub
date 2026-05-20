@@ -425,6 +425,7 @@ export async function assignEditor(
             status: 'editor_assigned',
             members: members,
             editorPrice: editorPrice,
+            triedEditors: admin.firestore.FieldValue.arrayUnion(editorId),
             updatedAt: now
         };
 
@@ -616,6 +617,8 @@ export async function respondToAssignment(projectId: string, response: 'accepted
                     });
                 }
             }
+            // Auto-assign queue fallback progression
+            await tryNextAutoAssign(projectId);
         }
 
         revalidatePath('/dashboard');
@@ -1151,6 +1154,193 @@ export async function autoAssignEditor(projectId: string, editorPrice: number, d
 
     } catch (error: any) {
         console.error('Error in autoAssignEditor:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Progresses to the next auto-assigned editor from the priority list,
+ * or escalates to PM if the queue is exhausted (tried 3 editors or none left).
+ */
+export async function tryNextAutoAssign(projectId: string): Promise<{
+    success: boolean;
+    error?: string;
+    editorId?: string;
+    message?: string;
+}> {
+    try {
+        const projectRef = adminDb.collection('projects').doc(projectId);
+        const projectSnap = await projectRef.get();
+        if (!projectSnap.exists) {
+            return { success: false, error: "Project not found" };
+        }
+        
+        const projectData = projectSnap.data();
+        const clientUID = projectData?.clientId;
+        if (!clientUID) {
+            return { success: false, error: "Client not found for this project" };
+        }
+        
+        const clientSnap = await adminDb.collection('users').doc(clientUID).get();
+        if (!clientSnap.exists) {
+            return { success: false, error: "Client not found" };
+        }
+        
+        const clientData = clientSnap.data();
+        const priorities = clientData?.assignedEditorPriority || [];
+        
+        // If the client has no priority list set, this is not an auto-assign client
+        if (priorities.length === 0) {
+            return { success: false, error: "Not an auto-assign client" };
+        }
+        
+        const triedEditors = projectData?.triedEditors || [];
+        
+        // 1. If 3 or more editors have already been tried, escalate to PM
+        if (triedEditors.length >= 3) {
+            const pmId = projectData?.assignedPMId;
+            if (pmId) {
+                // In-app notification
+                const escalationNotifRef = adminDb.collection('notifications').doc();
+                await escalationNotifRef.set({
+                    id: escalationNotifRef.id,
+                    userId: pmId,
+                    type: 'project_rejected',
+                    title: `${projectData?.name || 'Project'} - Auto-Assign Queue Exhausted`,
+                    message: `All 3 priority editors declined or timed out. Please assign an editor manually.`,
+                    projectId,
+                    editorName: 'System',
+                    reason: 'All 3 priority editors declined or timed out',
+                    read: false,
+                    link: `/dashboard?project=${projectId}`,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+
+                // WhatsApp escalation using pro_delay template
+                await notifyPMEditorRejected(
+                    projectId,
+                    pmId,
+                    'System',
+                    'All 3 auto-assigned priority editors declined or did not respond. Please manually assign.'
+                );
+                
+                await addProjectLog(
+                    projectId,
+                    'AUTO_ASSIGN_EXHAUSTED',
+                    { uid: 'system', displayName: 'System Auto-Assign', designation: 'System' },
+                    'All 3 auto-assigned editors declined or did not respond. PM notified for manual assignment.'
+                );
+            }
+            return { success: true, message: 'Auto-assign queue exhausted (3 editors tried). PM escalated.' };
+        }
+        
+        // 2. Find next eligible editor
+        let nextEditorId = null;
+        let selectedPriority = 999;
+        let autoAssignedPrice = 0;
+        
+        const projectPrice = Number(projectData?.pricingTierPrice || projectData?.budget || projectData?.totalCost || 0);
+        let rulesToConsider = priorities.filter((p: any) => Number(p.targetPrice) === projectPrice);
+        if (rulesToConsider.length === 0) {
+            rulesToConsider = priorities.filter((p: any) => !p.targetPrice);
+        }
+        
+        const sortedPriorities = [...rulesToConsider].sort((a, b) => a.priority - b.priority);
+        
+        for (const p of sortedPriorities) {
+            // Skip already tried editors
+            if (triedEditors.includes(p.editorId)) continue;
+            
+            const editorSnap = await adminDb.collection('users').doc(p.editorId).get();
+            if (!editorSnap.exists) continue;
+            
+            const editorData = editorSnap.data();
+            
+            // Availability checks
+            const isInactive = editorData?.status === 'inactive';
+            const isOnline = editorData?.availabilityStatus === 'online';
+            if (isInactive || !isOnline) continue;
+            
+            // Workload check
+            const maxLimit = editorData?.maxProjectLimit || 5;
+            const activeProjectsSnap = await adminDb.collection('projects')
+                .where('assignedEditorId', '==', p.editorId)
+                .where('status', 'in', ['editor_assigned', 'in_production', 'review'])
+                .get();
+            if (activeProjectsSnap.size >= maxLimit) continue;
+            
+            // Found eligible editor!
+            nextEditorId = p.editorId;
+            selectedPriority = p.priority;
+            
+            if (p.editorFee) {
+                autoAssignedPrice = Number(p.editorFee);
+            } else {
+                const budget = Number(projectData?.budget || projectData?.totalCost || 0);
+                const rate = Number(clientData?.defaultEditorRate || 50);
+                autoAssignedPrice = Math.floor(budget * (rate / 100));
+            }
+            break;
+        }
+        
+        if (nextEditorId) {
+            // Assign the next editor (which will track them in triedEditors inside assignEditor)
+            const res = await assignEditor(
+                projectId,
+                nextEditorId,
+                autoAssignedPrice,
+                projectData?.deadline,
+                'admin'
+            );
+            
+            if (res.success) {
+                await addProjectLog(
+                    projectId,
+                    'AUTO_ASSIGNED_NEXT',
+                    { uid: 'system', displayName: 'System Auto-Assign', designation: 'System' },
+                    `Next eligible editor auto-assigned based on client priority (Priority ${selectedPriority}). Price: ₹${autoAssignedPrice}`
+                );
+                return { success: true, editorId: nextEditorId };
+            }
+            return { success: false, error: res.error || "Assignment failed" };
+        } else {
+            // No next eligible editor left, escalate to PM
+            const pmId = projectData?.assignedPMId;
+            if (pmId) {
+                const escalationNotifRef = adminDb.collection('notifications').doc();
+                await escalationNotifRef.set({
+                    id: escalationNotifRef.id,
+                    userId: pmId,
+                    type: 'project_rejected',
+                    title: `${projectData?.name || 'Project'} - Auto-Assign Queue Exhausted`,
+                    message: `No other eligible priority editors are online and available. Please assign manually.`,
+                    projectId,
+                    editorName: 'System',
+                    reason: 'No eligible priority editors available',
+                    read: false,
+                    link: `/dashboard?project=${projectId}`,
+                    createdAt: admin.firestore.FieldValue.serverTimestamp()
+                });
+
+                await notifyPMEditorRejected(
+                    projectId,
+                    pmId,
+                    'System',
+                    'All eligible auto-assigned priority editors declined, timed out, or are unavailable. Please manually assign.'
+                );
+                
+                await addProjectLog(
+                    projectId,
+                    'AUTO_ASSIGN_EXHAUSTED',
+                    { uid: 'system', displayName: 'System Auto-Assign', designation: 'System' },
+                    'No online or available priority editors left. PM notified for manual assignment.'
+                );
+            }
+            return { success: true, message: 'No eligible priority editors left. PM escalated.' };
+        }
+        
+    } catch (error: any) {
+        console.error('Error in tryNextAutoAssign:', error);
         return { success: false, error: error.message };
     }
 }

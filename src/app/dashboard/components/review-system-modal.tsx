@@ -8,7 +8,7 @@ import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/lib/context/auth-context";
 import { addDoc, collection, doc, getDocs, onSnapshot, query, updateDoc, where, deleteDoc, limit, orderBy } from "firebase/firestore";
 import { localFileManager } from "@/lib/local-file-manager";
-import { Loader2, MessageSquare, Share2, Copy, Download, Star, X, Send, Image as ImageIcon, Clock, Users, Film, ChevronLeft, ChevronRight, Smile, ThumbsUp, FileText, FileVideo, Music } from "lucide-react";
+import { Loader2, MessageSquare, Share2, Copy, Download, Star, X, Send, Image as ImageIcon, Clock, Users, Film, ChevronLeft, ChevronRight, Smile, ThumbsUp, FileText, FileVideo, Music, Mic, Trash2, Check, Play, Pause } from "lucide-react";
 import { toast } from "sonner";
 import { registerDownload, submitEditorRating } from "@/app/actions/project-actions";
 import { handleNewComment } from "@/app/actions/notification-actions";
@@ -110,6 +110,142 @@ function formatDate(timestamp: number): string {
 }
 
 
+interface InlineAudioPlayerProps {
+    url: string;
+    name?: string;
+    size?: number | null;
+}
+
+export function InlineAudioPlayer({ url, name, size }: InlineAudioPlayerProps) {
+    const audioRef = useRef<HTMLAudioElement | null>(null);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const [currentTime, setCurrentTime] = useState(0);
+    const [duration, setDuration] = useState(0);
+
+    const togglePlay = () => {
+        const audio = audioRef.current;
+        if (!audio) return;
+        if (isPlaying) {
+            audio.pause();
+        } else {
+            // Pause all other audio/video elements in the page to prevent overlapping audio
+            document.querySelectorAll('audio, video').forEach(el => {
+                if (el !== audio) {
+                    try {
+                        (el as any).pause();
+                    } catch (e) {}
+                }
+            });
+            audio.play().catch(err => console.error("Error playing audio:", err));
+        }
+    };
+
+    const handleTimeUpdate = () => {
+        if (audioRef.current) {
+            setCurrentTime(audioRef.current.currentTime);
+        }
+    };
+
+    const handleLoadedMetadata = () => {
+        if (audioRef.current) {
+            setDuration(audioRef.current.duration);
+        }
+    };
+
+    const handleEnded = () => {
+        setIsPlaying(false);
+        setCurrentTime(0);
+    };
+
+    const formatAudioTime = (time: number) => {
+        if (isNaN(time)) return "0:00";
+        const m = Math.floor(time / 60);
+        const s = Math.floor(time % 60);
+        return `${m}:${String(s).padStart(2, "0")}`;
+    };
+
+    const handleProgressClick = (e: React.MouseEvent<HTMLDivElement>) => {
+        const audio = audioRef.current;
+        if (!audio || duration === 0) return;
+        const rect = e.currentTarget.getBoundingClientRect();
+        const clickX = e.clientX - rect.left;
+        const width = rect.width;
+        const nextPercent = clickX / width;
+        const nextTime = nextPercent * duration;
+        audio.currentTime = nextTime;
+        setCurrentTime(nextTime);
+    };
+
+    return (
+        <div className="flex flex-col gap-2 w-full max-w-sm rounded-xl border border-white/10 bg-[#202232]/80 backdrop-blur-md p-3.5 shadow-xl transition-all hover:bg-[#202232]/95 hover:border-white/20">
+            <audio
+                ref={audioRef}
+                src={url}
+                onPlay={() => setIsPlaying(true)}
+                onPause={() => setIsPlaying(false)}
+                onTimeUpdate={handleTimeUpdate}
+                onLoadedMetadata={handleLoadedMetadata}
+                onEnded={handleEnded}
+                preload="metadata"
+                className="hidden"
+            />
+            
+            <div className="flex items-center gap-3">
+                <button
+                    type="button"
+                    onClick={togglePlay}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#5c52ff] text-white shadow-md shadow-primary/20 hover:scale-105 active:scale-95 transition-all"
+                    title={isPlaying ? "Pause" : "Play"}
+                >
+                    {isPlaying ? (
+                        <Pause size={16} className="fill-current" />
+                    ) : (
+                        <Play size={16} className="fill-current ml-0.5" />
+                    )}
+                </button>
+                
+                <div className="flex-1 min-w-0">
+                    <p className="truncate text-xs font-bold text-zinc-100">
+                        {name || "Voice Message"}
+                    </p>
+                    <p className="text-[10px] text-zinc-400 font-medium">
+                        {size ? `${(size / 1024).toFixed(1)} KB` : "Voice Feedback"}
+                    </p>
+                </div>
+
+                <button
+                    type="button"
+                    onClick={() => void handleFileDownload(url, name || "voice-comment.webm")}
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white transition-colors"
+                    title="Download Audio"
+                >
+                    <Download className="h-4 w-4" />
+                </button>
+            </div>
+
+            <div className="flex items-center gap-3 mt-1">
+                <span className="text-[10px] font-mono text-zinc-400 tabular-nums shrink-0">
+                    {formatAudioTime(currentTime)}
+                </span>
+                
+                <div
+                    onClick={handleProgressClick}
+                    className="relative flex-1 h-1.5 rounded-full bg-zinc-700/60 cursor-pointer overflow-hidden group/progress"
+                >
+                    <div
+                        className="absolute top-0 bottom-0 left-0 bg-[#7b74ff] rounded-full group-hover/progress:bg-indigo-400 transition-colors"
+                        style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                    />
+                </div>
+
+                <span className="text-[10px] font-mono text-zinc-400 tabular-nums shrink-0">
+                    {formatAudioTime(duration || 0)}
+                </span>
+            </div>
+        </div>
+    );
+}
+
 // Helper to extract playback source
 function getVideoSource(revision: RevisionDoc | null | undefined): { playbackId?: string; videoUrl?: string } {
     if (!revision) return {};
@@ -179,6 +315,94 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     const [livePaymentStatus, setLivePaymentStatus] = useState(project?.paymentStatus || "");
     const [liveEditorRating, setLiveEditorRating] = useState(project?.editorRating || 0);
     const [liveEditorReview, setLiveEditorReview] = useState(project?.editorReview || "");
+
+    // Voice Message states
+    const [isRecording, setIsRecording] = useState(false);
+    const [recordingDuration, setRecordingDuration] = useState(0);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const recordingIntervalRef = useRef<any>(null);
+
+    const startRecording = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const mediaRecorder = new MediaRecorder(stream);
+            mediaRecorderRef.current = mediaRecorder;
+            audioChunksRef.current = [];
+
+            mediaRecorder.ondataavailable = (event) => {
+                if (event.data.size > 0) {
+                    audioChunksRef.current.push(event.data);
+                }
+            };
+
+            mediaRecorder.onstop = () => {
+                const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+                const file = new File([audioBlob], "voice-comment.webm", { type: 'audio/webm' });
+                setSelectedAttachment(file);
+                
+                const preview = URL.createObjectURL(file);
+                setSelectedAttachmentPreview(preview);
+                
+                stream.getTracks().forEach(track => track.stop());
+            };
+
+            mediaRecorder.start();
+            setIsRecording(true);
+            setRecordingDuration(0);
+
+            recordingIntervalRef.current = setInterval(() => {
+                setRecordingDuration((prev) => {
+                    if (prev >= 120) { // Limit to 2 minutes
+                        stopRecording();
+                        return 120;
+                    }
+                    return prev + 1;
+                });
+            }, 1000);
+
+            pauseReviewVideo();
+        } catch (error) {
+            console.error("Error accessing microphone:", error);
+            toast.error("Could not access microphone. Please check permissions.");
+        }
+    };
+
+    const stopRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.stop();
+        }
+        if (recordingIntervalRef.current) {
+            clearInterval(recordingIntervalRef.current);
+            recordingIntervalRef.current = null;
+        }
+        setIsRecording(false);
+    };
+
+    const cancelRecording = () => {
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+            mediaRecorderRef.current.onstop = null;
+            mediaRecorderRef.current.stop();
+            const stream = mediaRecorderRef.current.stream;
+            stream.getTracks().forEach(track => track.stop());
+        }
+        if (recordingIntervalRef.current) {
+            clearInterval(recordingIntervalRef.current);
+            recordingIntervalRef.current = null;
+        }
+        setIsRecording(false);
+        setRecordingDuration(0);
+        audioChunksRef.current = [];
+        toast.info("Recording cancelled");
+    };
+
+    useEffect(() => {
+        return () => {
+            if (recordingIntervalRef.current) {
+                clearInterval(recordingIntervalRef.current);
+            }
+        };
+    }, []);
 
     const remainingAmount = Math.max(0, (liveTotalCost - liveAmountPaid) * 1.18);
     const remainingBaseAmount = Math.max(0, liveTotalCost - liveAmountPaid);
@@ -1051,61 +1275,66 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                 </div>
 
                                 {(c.attachmentUrl || c.imageUrl) && (
-                                    <div
-                                        onClick={(e) => e.stopPropagation()}
-                                        className="ml-7 flex w-fit max-w-full items-center gap-2 rounded-lg border border-border/50 bg-[#202232] p-2 transition-colors hover:bg-[#26293d] lg:ml-1"
-                                    >
-                                        <button
-                                            type="button"
-                                            onClick={() => {
-                                                const attachmentUrl = c.attachmentUrl || c.imageUrl || "";
-                                                const attachmentName = c.attachmentName || (c.imageUrl ? "Image attachment" : "Attachment");
-                                                if (canPreviewAttachment(c.attachmentType, attachmentName)) {
-                                                    setPreviewAttachment({
-                                                        url: attachmentUrl,
-                                                        name: attachmentName,
-                                                        type: c.attachmentType,
-                                                    });
-                                                    return;
-                                                }
-                                                void handleFileDownload(attachmentUrl, attachmentName);
-                                            }}
-                                            className="flex min-w-0 flex-1 items-center gap-2 text-left"
-                                        >
-                                        {isImageFile(c.attachmentType, c.attachmentName) || (!!c.imageUrl && !c.attachmentType) ? (
-                                            <div className="h-14 w-14 overflow-hidden rounded-md bg-black/20">
-                                                <img src={c.attachmentUrl || c.imageUrl || ""} className="h-full w-full object-cover" alt={c.attachmentName || "Comment attachment"} />
-                                            </div>
-                                        ) : isVideoFile(c.attachmentType, c.attachmentName) ? (
-                                            <div className="flex h-14 w-14 items-center justify-center rounded-md bg-black/20 text-zinc-200">
-                                                <FileVideo className="h-5 w-5" />
-                                            </div>
-                                        ) : isAudioFile(c.attachmentType, c.attachmentName) ? (
-                                            <div className="flex h-14 w-14 items-center justify-center rounded-md bg-black/20 text-zinc-200">
-                                                <Music className="h-5 w-5" />
-                                            </div>
+                                    <div className="ml-7 lg:ml-1 mt-1" onClick={(e) => e.stopPropagation()}>
+                                        {isAudioFile(c.attachmentType, c.attachmentName) ? (
+                                            <InlineAudioPlayer
+                                                url={c.attachmentUrl || c.imageUrl || ""}
+                                                name={c.attachmentName || "Voice Message"}
+                                                size={c.attachmentSize}
+                                            />
                                         ) : (
-                                            <div className="flex h-14 w-14 items-center justify-center rounded-md bg-black/20 text-zinc-200">
-                                                <FileText className="h-5 w-5" />
+                                            <div
+                                                className="flex w-fit max-w-full items-center gap-2 rounded-lg border border-border/50 bg-[#202232] p-2 transition-colors hover:bg-[#26293d]"
+                                            >
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        const attachmentUrl = c.attachmentUrl || c.imageUrl || "";
+                                                        const attachmentName = c.attachmentName || (c.imageUrl ? "Image attachment" : "Attachment");
+                                                        if (canPreviewAttachment(c.attachmentType, attachmentName)) {
+                                                            setPreviewAttachment({
+                                                                url: attachmentUrl,
+                                                                name: attachmentName,
+                                                                type: c.attachmentType,
+                                                            });
+                                                            return;
+                                                        }
+                                                        void handleFileDownload(attachmentUrl, attachmentName);
+                                                    }}
+                                                    className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                                                >
+                                                {isImageFile(c.attachmentType, c.attachmentName) || (!!c.imageUrl && !c.attachmentType) ? (
+                                                    <div className="h-14 w-14 overflow-hidden rounded-md bg-black/20">
+                                                        <img src={c.attachmentUrl || c.imageUrl || ""} className="h-full w-full object-cover" alt={c.attachmentName || "Comment attachment"} />
+                                                    </div>
+                                                ) : isVideoFile(c.attachmentType, c.attachmentName) ? (
+                                                    <div className="flex h-14 w-14 items-center justify-center rounded-md bg-black/20 text-zinc-200">
+                                                        <FileVideo className="h-5 w-5" />
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex h-14 w-14 items-center justify-center rounded-md bg-black/20 text-zinc-200">
+                                                        <FileText className="h-5 w-5" />
+                                                    </div>
+                                                )}
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-[10px] font-bold text-zinc-100">
+                                                        {c.attachmentName || (c.imageUrl ? "Image attachment" : "Attachment")}
+                                                    </p>
+                                                    <p className="text-[9px] text-zinc-400">
+                                                        {formatFileSize(c.attachmentSize) || (canPreviewAttachment(c.attachmentType, c.attachmentName) ? "Preview file" : "Download file")}
+                                                    </p>
+                                                </div>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => void handleFileDownload(c.attachmentUrl || c.imageUrl || "", c.attachmentName || "attachment")}
+                                                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
+                                                    title="Download attachment"
+                                                >
+                                                    <Download className="h-3.5 w-3.5" />
+                                                </button>
                                             </div>
                                         )}
-                                        <div className="min-w-0">
-                                            <p className="truncate text-[10px] font-bold text-zinc-100">
-                                                {c.attachmentName || (c.imageUrl ? "Image attachment" : "Attachment")}
-                                            </p>
-                                            <p className="text-[9px] text-zinc-400">
-                                                {formatFileSize(c.attachmentSize) || (canPreviewAttachment(c.attachmentType, c.attachmentName) ? "Preview file" : "Download file")}
-                                            </p>
-                                        </div>
-                                        </button>
-                                        <button
-                                            type="button"
-                                            onClick={() => void handleFileDownload(c.attachmentUrl || c.imageUrl || "", c.attachmentName || "attachment")}
-                                            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
-                                            title="Download attachment"
-                                        >
-                                            <Download className="h-3.5 w-3.5" />
-                                        </button>
                                     </div>
                                 )}
 
@@ -1171,17 +1400,52 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                 <div className="border-t border-[#25283a] pt-1 lg:border-border/50 lg:pt-3">
                     <div className="space-y-1.5 rounded-lg bg-[#2a2d40] p-2 lg:space-y-3 lg:rounded-2xl lg:border lg:border-border/50 lg:bg-muted/30 lg:p-4">
                         <div className="relative">
-                            <textarea
-                                value={newComment}
-                                onFocus={pauseReviewVideo}
-                                onChange={(e) => setNewComment(e.target.value)}
-                                placeholder={activeTab === 'timeline' ? "Leave your comment..." : "Message editor directly..."}
-                                className="min-h-7 w-full resize-none border-none bg-transparent text-[12px] text-zinc-100 placeholder:text-zinc-400 focus:outline-none lg:min-h-15 lg:text-sm lg:text-foreground"
-                            />
-                            {activeTab === 'timeline' && (
-                                <div className="absolute right-0 top-0 rounded bg-[#504700] px-1 py-0.5 text-[9px] font-black text-[#ffd21f] lg:bottom-0 lg:top-auto lg:mb-2 lg:mr-2 lg:text-xs lg:bg-primary/10 lg:text-primary">
-                                    {formatTime(currentTime)}:00
+                            {isRecording ? (
+                                <div className="flex items-center justify-between rounded-xl bg-white/5 backdrop-blur-md border border-white/10 p-3 h-16 animate-pulse">
+                                    <div className="flex items-center gap-3">
+                                        <span className="relative flex h-3 w-3">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-3 w-3 bg-red-500"></span>
+                                        </span>
+                                        <span className="text-xs font-bold text-red-400 tracking-wider">RECORDING VOICE</span>
+                                        <span className="text-xs font-mono text-zinc-300 bg-black/35 px-2 py-0.5 rounded-md">
+                                            {Math.floor(recordingDuration / 60)}:{String(recordingDuration % 60).padStart(2, '0')} / 2:00
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <button
+                                            type="button"
+                                            onClick={cancelRecording}
+                                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-500/10 text-red-400 hover:bg-red-500/20 active:scale-95 transition-all"
+                                            title="Cancel Recording"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={stopRecording}
+                                            className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/35 active:scale-95 transition-all"
+                                            title="Stop & Save"
+                                        >
+                                            <Check className="h-4 w-4" />
+                                        </button>
+                                    </div>
                                 </div>
+                            ) : (
+                                <>
+                                    <textarea
+                                        value={newComment}
+                                        onFocus={pauseReviewVideo}
+                                        onChange={(e) => setNewComment(e.target.value)}
+                                        placeholder={activeTab === 'timeline' ? "Leave your comment..." : "Message editor directly..."}
+                                        className="min-h-7 w-full resize-none border-none bg-transparent text-[12px] text-zinc-100 placeholder:text-zinc-400 focus:outline-none lg:min-h-15 lg:text-sm lg:text-foreground"
+                                    />
+                                    {activeTab === 'timeline' && (
+                                        <div className="absolute right-0 top-0 rounded bg-[#504700] px-1 py-0.5 text-[9px] font-black text-[#ffd21f] lg:bottom-0 lg:top-auto lg:mb-2 lg:mr-2 lg:text-xs lg:bg-primary/10 lg:text-primary">
+                                            {formatTime(currentTime)}:00
+                                        </div>
+                                    )}
+                                </>
                             )}
                         </div>
 
@@ -1225,8 +1489,18 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                     onClick={() => fileInputRef.current?.click()}
                                     className="rounded-lg p-1 text-zinc-300 transition-colors hover:bg-muted lg:p-2 lg:text-muted-foreground"
                                     title="Attach file"
+                                    disabled={isRecording}
                                 >
                                     <ImageIcon className="h-3 w-3 lg:h-4 lg:w-4" />
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={startRecording}
+                                    className="rounded-lg p-1 text-zinc-300 transition-colors hover:bg-muted lg:p-2 lg:text-muted-foreground"
+                                    title="Record Voice Message"
+                                    disabled={isRecording}
+                                >
+                                    <Mic className="h-3 w-3 lg:h-4 lg:w-4" />
                                 </button>
                                 <button className="rounded-lg p-1 text-zinc-300 transition-colors hover:bg-muted lg:hidden" title="Add reaction">
                                     <Smile className="h-3 w-3" />

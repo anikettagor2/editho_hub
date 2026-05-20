@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import * as admin from 'firebase-admin';
 import { adminDb } from '@/lib/firebase/admin';
 import { notifyPMEditorRejected, notifyPMProjectReminder24h, notifyEditorDelay10m, notifyPMDelay10m } from '@/lib/whatsapp';
+import { tryNextAutoAssign } from '@/app/actions/admin-actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -23,11 +24,13 @@ export async function GET(request: Request) {
         const batch = adminDb.batch();
         let processedCount = 0;
         let reminderCount = 0;
+        const expiredProjectIds: string[] = [];
 
         if (!snapshot.empty) {
             for (const doc of snapshot.docs) {
                 const projectData = doc.data();
                 const projectId = doc.id;
+                expiredProjectIds.push(projectId);
                 
                 // 1. Update project document
                 batch.update(doc.ref, {
@@ -200,6 +203,15 @@ export async function GET(request: Request) {
 
         if (processedCount > 0 || reminderCount > 0 || editor10mAlertCount > 0 || pm10mAlertCount > 0) {
             await batch.commit();
+        }
+
+        // Run tryNextAutoAssign on all expired projects
+        for (const pid of expiredProjectIds) {
+            try {
+                await tryNextAutoAssign(pid);
+            } catch (err) {
+                console.error('[Cron] Fallback error for project:', pid, err);
+            }
         }
 
         return NextResponse.json({ 
