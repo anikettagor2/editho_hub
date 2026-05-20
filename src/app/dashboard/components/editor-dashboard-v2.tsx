@@ -101,31 +101,31 @@ function StatusBadge({ status }: { status: string }) {
 function StatCard({ icon: Icon, label, value, subValue, trend, variant = "default" }: any) {
     return (
         <motion.div 
-            whileHover={{ y: -5, scale: 1.02 }}
+            whileHover={{ y: -4, scale: 1.01 }}
             className={cn(
-                "p-5 rounded-2xl bg-card border border-border/50 shadow-xl shadow-black/5 relative overflow-hidden group transition-all",
+                "p-3 sm:p-4 rounded-xl bg-card border border-border/50 shadow-lg shadow-black/5 relative overflow-hidden group transition-all",
                 variant === "primary" && "bg-primary/5 border-primary/20"
             )}
         >
-            <div className="absolute -top-4 -right-4 p-8 opacity-[0.03] group-hover:opacity-[0.08] transition-all group-hover:rotate-12 group-hover:scale-110">
-                <Icon size={120} />
+            <div className="absolute -top-4 -right-4 p-6 opacity-[0.03] group-hover:opacity-[0.08] transition-all group-hover:rotate-12 group-hover:scale-110 hidden sm:block">
+                <Icon size={100} />
             </div>
-            <div className="relative z-10 space-y-4">
-                <div className="flex items-center gap-4">
+            <div className="relative z-10 space-y-1.5 sm:space-y-2">
+                <div className="flex items-center gap-2 sm:gap-3">
                     <div className={cn(
-                        "h-11 w-11 rounded-xl flex items-center justify-center transition-transform group-hover:rotate-3",
+                        "h-7 w-7 sm:h-9 sm:w-9 rounded-lg flex items-center justify-center transition-transform group-hover:rotate-3 shrink-0",
                         variant === "primary" ? "bg-primary text-primary-foreground shadow-lg shadow-primary/20" : "bg-primary/10 text-primary"
                     )}>
-                        <Icon size={22} />
+                        <Icon className="h-3.5 w-3.5 sm:h-[18px] sm:w-[18px]" />
                     </div>
-                    <div className="text-[10px] font-black text-muted-foreground uppercase tracking-[0.2em]">{label}</div>
+                    <div className="text-[9px] sm:text-[10px] font-black text-muted-foreground uppercase tracking-[0.1em] sm:tracking-[0.2em] truncate">{label}</div>
                 </div>
-                <div>
-                    <div className="text-2xl font-black text-foreground tracking-tighter flex items-baseline gap-2">
-                        {value}
-                        {trend && <span className="text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-2 py-0.5 rounded-full">{trend}</span>}
+                <div className="space-y-0.5">
+                    <div className="text-base sm:text-xl font-bold text-foreground tracking-tighter flex flex-wrap items-baseline gap-1 sm:gap-2">
+                        <span className="truncate">{value}</span>
+                        {trend && <span className="text-[8px] sm:text-[10px] font-black text-emerald-500 bg-emerald-500/10 px-1.5 py-0.5 rounded-full truncate">{trend}</span>}
                     </div>
-                    {subValue && <div className="text-xs font-bold text-muted-foreground mt-1 opacity-70">{subValue}</div>}
+                    {subValue && <div className="text-[8px] sm:text-[10px] font-bold text-muted-foreground mt-0.5 opacity-70 truncate" title={subValue}>{subValue}</div>}
                 </div>
             </div>
         </motion.div>
@@ -428,17 +428,17 @@ export function EditorDashboardV2() {
         <div className="min-h-screen bg-background pb-20">
             {/* --- Premium Header --- */}
             <div className="sticky top-0 z-40 bg-background/80 backdrop-blur-xl border-b border-border/50">
-                <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+                <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 rounded-xl bg-primary flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/20">
-                            <Film size={20} />
+                        <div className="h-9 w-9 rounded-lg bg-primary flex items-center justify-center text-primary-foreground shadow-lg shadow-primary/20">
+                            <Film size={18} />
                         </div>
-                        <h1 className="text-xl font-black tracking-tight text-foreground hidden sm:block">Editor Dashboard</h1>
+                        <h1 className="text-lg font-black tracking-tight text-foreground hidden sm:block">Editor Dashboard</h1>
                     </div>
 
                     <div className="flex items-center gap-6">
                         {/* Status Toggle */}
-                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50 border border-border/50">
+                        <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-muted/50 border border-border/50">
                             <div className={cn("h-2 w-2 rounded-full", userData?.availabilityStatus === 'online' ? "bg-emerald-500 animate-pulse" : "bg-muted-foreground")} />
                             <select 
                                 className="bg-transparent text-[10px] font-black uppercase tracking-widest outline-none cursor-pointer"
@@ -452,7 +452,7 @@ export function EditorDashboardV2() {
                         </div>
 
                         <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-black shadow-inner">
+                            <div className="h-9 w-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-primary font-black shadow-inner">
                                 {user?.displayName?.charAt(0)}
                             </div>
                         </div>
@@ -460,9 +460,9 @@ export function EditorDashboardV2() {
                 </div>
             </div>
 
-            <main className="mx-auto max-w-[1600px] px-4 pt-8 sm:px-6 lg:px-8 space-y-8">
+            <main className="mx-auto max-w-[1600px] px-4 pt-5 sm:px-6 lg:px-8 space-y-5">
                 {/* --- Stats Overview --- */}
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+                <div className="grid grid-cols-2 gap-2.5 md:gap-3 xl:grid-cols-4">
                     <StatCard icon={Gauge} label="Active Projects" value={activeProjectCount} trend={pendingAssignmentCount > 0 ? `${pendingAssignmentCount} pending` : undefined} variant="primary" />
                     <StatCard icon={CheckCircle2} label="Completed" value={earnings.length} subValue="All settled and due projects" />
                     <StatCard icon={Banknote} label="Paid Earnings" value={formatCurrency(totalPaid)} subValue="Successfully settled" />
@@ -470,20 +470,20 @@ export function EditorDashboardV2() {
                 </div>
 
                 {/* --- Project Controls --- */}
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div className="flex flex-wrap items-center gap-2.5">
                         <div className="flex p-1 bg-muted/40 rounded-xl border border-border/50 w-fit">
                             <button 
                                 onClick={() => setActiveTab('projects')}
-                                className={cn("px-5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2", activeTab === 'projects' ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
+                                className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5", activeTab === 'projects' ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
                             >
-                                <LayoutDashboard size={14} /> Projects
+                                <LayoutDashboard size={13} /> Projects
                             </button>
                             <button 
                                 onClick={() => setActiveTab('finance')}
-                                className={cn("px-5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2", activeTab === 'finance' ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
+                                className={cn("px-4 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5", activeTab === 'finance' ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
                             >
-                                <Wallet size={14} /> Finance
+                                <Wallet size={13} /> Finance
                             </button>
                         </div>
 
@@ -491,17 +491,17 @@ export function EditorDashboardV2() {
                             <div className="flex p-1 bg-muted/40 rounded-xl border border-border/50 w-fit">
                                 <button
                                     onClick={() => setProjectsView("grid")}
-                                    className={cn("px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2", projectsView === "grid" ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
+                                    className={cn("px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5", projectsView === "grid" ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
                                     title="Grid view"
                                 >
-                                    <LayoutGrid size={14} /> Blocks
+                                    <LayoutGrid size={13} /> Blocks
                                 </button>
                                 <button
                                     onClick={() => setProjectsView("list")}
-                                    className={cn("px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2", projectsView === "list" ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
+                                    className={cn("px-3.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5", projectsView === "list" ? "bg-background text-primary shadow-lg shadow-black/5" : "text-muted-foreground hover:text-foreground")}
                                     title="List view"
                                 >
-                                    <List size={14} /> List
+                                    <List size={13} /> List
                                 </button>
                             </div>
                         )}
@@ -511,44 +511,39 @@ export function EditorDashboardV2() {
                         <input 
                             type="text"
                             placeholder="Search projects by name..."
-                            className="w-full h-11 pl-12 pr-6 rounded-xl bg-card border border-border/50 focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all outline-none text-sm"
+                            className="w-full h-10 pl-11 pr-5 rounded-xl bg-card border border-border/50 focus:border-primary/50 focus:ring-4 focus:ring-primary/10 transition-all outline-none text-xs"
                             value={searchQuery}
                             onChange={e => setSearchQuery(e.target.value)}
                         />
-                        <Eye className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" size={18} />
+                        <Eye className="absolute left-4 top-1/2 -translate-y-1/2 text-muted-foreground group-focus-within:text-primary transition-colors" size={16} />
                     </div>
                 </div>
 
-                {activeTab === "projects" && projectsView === "list" && (
+                {activeTab === "projects" && (
                     <div className="rounded-2xl border border-border/50 bg-card shadow-xl shadow-black/5 overflow-hidden">
-                        <div className="flex flex-col gap-4 border-b border-border/50 px-6 py-5 xl:flex-row xl:items-center xl:justify-between">
-                            <div className="flex items-center gap-3 text-[11px] font-black uppercase tracking-[0.24em] text-muted-foreground">
-                                <List size={14} className="text-primary" />
-                                Viewing: Projects
+                        <div className="flex items-center justify-between gap-3 border-b border-border/50 px-5 py-3">
+                            <div className="flex items-center gap-3 text-[10px] sm:text-[11px] font-black uppercase tracking-[0.24em] text-muted-foreground whitespace-nowrap">
+                                <List size={14} className="text-primary shrink-0" />
+                                <span className="hidden xs:inline">Viewing: Projects</span>
+                                <span className="xs:hidden">Viewing</span>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                                {[
-                                    { key: "all", label: "All" },
-                                    { key: "editing", label: "Editing" },
-                                    { key: "in_review", label: "In Review" },
-                                    { key: "pending", label: "Pending" },
-                                    { key: "completed", label: "Completed" },
-                                    { key: "pay_later", label: "Pay Later" },
-                                    { key: "payment_due", label: "Payment Due" },
-                                ].map((filter) => (
-                                    <button
-                                        key={filter.key}
-                                        onClick={() => setProjectFilter(filter.key as typeof projectFilter)}
-                                        className={cn(
-                                            "rounded-lg border px-3 py-1.5 text-[10px] font-black uppercase tracking-widest transition-all",
-                                            projectFilter === filter.key
-                                                ? "border-primary/30 bg-primary/10 text-primary"
-                                                : "border-border/50 bg-muted/20 text-muted-foreground hover:text-foreground"
-                                        )}
-                                    >
-                                        {filter.label}
-                                    </button>
-                                ))}
+                            <div className="relative w-[150px] sm:w-[220px]">
+                                <select
+                                    value={projectFilter}
+                                    onChange={(e) => setProjectFilter(e.target.value as typeof projectFilter)}
+                                    className="w-full appearance-none rounded-xl border border-border/50 bg-muted/30 px-3 sm:px-4 py-2 pr-9 text-[10px] font-black uppercase tracking-widest text-foreground outline-none cursor-pointer transition-all hover:bg-muted/50 focus:border-primary/50 focus:ring-4 focus:ring-primary/10"
+                                >
+                                    <option value="all" className="bg-card text-foreground">All</option>
+                                    <option value="editing" className="bg-card text-foreground">Editing</option>
+                                    <option value="in_review" className="bg-card text-foreground">In Review</option>
+                                    <option value="pending" className="bg-card text-foreground">Pending</option>
+                                    <option value="completed" className="bg-card text-foreground">Completed</option>
+                                    <option value="pay_later" className="bg-card text-foreground">Pay Later</option>
+                                    <option value="payment_due" className="bg-card text-foreground">Payment Due</option>
+                                </select>
+                                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-muted-foreground">
+                                    <ChevronRight className="h-3.5 w-3.5 rotate-90" />
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -790,91 +785,91 @@ function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets
             )}
         >
             {/* Top Bar for status/timer */}
-            <div className="flex items-center justify-between px-8 py-4 bg-muted/20 border-b border-border/50">
+            <div className="flex items-center justify-between px-5 py-3 bg-muted/20 border-b border-border/50">
                 <StatusBadge status={project.status} />
                 {isPending && timeLeft && (
                     <div className="flex items-center gap-2 text-primary font-black text-[10px] uppercase tracking-widest">
-                        <Timer size={14} className={cn(timeLeft === 'EXPIRED' ? 'text-rose-500' : 'animate-pulse')} />
+                        <Timer size={12} className={cn(timeLeft === 'EXPIRED' ? 'text-rose-500' : 'animate-pulse')} />
                         {timeLeft === 'EXPIRED' ? 'INVITATION EXPIRED' : `EXPIRES IN ${timeLeft}`}
                     </div>
                 )}
                 {!isPending && project.deadline && (
                     <div className="flex items-center gap-2 text-rose-500 font-black text-[10px] uppercase tracking-widest">
-                        <Clock size={14} />
+                        <Clock size={12} />
                         Due {new Date(project.deadline).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
                     </div>
                 )}
             </div>
 
-            <div className="p-8 flex-1 space-y-8">
+            <div className="p-5 flex-1 space-y-4">
                 {/* Header Section */}
-                <div className="flex items-start justify-between gap-6">
-                    <div className="space-y-2 flex-1">
-                        <h3 className="text-2xl font-black text-foreground group-hover:text-primary transition-colors tracking-tight leading-tight line-clamp-1">
+                <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1 flex-1">
+                        <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors tracking-tight leading-tight line-clamp-1">
                             {project.name}
                         </h3>
-                        <div className="flex flex-wrap items-center gap-4 text-[10px] text-muted-foreground uppercase tracking-widest font-black opacity-60">
-                            <span className="flex items-center gap-1.5"><User size={12} className="text-primary" /> {pm?.displayName || "System Manager"}</span>
-                            <span className="flex items-center gap-1.5"><Users size={12} className="text-primary" /> {project.clientName || "Direct Client"}</span>
+                        <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground uppercase tracking-widest font-black opacity-60">
+                            <span className="flex items-center gap-1.5"><User size={11} className="text-primary" /> {pm?.displayName || "System Manager"}</span>
+                            <span className="flex items-center gap-1.5"><Users size={11} className="text-primary" /> {project.clientName || "Direct Client"}</span>
                         </div>
                     </div>
                     <div className="text-right">
-                        <div className="text-2xl font-black text-primary tracking-tighter">{formatCurrency(project.editorPrice)}</div>
+                        <div className="text-xl font-black text-primary tracking-tighter">{formatCurrency(project.editorPrice)}</div>
                         <div className="text-[9px] text-muted-foreground uppercase tracking-widest font-black opacity-50">Payout</div>
                     </div>
                 </div>
 
                 {/* Progress/Activity Section */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="p-4 rounded-xl bg-muted/40 border border-border/40 space-y-1">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="p-3 rounded-xl bg-muted/40 border border-border/40 space-y-0.5">
                         <div className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.1em]">Last Activity</div>
-                        <div className="text-sm font-bold text-foreground truncate">
+                        <div className="text-xs font-bold text-foreground truncate">
                             {latestRevision ? `Draft ${latestRevision.version}` : "No Drafts Uploaded"}
                         </div>
                     </div>
-                    <div className="p-4 rounded-xl bg-muted/40 border border-border/40 space-y-1">
+                    <div className="p-3 rounded-xl bg-muted/40 border border-border/40 space-y-0.5">
                         <div className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.1em]">Created On</div>
-                        <div className="text-sm font-bold text-foreground">
+                        <div className="text-xs font-bold text-foreground">
                             {new Date(project.createdAt).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })}
                         </div>
                     </div>
                 </div>
 
                 {/* Action Section */}
-                <div className="flex items-center gap-3 pt-2">
+                <div className="flex items-center gap-2 pt-1">
                     {isPending ? (
                         <button 
                             onClick={onAssets}
-                            className="flex-1 h-16 rounded-2xl bg-primary text-white font-black text-sm shadow-xl shadow-primary/20 hover:shadow-primary/40 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-3 group/btn"
+                            className="flex-1 h-11 rounded-xl bg-primary text-white font-black text-xs shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2 group/btn"
                         >
-                            <Briefcase size={20} className="group-hover/btn:rotate-12 transition-transform" />
-                            Review Project Briefing
+                            <Briefcase size={16} className="group-hover/btn:rotate-12 transition-transform" />
+                            Review
                         </button>
                     ) : (
                         <>
                             {latestRevision && (
                                 <button 
                                     onClick={onReview}
-                                    className="flex-[3] h-14 rounded-xl bg-primary text-primary-foreground font-black text-xs shadow-xl shadow-primary/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-3"
+                                    className="flex-[3] h-11 rounded-lg bg-primary text-primary-foreground font-black text-xs shadow-lg shadow-primary/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2"
                                 >
-                                    <MessageCircle size={18} /> 
+                                    <MessageCircle size={16} /> 
                                     Review
                                 </button>
                             )}
                             <button 
                                 onClick={onAssets}
-                                className="h-14 w-14 rounded-xl bg-muted/50 border border-border/50 text-foreground flex items-center justify-center hover:bg-muted active:scale-95 transition-all"
+                                className="h-11 w-11 rounded-lg bg-muted/50 border border-border/50 text-foreground flex items-center justify-center hover:bg-muted active:scale-95 transition-all"
                                 title="Project Details & Assets"
                             >
-                                <FileText size={18} />
+                                <FileText size={16} />
                             </button>
                             {isAccepted && (
                                 <button 
                                     onClick={onUpload}
-                                    className="h-14 w-14 rounded-xl bg-emerald-500 text-white shadow-xl shadow-emerald-500/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center"
+                                    className="h-11 w-11 rounded-lg bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center"
                                     title="Upload New Draft"
                                 >
-                                    <Plus size={24} />
+                                    <Plus size={18} />
                                 </button>
                             )}
                         </>
@@ -893,7 +888,7 @@ function ProjectTable({ projects, allUsers, projectRevisions, startIndex = 0, on
                     <thead>
                         <tr className="bg-muted/30">
                             {["S.No", "Project", "Type", "PM", "Status", "Created", "Last Draft", "Editor Share", "Actions"].map((header) => (
-                                <th key={header} className="px-3 py-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
+                                <th key={header} className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
                                     {header}
                                 </th>
                             ))}
@@ -934,20 +929,20 @@ function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onRevie
 
     return (
         <tr className="align-top transition-colors hover:bg-muted/50 group">
-            <td className="px-3 py-3 text-xs font-bold text-foreground/80 tabular-nums">{index + 1}</td>
-            <td className="px-3 py-3">
+            <td className="px-3 py-2 text-xs font-bold text-foreground/80 tabular-nums">{index + 1}</td>
+            <td className="px-3 py-2">
                 <div className="min-w-[280px] max-w-[400px]">
                     <p className="text-xs font-bold text-foreground leading-tight">{project.name}</p>
                     <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ID: {project.id.slice(0, 10)}</p>
-                    <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                    <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
                         {project.description || "Client has not added a project description yet."}
                     </p>
                 </div>
             </td>
-            <td className="px-3 py-3 text-xs text-foreground font-semibold whitespace-nowrap">{project.videoFormat || project.videoType || "Not set"}</td>
-            <td className="px-3 py-3 text-xs text-foreground font-semibold whitespace-nowrap">{pm?.displayName || "System Manager"}</td>
-            <td className="px-3 py-3">
-                <div className="space-y-2">
+            <td className="px-3 py-2 text-xs text-foreground font-semibold whitespace-nowrap">{project.videoFormat || project.videoType || "Not set"}</td>
+            <td className="px-3 py-2 text-xs text-foreground font-semibold whitespace-nowrap">{pm?.displayName || "System Manager"}</td>
+            <td className="px-3 py-2">
+                <div className="space-y-1">
                     <StatusBadge status={project.status} />
                     {isPending && (
                         <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-amber-500">
@@ -957,7 +952,7 @@ function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onRevie
                     )}
                 </div>
             </td>
-            <td className="px-3 py-3 text-[11px] text-foreground/80 font-semibold whitespace-nowrap" suppressHydrationWarning>
+            <td className="px-3 py-2 text-[11px] text-foreground/80 font-semibold whitespace-nowrap" suppressHydrationWarning>
                 {project.createdAt
                     ? new Date(project.createdAt).toLocaleDateString("en-IN", {
                         day: "2-digit",
@@ -966,7 +961,7 @@ function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onRevie
                     })
                     : "N/A"}
             </td>
-            <td className="px-3 py-3 text-xs font-semibold text-foreground">
+            <td className="px-3 py-2 text-xs font-semibold text-foreground">
                 {latestRevision ? (
                     <div className="space-y-1">
                         <div>{`Draft ${latestRevision.version}`}</div>
@@ -978,36 +973,36 @@ function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onRevie
                     "No drafts yet"
                 )}
             </td>
-            <td className="px-3 py-3 text-xs font-black text-blue-400 whitespace-nowrap">{formatCurrency(project.editorPrice)}</td>
-            <td className="px-3 py-3">
-                <div className="flex min-w-[220px] flex-wrap gap-2">
+            <td className="px-3 py-2 text-xs font-black text-blue-400 whitespace-nowrap">{formatCurrency(project.editorPrice)}</td>
+            <td className="px-3 py-2">
+                <div className="flex min-w-[220px] flex-wrap gap-1.5">
                     {isPending ? (
                         <button
                             onClick={onAssets}
-                            className="h-10 px-5 rounded-xl bg-primary text-[10px] font-black uppercase tracking-widest text-white hover:brightness-110 active:scale-95 transition-all flex items-center gap-2 shadow-lg shadow-primary/20"
+                            className="h-8 px-3 rounded-lg bg-primary text-[10px] font-black uppercase tracking-widest text-white hover:brightness-110 active:scale-95 transition-all flex items-center gap-1.5 shadow-md shadow-primary/20"
                         >
-                            <Briefcase size={14} />
-                            Review Briefing
+                            <Briefcase size={12} />
+                            Review
                         </button>
                     ) : (
                         <>
                             {latestRevision && (
-                                <button onClick={onReview} className="h-9 rounded-xl bg-primary px-3 text-[10px] font-black uppercase tracking-widest text-primary-foreground">
+                                <button onClick={onReview} className="h-8 rounded-lg bg-primary px-2.5 text-[10px] font-black uppercase tracking-widest text-primary-foreground">
                                     Review
                                 </button>
                             )}
-                            <button onClick={onAssets} className="h-9 rounded-xl border border-border/50 bg-muted/30 px-3 text-[10px] font-black uppercase tracking-widest text-foreground" title="View Project Details">
+                            <button onClick={onAssets} className="h-8 rounded-lg border border-border/50 bg-muted/30 px-2.5 text-[10px] font-black uppercase tracking-widest text-foreground" title="View Project Details">
                                 Details
                             </button>
                             {isAccepted && (
-                                <button onClick={onUpload} className="h-9 rounded-xl bg-emerald-500 px-3 text-[10px] font-black uppercase tracking-widest text-white">
+                                <button onClick={onUpload} className="h-8 rounded-lg bg-emerald-500 px-2.5 text-[10px] font-black uppercase tracking-widest text-white">
                                     Upload
                                 </button>
                             )}
                         </>
                     )}
                     {!isPending && (
-                        <p className="mt-3 text-[10px] font-medium text-muted-foreground">
+                        <p className="mt-1 text-[10px] font-medium text-muted-foreground">
                             Client details and uploads are available inside Assets.
                         </p>
                     )}
