@@ -97,16 +97,16 @@ function StatusBadge({ status }: { status: string }) {
     };
     const cfg = configs[status] || { label: status.replace(/_/g, " "), className: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" };
     return (
-        <span className={cn("inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-semibold border whitespace-nowrap", cfg.className)}>
+        <span className={cn("inline-flex items-center px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-[9px] sm:text-[10px] font-semibold border whitespace-nowrap", cfg.className)}>
             {cfg.label}
         </span>
     );
 }
 
 function PaymentBadge({ paid, partial }: { paid: boolean; partial?: boolean }) {
-    if (paid) return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold border bg-emerald-500/10 text-emerald-500 border-emerald-500/20">Paid</span>;
-    if (partial) return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold border bg-amber-500/10 text-amber-500 border-amber-500/20">Partial</span>;
-    return <span className="inline-flex items-center px-2 py-0.5 rounded text-[9px] font-bold border bg-red-500/10 text-red-500 border-red-500/20">Pending</span>;
+    if (paid) return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-bold border bg-emerald-500/10 text-emerald-500 border-emerald-500/20">Paid</span>;
+    if (partial) return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-bold border bg-amber-500/10 text-amber-500 border-amber-500/20">Partial</span>;
+    return <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[8px] sm:text-[9px] font-bold border bg-red-500/10 text-red-500 border-red-500/20">Pending</span>;
 }
 
 // ── Main Component ───────────────────────────────────────────────────────────
@@ -318,7 +318,7 @@ export function ClientDashboard() {
 
     // ── Render ───────────────────────────────────────────────────────────────
     return (
-        <div className="space-y-8 pb-16">
+        <div className="space-y-4 md:space-y-8 pb-10 md:pb-16">
 
             {/* Credit Warning */}
             {isOverLimit && (
@@ -342,24 +342,24 @@ export function ClientDashboard() {
 
             {/* Header */}
             <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}
-                className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
+                className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 md:gap-4">
                 <div>
-                    <h1 className="text-2xl md:text-3xl font-bold text-foreground">
+                    <h1 className="text-xl md:text-3xl font-bold text-foreground">
                         Welcome back, {user?.displayName?.split(" ")[0] || "there"}
                     </h1>
-                    <p className="text-muted-foreground mt-1">
+                    <p className="text-xs md:text-sm text-muted-foreground mt-0.5 md:mt-1">
                         {projects.length > 0 ? `Managing ${projects.length} project${projects.length !== 1 ? "s" : ""}` : "Here's what's happening with your projects"}
                     </p>
                 </div>
-                <Link href="/dashboard/projects/new">
-                    <button className="inline-flex items-center gap-2 px-5 py-2.5 bg-primary text-primary-foreground rounded-lg font-medium hover:bg-primary/90 transition-colors shadow-sm">
+                <Link href="/dashboard/projects/new" className="w-full sm:w-auto">
+                    <button className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2 sm:px-5 sm:py-2.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors shadow-sm">
                         <Plus className="h-4 w-4" /> New Project
                     </button>
                 </Link>
             </motion.div>
 
             {/* Stats Grid */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 md:gap-4">
                 <IndicatorCard 
                     label="Total Projects" 
                     value={projects.length} 
@@ -391,13 +391,13 @@ export function ClientDashboard() {
             <div className="flex items-center gap-1 border-b border-border">
                 {(["projects", "finance"] as const).map((tab) => (
                     <button key={tab} onClick={() => setActiveTab(tab)}
-                        className={cn("px-5 py-2.5 text-sm font-medium transition-all border-b-2 -mb-px",
+                        className={cn("px-3 py-2 sm:px-5 sm:py-2.5 text-xs sm:text-sm font-medium transition-all border-b-2 -mb-px",
                             activeTab === tab
                                 ? "border-primary text-primary"
                                 : "border-transparent text-muted-foreground hover:text-foreground")}>
                         {tab === "projects" ? "All Projects" : "Finance"}
                         {tab === "finance" && pendingPaymentCount > 0 && (
-                            <span className="ml-2 inline-flex h-5 min-w-5 px-1 items-center justify-center rounded-full bg-red-500/15 text-red-500 text-[10px] font-bold">
+                            <span className="ml-1.5 inline-flex h-4 min-w-4 sm:h-5 sm:min-w-5 px-1 items-center justify-center rounded-full bg-red-500/15 text-red-500 text-[9px] sm:text-[10px] font-bold">
                                 {pendingPaymentCount}
                             </span>
                         )}
@@ -410,25 +410,25 @@ export function ClientDashboard() {
                 <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
                     className="bg-card border border-border rounded-xl overflow-hidden">
                     {/* Table header */}
-                    <div className="p-4 md:p-5 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
-                        <div className="flex items-center gap-3">
-                            <h2 className="text-lg font-semibold text-foreground">All Projects</h2>
-                            <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
+                    <div className="p-3 sm:p-4 md:p-5 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-base sm:text-lg font-semibold text-foreground">All Projects</h2>
+                            <span className="text-[10px] sm:text-xs text-muted-foreground bg-muted px-2 py-0.5 sm:py-1 rounded-full">
                                 {filteredProjects.length} total
                             </span>
                         </div>
-                        <div className="flex items-center gap-3">
-                            <div className="relative flex-1 md:w-72">
-                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                        <div className="flex flex-col sm:flex-row sm:items-center gap-2.5 w-full sm:w-auto">
+                            <div className="relative w-full sm:w-60 md:w-72">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                                 <input type="text" placeholder="Search projects..."
-                                    className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-4 text-sm focus:border-primary/50 focus:outline-none transition-colors"
+                                    className="h-8.5 w-full rounded-lg border border-border bg-background pl-9 pr-4 text-xs focus:border-primary/50 focus:outline-none transition-colors"
                                     value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} />
                             </div>
                             <DropdownMenu>
                                 <DropdownMenuTrigger asChild>
-                                    <button className="h-9 px-3 rounded-lg border border-border bg-background text-sm font-medium text-muted-foreground hover:text-foreground flex items-center gap-2 transition-colors">
+                                    <button className="h-8.5 w-full sm:w-auto px-3 rounded-lg border border-border bg-background text-xs font-medium text-muted-foreground hover:text-foreground flex items-center justify-between sm:justify-start gap-2 transition-colors">
                                         {statusFilter === "all" ? "All Status" : statusFilter.replace(/_/g, " ")}
-                                        <ChevronDown className="h-4 w-4" />
+                                        <ChevronDown className="h-3.5 w-3.5" />
                                     </button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-44">
@@ -440,8 +440,9 @@ export function ClientDashboard() {
                         </div>
                     </div>
 
-                    {/* Table */}
-                    <div className="overflow-x-auto">
+                    {/* Projects Table/Cards Split */}
+                    {/* Desktop View */}
+                    <div className="hidden sm:block overflow-x-auto">
                         <table className="w-full">
                             <thead>
                                 <tr className="bg-muted/50 border-b border-border">
@@ -450,7 +451,7 @@ export function ClientDashboard() {
                                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Cost (incl. GST)</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground hidden md:table-cell">Project Manager</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Status</th>
-                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground hidden sm:table-cell">Payment</th>
+                                    <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Payment</th>
                                     <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Action</th>
                                 </tr>
                             </thead>
@@ -464,8 +465,8 @@ export function ClientDashboard() {
                                         <FileVideo className="h-8 w-8 mx-auto mb-3 text-muted-foreground/50" />
                                         <p className="text-sm text-muted-foreground">No projects found</p>
                                         <Link href="/dashboard/projects/new">
-                                            <button className="mt-4 inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
-                                                <Plus className="h-4 w-4" /> Create Project
+                                            <button className="mt-3 inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg text-sm font-medium hover:bg-primary/90 transition-colors">
+                                                <Plus className="h-3.5 w-3.5" /> Create Project
                                             </button>
                                         </Link>
                                     </td></tr>
@@ -506,7 +507,7 @@ export function ClientDashboard() {
                                                     <td className="px-4 py-3">
                                                         <StatusBadge status={project.status} />
                                                     </td>
-                                                    <td className="px-4 py-3 hidden sm:table-cell">
+                                                    <td className="px-4 py-3">
                                                         <div className="flex flex-col gap-1">
                                                             <PaymentBadge paid={isPaid} partial={!isPaid && (amountPaid > 0)} />
                                                             {!isPaid && (["completed", "completed_pending_payment", "approved"].includes(project.status)) && (
@@ -518,7 +519,7 @@ export function ClientDashboard() {
                                                                     accountingAmount={remainingBase}
                                                                     description={`Payment for ${project.name}`}
                                                                     allowPayLaterBypass={false}
-                                                                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[9px] font-bold bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-colors whitespace-nowrap h-auto w-auto shadow-none"
+                                                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/10 text-red-500 border border-red-500/20 hover:bg-red-500/20 transition-colors whitespace-nowrap h-auto w-auto shadow-none"
                                                                 />
                                                             )}
                                                         </div>
@@ -546,6 +547,105 @@ export function ClientDashboard() {
                         </table>
                         {!loading && filteredProjects.length > 0 && (
                             <div className="px-4 py-3 border-t border-border text-xs text-muted-foreground">
+                                Showing {filteredProjects.length} of {projects.length} projects
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Mobile View */}
+                    <div className="block sm:hidden divide-y divide-border/60">
+                        {loading ? (
+                            <div className="py-8 text-center">
+                                <RefreshCw className="animate-spin h-5 w-5 mx-auto text-muted-foreground" />
+                            </div>
+                        ) : filteredProjects.length === 0 ? (
+                            <div className="py-8 text-center px-4">
+                                <FileVideo className="h-8 w-8 mx-auto mb-2 text-muted-foreground/50" />
+                                <p className="text-xs text-muted-foreground">No projects found</p>
+                                <Link href="/dashboard/projects/new" className="w-full">
+                                    <button className="mt-2.5 w-full inline-flex items-center justify-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-xs font-bold hover:bg-primary/90 transition-colors">
+                                        <Plus className="h-3.5 w-3.5" /> Create Project
+                                    </button>
+                                </Link>
+                            </div>
+                        ) : (
+                            <div className="p-2 space-y-2">
+                                {filteredProjects.map((project, idx) => {
+                                    const amountPaid = project.amountPaid || 0;
+                                    const totalCost = project.totalCost || 0;
+                                    const isPaid = amountPaid >= totalCost;
+                                    const remainingBase = Math.max(0, totalCost - amountPaid);
+                                    const remainingWithGst = withGst(remainingBase);
+                                    const pmName = project.assignedPMId
+                                        ? allUsers.find((u) => u.uid === project.assignedPMId)?.displayName || "PM"
+                                        : assignedPM?.displayName || "—";
+                                    const hasDraft = draftProjectIds.includes(project.id || "");
+                                    
+                                    return (
+                                        <div key={project.id} className="bg-muted/15 border border-border rounded-xl p-2.5 space-y-2.5">
+                                            {/* Top: Title and details button */}
+                                            <div className="flex items-start justify-between gap-2">
+                                                <div className="min-w-0 flex-1">
+                                                    <h3 className="text-xs font-bold text-foreground truncate">
+                                                        {project.name}
+                                                    </h3>
+                                                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                                                        {project.videoType || "Video"} • {project.createdAt ? new Date(project.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric" }) : ""}
+                                                    </p>
+                                                </div>
+                                                <div className="flex items-center gap-1 shrink-0">
+                                                    {hasDraft && (
+                                                        <button onClick={() => { setSelectedProject(project); setIsReviewSystemOpen(true); }}
+                                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-500 text-[10px] font-bold hover:bg-emerald-500/20 transition-colors">
+                                                            <FileVideo className="h-3 w-3" /> Review
+                                                        </button>
+                                                    )}
+                                                    <button onClick={() => { setSelectedProject(project); setIsProjectModalOpen(true); }}
+                                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-bold hover:bg-primary/20 transition-colors">
+                                                        <Eye className="h-3 w-3" /> Details
+                                                    </button>
+                                                </div>
+                                            </div>
+
+                                            {/* Mid: Cost breakdown & PM */}
+                                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/60 text-[10px]">
+                                                <div>
+                                                    <p className="text-muted-foreground font-semibold uppercase tracking-wider text-[8px]">Cost (incl. GST)</p>
+                                                    <p className="text-xs font-bold text-foreground mt-0.5">{formatInr(withGst(project.totalCost || 0))}</p>
+                                                    <p className="text-[8px] text-muted-foreground">Base: {formatInr(project.totalCost || 0)}</p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-muted-foreground font-semibold uppercase tracking-wider text-[8px]">Project Manager</p>
+                                                    <p className="text-xs font-bold text-foreground mt-0.5 truncate">{pmName}</p>
+                                                </div>
+                                            </div>
+
+                                            {/* Bottom: Status & payment action */}
+                                            <div className="flex items-center justify-between pt-2 border-t border-border/60">
+                                                <div className="flex items-center gap-1.5">
+                                                    <StatusBadge status={project.status} />
+                                                    <PaymentBadge paid={isPaid} partial={!isPaid && (amountPaid > 0)} />
+                                                </div>
+                                                {!isPaid && (["completed", "completed_pending_payment", "approved"].includes(project.status)) && (
+                                                    <PaymentButton 
+                                                        projectId={project.id!}
+                                                        projectName={project.name}
+                                                        user={user}
+                                                        amount={remainingWithGst}
+                                                        accountingAmount={remainingBase}
+                                                        description={`Payment for ${project.name}`}
+                                                        allowPayLaterBypass={false}
+                                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 transition-colors text-[9px] font-black shadow-sm h-auto w-auto"
+                                                    />
+                                                )}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        )}
+                        {!loading && filteredProjects.length > 0 && (
+                            <div className="px-3 py-2 border-t border-border text-[10px] text-muted-foreground">
                                 Showing {filteredProjects.length} of {projects.length} projects
                             </div>
                         )}
@@ -596,7 +696,8 @@ export function ClientDashboard() {
                             <h2 className="text-lg font-semibold text-foreground">Project-wise Billing</h2>
                             <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">{projects.length} projects</span>
                         </div>
-                        <div className="overflow-x-auto">
+                        {/* Desktop View */}
+                        <div className="hidden sm:block overflow-x-auto">
                             <table className="w-full">
                                 <thead>
                                     <tr className="bg-muted/50 border-b border-border">
@@ -690,6 +791,99 @@ export function ClientDashboard() {
                                     </tfoot>
                                 )}
                             </table>
+                        </div>
+
+                        {/* Mobile View */}
+                        <div className="block sm:hidden divide-y divide-border/60">
+                            {projects.length === 0 ? (
+                                <div className="py-8 text-center text-xs text-muted-foreground">No projects found</div>
+                            ) : (
+                                <div className="p-2 space-y-2">
+                                    {projects.map((project) => {
+                                        const amountPaid = project.amountPaid || 0;
+                                        const totalCost = project.totalCost || 0;
+                                        const isPaid = amountPaid >= totalCost;
+                                        const remainingBase = Math.max(0, totalCost - amountPaid);
+                                        const remainingWithGst = withGst(remainingBase);
+                                        const isCompleted = ["completed", "completed_pending_payment", "approved"].includes(project.status);
+                                        
+                                        const base = project.totalCost || 0;
+                                        const gstAmt = base * GST_RATE;
+                                        const total = base + gstAmt;
+                                        const paidWithGst = withGst(amountPaid);
+                                        const balance = Math.max(0, total - paidWithGst);
+                                        const projectInvoices = invoices.filter((inv) => inv.projectId === project.id);
+
+                                        return (
+                                            <div key={project.id} className={cn("bg-muted/15 border border-border rounded-xl p-2.5 space-y-2.5", !isPaid && isCompleted && "bg-red-500/[0.02] border-red-500/10")}>
+                                                {/* Top: Name & Payment badge */}
+                                                <div className="flex items-start justify-between gap-2">
+                                                    <div className="min-w-0 flex-1">
+                                                        <h3 className="text-xs font-bold text-foreground truncate">
+                                                            {project.name}
+                                                        </h3>
+                                                        <div className="flex items-center gap-1.5 mt-1">
+                                                            <StatusBadge status={project.status} />
+                                                            <PaymentBadge paid={isPaid} partial={!isPaid && (amountPaid > 0)} />
+                                                        </div>
+                                                    </div>
+                                                    <div className="flex items-center gap-1 shrink-0">
+                                                        {!isPaid && isCompleted && (
+                                                            <PaymentButton
+                                                                projectId={project.id!}
+                                                                projectName={project.name}
+                                                                user={user}
+                                                                amount={remainingWithGst}
+                                                                accountingAmount={remainingBase}
+                                                                description={`Payment for ${project.name}`}
+                                                                allowPayLaterBypass={false}
+                                                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 transition-colors text-[9px] font-black shadow-sm h-auto w-auto"
+                                                            />
+                                                        )}
+                                                        {projectInvoices.length > 0 && (
+                                                            <Link href={`/dashboard/invoices/${projectInvoices[0].id}`}>
+                                                                <button className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-bold hover:bg-primary/20 transition-colors border border-primary/20">
+                                                                    <Receipt className="h-3 w-3" /> Invoice
+                                                                </button>
+                                                            </Link>
+                                                        )}
+                                                    </div>
+                                                </div>
+
+                                                {/* Metrics breakdown */}
+                                                <div className="grid grid-cols-3 gap-2 pt-2 border-t border-border/60 text-[9px]">
+                                                    <div>
+                                                        <p className="text-muted-foreground uppercase font-bold tracking-wider text-[8px]">Base Cost</p>
+                                                        <p className="text-xs font-semibold text-foreground mt-0.5">{formatInr(base)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-muted-foreground uppercase font-bold tracking-wider text-[8px]">GST (18%)</p>
+                                                        <p className="text-xs font-semibold text-amber-500 mt-0.5">{formatInr(gstAmt)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-muted-foreground uppercase font-bold tracking-wider text-[8px]">Total Payable</p>
+                                                        <p className="text-xs font-bold text-foreground mt-0.5">{formatInr(total)}</p>
+                                                    </div>
+                                                </div>
+
+                                                {/* Payment Status row */}
+                                                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/60 text-[9px]">
+                                                    <div>
+                                                        <p className="text-muted-foreground uppercase font-bold tracking-wider text-[8px]">Amount Paid</p>
+                                                        <p className="text-xs font-bold text-emerald-500 mt-0.5">{formatInr(paidWithGst)}</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="text-muted-foreground uppercase font-bold tracking-wider text-[8px]">Balance Due</p>
+                                                        <p className={cn("text-xs font-black mt-0.5", balance > 0 ? "text-red-500 animate-pulse" : "text-emerald-500")}>
+                                                            {balance > 0 ? formatInr(balance) : "—"}
+                                                        </p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
                         </div>
                     </div>
 

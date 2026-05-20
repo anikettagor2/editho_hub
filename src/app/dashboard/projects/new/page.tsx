@@ -125,6 +125,11 @@ export default function NewProjectPage() {
     // Step State
     const [currentStep, setCurrentStep] = useState(1);
 
+    // Scroll to top on step transition
+    useEffect(() => {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+    }, [currentStep]);
+
     // Step 1: Project Information
     const [name, setName] = useState("");
     const [videoType, setVideoType] = useState<string>("Reel Format");
@@ -802,11 +807,59 @@ export default function NewProjectPage() {
         }
     };
 
+    const handleClose = async () => {
+        const allCompletedFiles: any[] = [];
+        
+        [...rawFiles, ...bRoleFiles, ...scriptFiles, ...referenceFiles, ...audioFiles].forEach(f => {
+            if (f.status === 'complete' && f.uploadedData) {
+                allCompletedFiles.push(f.uploadedData);
+            }
+        });
+
+        if (allCompletedFiles.length > 0) {
+            try {
+                const deletePromises = allCompletedFiles.map(async (data) => {
+                    const path = data.storagePath || data.url;
+                    if (!path) return;
+                    try {
+                        const storageRef = ref(storage, path);
+                        await deleteObject(storageRef);
+                    } catch (error) {
+                        console.error("Cleanup error during close:", error);
+                    }
+                });
+                
+                toast.loading("Closing and immediately deleting uploaded files from system...", { id: "close-cleanup" });
+                await Promise.all(deletePromises);
+                toast.success("Form closed. All uploaded files have been deleted from system.", { id: "close-cleanup" });
+            } catch (err) {
+                console.error("Error during full close cleanup:", err);
+                toast.error("Form closed, but some files could not be cleaned up.");
+            }
+        } else {
+            toast.success("Form closed.");
+        }
+        
+        router.push("/dashboard");
+    };
+
 
     return (
-        <div className="max-w-4xl mx-auto min-h-[calc(100vh-8rem)] flex flex-col gap-8 pb-10">
+        <div className="max-w-4xl mx-auto min-h-[calc(100vh-8rem)] flex flex-col gap-6 pb-10 px-4 sm:px-0 relative">
+            {/* Top Close Button Row - Left-aligned and above title */}
+            <div className="w-full flex justify-start pt-6 sm:pt-8">
+                <button
+                    onClick={handleClose}
+                    className="p-2 sm:p-2.5 rounded-xl bg-card/60 backdrop-blur-md border border-border/80 hover:bg-red-500/20 text-muted-foreground hover:text-red-500 transition-all duration-200 hover:border-red-500/30 shadow-md hover:scale-105 z-20"
+                    aria-label="Close form"
+                    title="Cancel and close"
+                >
+                    <X className="w-5 h-5 sm:w-6 sm:h-6" />
+                </button>
+            </div>
+
             {/* Header / Stepper Layer */}
-            <div className="flex flex-col items-center justify-center pt-20 sm:pt-8 pb-4 relative z-10">
+            <div className="flex flex-col items-center justify-center pt-2 sm:pt-4 pb-4 relative z-10">
                  <h1 className="text-3xl sm:text-4xl font-heading font-black tracking-tight text-foreground mb-8">
                      Create New <span className="text-primary">Project</span>
                  </h1>
@@ -826,8 +879,8 @@ export default function NewProjectPage() {
                                      currentStep === step 
                                          ? "bg-primary/20 border-primary text-primary shadow-[0_0_15px_rgba(var(--primary),0.3)]" 
                                          : currentStep > step
-                                            ? "bg-emerald-500/20 border-emerald-500 text-emerald-500"
-                                            : "bg-muted border-border text-foreground/50"
+                                             ? "bg-emerald-500/20 border-emerald-500 text-emerald-500"
+                                             : "bg-muted border-border text-foreground/50"
                                  )}>
                                      {currentStep > step ? <CheckCircle2 className="h-5 w-5" /> : step}
                                  </div>
@@ -850,52 +903,50 @@ export default function NewProjectPage() {
             </div>
 
             {/* Main Content Area */}
-            <div className="flex-1 w-full bg-card/60 backdrop-blur-xl border border-border rounded-3xl p-6 md:p-10 shadow-2xl relative overflow-hidden">
+            <div className="flex-1 w-full bg-card/60 backdrop-blur-xl border border-border rounded-3xl p-4 sm:p-8 md:p-10 shadow-2xl relative overflow-hidden">
                 {/* Step 1 */}
                 {currentStep === 1 && (
                     <motion.div
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -20 }}
-                        className="space-y-8"
+                        className="space-y-6 sm:space-y-8"
                     >
-                        <div className="space-y-1">
-                            <h2 className="text-2xl font-bold text-foreground">Project Information</h2>
-                            <p className="text-sm text-muted-foreground">Provide the basic details for your new project.</p>
+                        <div className="space-y-0.5 sm:space-y-1">
+                            <h2 className="text-xl sm:text-2xl font-bold text-foreground">Project Information</h2>
+                            <p className="text-xs sm:text-sm text-muted-foreground">Provide the basic details for your new project.</p>
                         </div>
                         
-                        <div className="space-y-6">
+                        <div className="space-y-5 sm:space-y-6">
                             <div className="space-y-2">
-                                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Project Name *</Label>
+                                <Label className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Project Name *</Label>
                                 <Input 
                                     placeholder="e.g. Summer Campaign Video" 
                                     value={name}
                                     onChange={e => setName(e.target.value)}
-                                    className="h-12 bg-muted/50 border-border focus:border-primary/50 rounded-xl font-medium text-foreground placeholder:text-muted-foreground"
+                                    className="h-11 sm:h-12 bg-muted/50 border-border focus:border-primary/50 rounded-xl font-medium text-foreground placeholder:text-muted-foreground text-sm"
                                 />
                             </div>
 
-
-
                             <div className="space-y-3">
-                                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Delivery Time (Select One)</Label>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <Label className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Delivery Time (Select One)</Label>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
                                     <button 
                                         type="button"
                                         onClick={() => setUrgency('24hrs')}
                                         className={cn(
-                                            "flex items-center gap-4 p-4 rounded-xl border transition-all text-left",
+                                            "flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border transition-all text-left",
                                             urgency === '24hrs' 
                                                 ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(var(--primary),0.1)]" 
                                                 : "bg-muted/50 border-border hover:border-border"
                                         )}
                                     >
-                                        <div className={cn("p-2 rounded-lg", urgency === '24hrs' ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground")}>
-                                            <Clock className="w-5 h-5" />
+                                        <div className={cn("p-1.5 sm:p-2 rounded-lg shrink-0", urgency === '24hrs' ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground")}>
+                                            <Clock className="w-4 h-4 sm:w-5 sm:h-5" />
                                         </div>
                                         <div>
-                                            <p className={cn("font-bold", urgency === '24hrs' ? "text-primary" : "text-foreground")}>Standard Delivery</p>
-                                            <p className="text-xs text-muted-foreground font-medium">Get video in 24hrs</p>
+                                            <p className={cn("font-bold text-xs sm:text-sm", urgency === '24hrs' ? "text-primary" : "text-foreground")}>Standard Delivery</p>
+                                            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium">Get video in 24hrs</p>
                                         </div>
                                     </button>
 
@@ -903,21 +954,21 @@ export default function NewProjectPage() {
                                         type="button"
                                         onClick={() => setUrgency('urgent')}
                                         className={cn(
-                                            "flex items-center gap-4 p-4 rounded-xl border transition-all text-left",
+                                            "flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-xl border transition-all text-left",
                                             urgency === 'urgent' 
                                                 ? "bg-amber-500/10 border-amber-500 shadow-[0_0_15px_rgba(245,158,11,0.1)]" 
                                                 : "bg-muted/50 border-border hover:border-border"
                                         )}
                                     >
-                                        <div className={cn("p-2 rounded-lg", urgency === 'urgent' ? "bg-amber-500/20 text-amber-500" : "bg-muted text-muted-foreground")}>
-                                            <Zap className="w-5 h-5" />
+                                        <div className={cn("p-1.5 sm:p-2 rounded-lg shrink-0", urgency === 'urgent' ? "bg-amber-500/20 text-amber-500" : "bg-muted text-muted-foreground")}>
+                                            <Zap className="w-4 h-4 sm:w-5 sm:h-5" />
                                         </div>
-                                        <div className="flex-1">
-                                            <div className="flex items-center gap-2">
-                                                <p className={cn("font-bold", urgency === 'urgent' ? "text-amber-500" : "text-foreground")}>Urgent Delivery</p>
-                                                <span className="text-[9px] font-black bg-amber-500/20 text-amber-500 px-1.5 py-0.5 rounded uppercase">+Extra</span>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-1.5 flex-wrap">
+                                                <p className={cn("font-bold text-xs sm:text-sm truncate", urgency === 'urgent' ? "text-amber-500" : "text-foreground")}>Urgent Delivery</p>
+                                                <span className="text-[8px] font-black bg-amber-500/20 text-amber-500 px-1 py-0.2 rounded uppercase shrink-0">+Extra</span>
                                             </div>
-                                            <p className="text-xs text-muted-foreground font-medium">Prioritized queue delivery</p>
+                                            <p className="text-[10px] sm:text-xs text-muted-foreground font-medium truncate">Prioritized queue delivery</p>
                                         </div>
                                     </button>
                                 </div>
@@ -925,15 +976,15 @@ export default function NewProjectPage() {
 
                             <div className="space-y-2">
                                 <div className="flex justify-between items-end">
-                                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Project Description *</Label>
-                                    <span className={cn("text-xs font-bold", wordCount > DESCRIPTION_WORD_LIMIT ? "text-red-500" : "text-muted-foreground")}>{wordCount} / {DESCRIPTION_WORD_LIMIT} words</span>
+                                    <Label className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Project Description *</Label>
+                                    <span className={cn("text-[10px] sm:text-xs font-bold", wordCount > DESCRIPTION_WORD_LIMIT ? "text-red-500" : "text-muted-foreground")}>{wordCount} / {DESCRIPTION_WORD_LIMIT} words</span>
                                 </div>
                                 <Textarea 
                                     placeholder="Provide detailed instructions for the editor..."
                                     value={description}
                                     onChange={e => setDescription(e.target.value)}
                                     className={cn(
-                                        "min-h-[120px] resize-none bg-muted/50 border-border rounded-xl font-medium text-foreground placeholder:text-muted-foreground",
+                                        "min-h-[100px] sm:min-h-[120px] resize-none bg-muted/50 border-border rounded-xl font-medium text-foreground placeholder:text-muted-foreground text-sm",
                                         wordCount > DESCRIPTION_WORD_LIMIT ? "border-red-500 focus:border-red-500" : "focus:border-primary/50"
                                     )}
                                 />
@@ -942,14 +993,15 @@ export default function NewProjectPage() {
 
                             {/* Audio Upload & Recording */}
                             <div className="space-y-3 pt-2">
-                                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1 flex items-center gap-2">
+                                <Label className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1 flex items-center gap-2">
                                     <Mic className="w-4 h-4 text-primary" />
                                     Audio File / Voice Note (Optional)
                                 </Label>
-                                <p className="text-[11px] text-muted-foreground ml-1">Add your voice brief below the description so editors understand your exact direction.</p>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <p className="text-[10px] sm:text-[11px] text-muted-foreground ml-1">Add your voice brief below the description so editors understand your exact direction.</p>
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
                                     <div className="space-y-4">
-                                        <div className="border border-dashed border-border rounded-xl p-6 hover:bg-muted/50 hover:border-primary/50 transition-all text-center relative overflow-hidden group h-full flex flex-col items-center justify-center">
+                                        {/* Desktop Drag and Drop */}
+                                        <div className="hidden sm:flex border border-dashed border-border rounded-xl p-6 hover:bg-muted/50 hover:border-primary/50 transition-all text-center relative overflow-hidden group h-full flex-col items-center justify-center">
                                             <input
                                                 type="file"
                                                 multiple
@@ -961,13 +1013,27 @@ export default function NewProjectPage() {
                                             <p className="text-xs font-bold text-foreground">Upload Audio File</p>
                                             <p className="text-[10px] text-muted-foreground">MP3, WAV, M4A, WEBM</p>
                                         </div>
+                                        {/* Mobile Upload Button */}
+                                        <div className="block sm:hidden relative w-full">
+                                            <input
+                                                type="file"
+                                                multiple
+                                                accept="audio/*"
+                                                onChange={(e) => handleFileUpload(e, 'audio')}
+                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                            />
+                                            <Button type="button" variant="outline" className="w-full h-11 rounded-xl flex items-center justify-center gap-2 border-primary/30 text-foreground hover:bg-primary/5 font-bold text-xs">
+                                                <UploadCloud className="w-4 h-4 text-primary" />
+                                                Choose Audio File
+                                            </Button>
+                                        </div>
                                     </div>
-                                    <div className="space-y-3">
+                                    <div className="space-y-3 flex flex-col justify-center">
                                         <Button
                                             type="button"
                                             onClick={isRecordingAudio ? stopAudioRecording : startAudioRecording}
                                             className={cn(
-                                                "w-full h-11 rounded-xl font-bold tracking-wide",
+                                                "w-full h-11 rounded-xl font-bold tracking-wide text-xs",
                                                 isRecordingAudio
                                                     ? "bg-red-600 hover:bg-red-700"
                                                     : "bg-primary hover:bg-primary/90"
@@ -991,31 +1057,38 @@ export default function NewProjectPage() {
                                 {audioFiles.length > 0 && (
                                     <div className="space-y-2 mt-4">
                                         {audioFiles.map((fileItem, i) => (
-                                            <div key={i} className="bg-muted/50 border border-border rounded-lg p-3 group">
-                                                <div className="flex items-center justify-between mb-2">
+                                            <div key={i} className="bg-muted/50 border border-border rounded-xl p-3 group w-full min-w-0 flex flex-col gap-2">
+                                                <div className="flex items-center justify-between gap-2 w-full min-w-0">
                                                     <div className="flex items-center gap-2 min-w-0 flex-1">
                                                         <Mic className="w-3.5 h-3.5 text-primary shrink-0" />
-                                                        <span className="text-xs text-foreground truncate font-medium">{fileItem.file.name}</span>
+                                                        <span className="text-xs text-foreground truncate font-semibold block min-w-0 flex-1">{fileItem.file.name}</span>
                                                     </div>
-                                                    <div className="flex items-center gap-2 shrink-0">
-                                                        {fileItem.status === 'complete' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-                                                        {fileItem.status === 'error' && <AlertCircle className="w-4 h-4 text-red-500" />}
-                                                        {fileItem.status === 'uploading' && (
-                                                            <span className="text-[10px] text-primary font-bold">{Math.round(fileItem.progress)}%</span>
-                                                        )}
-                                                        <button type="button" onClick={() => removeFile(i, 'audio')} className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all">
-                                                            <X className="w-3 h-3" />
-                                                        </button>
-                                                    </div>
+                                                    <button type="button" onClick={() => removeFile(i, 'audio')} className="p-1 hover:bg-red-500/20 text-red-500 rounded-lg transition-all shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                                                        <X className="w-3.5 h-3.5" />
+                                                    </button>
                                                 </div>
-                                                {fileItem.status === 'complete' && fileItem.uploadedData?.url && (
+                                                {fileItem.status === 'complete' && fileItem.uploadedData?.url ? (
                                                     <audio controls className="w-full h-8" src={fileItem.uploadedData.url} preload="metadata" />
+                                                ) : (
+                                                    <div className="flex items-center justify-between text-[10px] text-muted-foreground gap-2">
+                                                        <span>{(fileItem.file.size / 1024 / 1024).toFixed(1)} MB</span>
+                                                        <div className="flex items-center gap-1.5 font-bold shrink-0">
+                                                            {fileItem.status === 'error' && (
+                                                                <span className="text-red-500 flex items-center gap-1">
+                                                                    <AlertCircle className="w-3 h-3" /> Error
+                                                                </span>
+                                                            )}
+                                                            {fileItem.status === 'uploading' && (
+                                                                <span className="text-primary">{Math.round(fileItem.progress)}%</span>
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 )}
                                                 {(fileItem.status === 'uploading' || fileItem.status === 'pending') && (
-                                                    <div className="h-1 bg-muted rounded-full overflow-hidden mt-1">
-                                                        <div
-                                                            className="h-full bg-primary transition-all duration-300"
-                                                            style={{ width: `${fileItem.progress}%` }}
+                                                    <div className="h-1 bg-muted rounded-full overflow-hidden w-full">
+                                                        <div 
+                                                            className="h-full bg-gradient-to-r from-primary via-indigo-500 to-violet-500 transition-all duration-300 rounded-full animate-pulse"
+                                                            style={{ width: `${Math.max(5, fileItem.progress)}%` }}
                                                         />
                                                     </div>
                                                 )}
@@ -1027,7 +1100,7 @@ export default function NewProjectPage() {
                         </div>
 
                         <div className="flex justify-end pt-4">
-                            <Button onClick={handleNextStep} size="lg" className="rounded-xl px-10 shadow-xl font-bold tracking-wide">
+                            <Button onClick={handleNextStep} size="lg" className="rounded-xl px-10 shadow-xl font-bold tracking-wide text-xs h-11">
                                 Next Step <ChevronRight className="ml-2 w-4 h-4" />
                             </Button>
                         </div>
@@ -1040,150 +1113,150 @@ export default function NewProjectPage() {
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -20 }}
-                        className="space-y-8"
+                        className="space-y-6 sm:space-y-8"
                     >
-                         <div className="space-y-1">
-                            <h2 className="text-2xl font-bold text-foreground">Video Format</h2>
-                            <p className="text-sm text-muted-foreground">Select the aspect ratio and format for your video.</p>
-                        </div>
+                         <div className="space-y-0.5 sm:space-y-1">
+                             <h2 className="text-xl sm:text-2xl font-bold text-foreground">Video Format</h2>
+                             <p className="text-xs sm:text-sm text-muted-foreground">Select the aspect ratio and format for your video.</p>
+                         </div>
 
-                        <div className="space-y-8">
-                            <div className="space-y-3">
-                                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Video Type Format</Label>
-                                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                                    {availableVideoTypes.map(vt => {
-                                        const tieredPrices = user?.multiTierRates?.[vt.key];
-                                        const fallbackPrice = getResolvedClientRate(user?.customRates, vt.key);
-                                        const isSelected = videoType === vt.key;
-                                        const displayPrice = tieredPrices ? tieredPrices[0].price : fallbackPrice;
-                                        const hasMultipleTiers = tieredPrices && tieredPrices.length > 1;
-                                        
-                                        return (
-                                            <button
-                                                key={vt.key}
-                                                type="button"
-                                                onClick={() => setVideoType(vt.key)}
-                                                className={cn(
-                                                    "flex flex-col p-4 rounded-xl border transition-all text-left group",
-                                                    isSelected
-                                                        ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(var(--primary),0.1)]" 
-                                                        : "bg-muted/50 border-border hover:border-border hover:bg-muted/60"
-                                                )}
-                                            >
-                                                <div className="flex flex-col w-full">
-                                                    <div className="flex items-center justify-between mb-1 gap-1">
-                                                        <span className={cn("text-xs font-bold", isSelected ? "text-primary" : "text-foreground")}>{vt.label}</span>
-                                                        <div className="flex items-center gap-1">
-                                                            <span className={cn("text-[10px] font-mono font-bold", tieredPrices ? "text-amber-500" : "text-emerald-500")}>₹{displayPrice}</span>
-                                                            {hasMultipleTiers && <span className={cn("text-[8px] font-bold px-1.5 py-0.5 rounded-full", isSelected ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground")}>+{tieredPrices.length - 1}</span>}
-                                                        </div>
-                                                    </div>
-                                                    <span className="text-[9px] text-muted-foreground line-clamp-1">{vt.desc}</span>
-                                                </div>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
+                         <div className="space-y-6 sm:space-y-8">
+                             <div className="space-y-3">
+                                 <Label className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Video Type Format</Label>
+                                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                                     {availableVideoTypes.map(vt => {
+                                         const tieredPrices = user?.multiTierRates?.[vt.key];
+                                         const fallbackPrice = getResolvedClientRate(user?.customRates, vt.key);
+                                         const isSelected = videoType === vt.key;
+                                         const displayPrice = tieredPrices ? tieredPrices[0].price : fallbackPrice;
+                                         const hasMultipleTiers = tieredPrices && tieredPrices.length > 1;
+                                         
+                                         return (
+                                             <button
+                                                 key={vt.key}
+                                                 type="button"
+                                                 onClick={() => setVideoType(vt.key)}
+                                                 className={cn(
+                                                     "flex flex-col p-3 sm:p-4 rounded-xl border transition-all text-left group",
+                                                     isSelected
+                                                         ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(var(--primary),0.1)]" 
+                                                         : "bg-muted/50 border-border hover:border-border hover:bg-muted/60"
+                                                 )}
+                                             >
+                                                 <div className="flex flex-col w-full">
+                                                     <div className="flex items-center justify-between mb-1 gap-1">
+                                                         <span className={cn("text-xs font-bold truncate", isSelected ? "text-primary" : "text-foreground")}>{vt.label}</span>
+                                                         <div className="flex items-center gap-1 shrink-0">
+                                                             <span className={cn("text-[9px] sm:text-[10px] font-mono font-bold", tieredPrices ? "text-amber-500" : "text-emerald-500")}>₹{displayPrice}</span>
+                                                             {hasMultipleTiers && <span className={cn("text-[7px] sm:text-[8px] font-bold px-1 py-0.2 rounded-full", isSelected ? "bg-primary/20 text-primary" : "bg-muted text-muted-foreground")}>+{tieredPrices.length - 1}</span>}
+                                                         </div>
+                                                     </div>
+                                                     <span className="text-[9px] text-muted-foreground line-clamp-1">{vt.desc}</span>
+                                                 </div>
+                                             </button>
+                                         );
+                                     })}
+                                 </div>
+                             </div>
 
-                            {availablePrices.length > 1 && (
-                                <div className="space-y-3 border border-border rounded-lg p-4">
-                                    <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Select Pricing Tier</Label>
-                                    
-                                    {/* Mobile/Phone Dropdown View */}
-                                    <div className="block sm:hidden">
-                                        <select
-                                            value={selectedPriceIndex}
-                                            onChange={(e) => setSelectedPriceIndex(parseInt(e.target.value))}
-                                            className="w-full h-12 bg-muted/60 border border-border rounded-xl px-3 font-semibold text-foreground text-sm focus:outline-none focus:ring-1 focus:ring-primary/50"
-                                        >
-                                            {availablePrices.map((option, idx) => (
-                                                <option key={idx} value={idx} className="bg-background text-foreground">
-                                                    {option.label || `Tier ${idx + 1}`} - ₹{option.price}
-                                                </option>
-                                            ))}
-                                        </select>
-                                    </div>
+                             {availablePrices.length > 1 && (
+                                 <div className="space-y-3 border border-border rounded-lg p-3 sm:p-4">
+                                     <Label className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-muted-foreground">Select Pricing Tier</Label>
+                                     
+                                     {/* Mobile/Phone Dropdown View */}
+                                     <div className="block sm:hidden">
+                                         <select
+                                             value={selectedPriceIndex}
+                                             onChange={(e) => setSelectedPriceIndex(parseInt(e.target.value))}
+                                             className="w-full h-11 bg-muted/60 border border-border rounded-xl px-3 font-semibold text-foreground text-xs focus:outline-none focus:ring-1 focus:ring-primary/50"
+                                         >
+                                             {availablePrices.map((option, idx) => (
+                                                 <option key={idx} value={idx} className="bg-background text-foreground">
+                                                     {option.label || `Tier ${idx + 1}`} - ₹{option.price}
+                                                 </option>
+                                             ))}
+                                         </select>
+                                     </div>
 
-                                    {/* Desktop/Tablet Grid View */}
-                                    <div className="hidden sm:grid grid-cols-2 sm:grid-cols-3 gap-2">
-                                        {availablePrices.map((option, idx) => (
-                                            <button
-                                                key={idx}
-                                                type="button"
-                                                onClick={() => setSelectedPriceIndex(idx)}
-                                                className={cn(
-                                                    "flex flex-col items-center p-3 rounded-lg border-2 transition-all text-sm font-bold",
-                                                    selectedPriceIndex === idx
-                                                        ? "bg-amber-500/20 border-amber-500 text-amber-600" 
-                                                        : "bg-muted/50 border-border text-muted-foreground hover:border-muted-foreground/50"
-                                                )}
-                                            >
-                                                <span className="text-xs font-semibold">{option.label || `Tier ${idx + 1}`}</span>
-                                                <span className="text-base mt-1">₹{option.price}</span>
-                                            </button>
-                                        ))}
-                                    </div>
-                                    <div className="text-center pt-2 border-t border-border">
-                                        <p className="text-xs text-muted-foreground">Selected Price:</p>
-                                        <p className="text-lg font-bold text-amber-600">₹{availablePrices[selectedPriceIndex].price.toLocaleString()}</p>
-                                    </div>
-                                </div>
-                            )}
+                                     {/* Desktop/Tablet Grid View */}
+                                     <div className="hidden sm:grid grid-cols-2 sm:grid-cols-3 gap-2">
+                                         {availablePrices.map((option, idx) => (
+                                             <button
+                                                 key={idx}
+                                                 type="button"
+                                                 onClick={() => setSelectedPriceIndex(idx)}
+                                                 className={cn(
+                                                     "flex flex-col items-center p-3 rounded-lg border-2 transition-all text-sm font-bold",
+                                                     selectedPriceIndex === idx
+                                                         ? "bg-amber-500/20 border-amber-500 text-amber-600" 
+                                                         : "bg-muted/50 border-border text-muted-foreground hover:border-muted-foreground/50"
+                                                 )}
+                                             >
+                                                 <span className="text-xs font-semibold">{option.label || `Tier ${idx + 1}`}</span>
+                                                 <span className="text-base mt-1">₹{option.price}</span>
+                                             </button>
+                                         ))}
+                                     </div>
+                                     <div className="text-center pt-2 border-t border-border">
+                                         <p className="text-[10px] sm:text-xs text-muted-foreground">Selected Price:</p>
+                                         <p className="text-base sm:text-lg font-bold text-amber-600">₹{availablePrices[selectedPriceIndex].price.toLocaleString()}</p>
+                                     </div>
+                                 </div>
+                             )}
 
-                            <div className="space-y-3 pt-6 border-t border-border">
-                                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Select Aspect Ratio</Label>
-                                <div className="grid grid-cols-3 gap-2 sm:gap-4">
-                                    {ASPECT_RATIOS.map(ar => {
-                                        const isSelected = aspectRatio === ar.key;
-                                        const is9x16 = ar.key === "9:16";
-                                        const is16x9 = ar.key === "16:9";
-                                        const is1x1 = ar.key === "1:1";
+                             <div className="space-y-3 pt-4 sm:pt-6 border-t border-border">
+                                 <Label className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1">Select Aspect Ratio</Label>
+                                 <div className="grid grid-cols-3 gap-2 sm:gap-4">
+                                     {ASPECT_RATIOS.map(ar => {
+                                         const isSelected = aspectRatio === ar.key;
+                                         const is9x16 = ar.key === "9:16";
+                                         const is16x9 = ar.key === "16:9";
+                                         const is1x1 = ar.key === "1:1";
 
-                                        return (
-                                            <button
-                                                key={ar.key}
-                                                type="button"
-                                                onClick={() => setAspectRatio(ar.key)}
-                                                className={cn(
-                                                    "flex flex-col items-center p-2.5 sm:p-5 rounded-xl sm:rounded-2xl border transition-all group relative overflow-hidden",
-                                                    isSelected
-                                                        ? "bg-primary/10 border-primary shadow-[0_0_20px_rgba(var(--primary),0.15)]" 
-                                                        : "bg-muted/30 border-border hover:border-border hover:bg-muted/50"
-                                                )}
-                                            >
-                                                <div className="mb-1.5 sm:mb-3 flex items-center justify-center h-10 sm:h-14 w-full">
-                                                    <div 
-                                                        className={cn(
-                                                            "border-2 transition-all duration-300 rounded-sm flex items-center justify-center shadow-lg",
-                                                            isSelected ? "border-primary bg-primary/20 text-primary scale-105 sm:scale-110" : "border-zinc-700 bg-muted-foreground/10 text-muted-foreground group-hover:border-zinc-500"
-                                                        )}
-                                                        style={{
-                                                            width: is9x16 ? '14px' : is16x9 ? '34px' : '24px',
-                                                            height: is9x16 ? '26px' : is16x9 ? '20px' : '24px',
-                                                        }}
-                                                    >
-                                                        <span className="text-[7px] font-black">{ar.key}</span>
-                                                    </div>
-                                                </div>
-                                                <span className={cn("text-[9px] sm:text-[10px] font-black uppercase tracking-widest", isSelected ? "text-primary" : "text-foreground/80")}>{ar.label}</span>
-                                                <span className="text-[8px] sm:text-[9px] text-muted-foreground font-bold mt-0.5 text-center line-clamp-1">{ar.desc}</span>
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                        </div>
+                                         return (
+                                             <button
+                                                 key={ar.key}
+                                                 type="button"
+                                                 onClick={() => setAspectRatio(ar.key)}
+                                                 className={cn(
+                                                     "flex flex-col items-center p-2 sm:p-5 rounded-xl border transition-all group relative overflow-hidden",
+                                                     isSelected
+                                                         ? "bg-primary/10 border-primary shadow-[0_0_20px_rgba(var(--primary),0.15)]" 
+                                                         : "bg-muted/30 border-border hover:border-border hover:bg-muted/50"
+                                                 )}
+                                             >
+                                                 <div className="mb-1 sm:mb-3 flex items-center justify-center h-8 sm:h-14 w-full">
+                                                     <div 
+                                                         className={cn(
+                                                             "border-2 transition-all duration-300 rounded-sm flex items-center justify-center shadow-lg",
+                                                             isSelected ? "border-primary bg-primary/20 text-primary scale-105 sm:scale-110" : "border-zinc-700 bg-muted-foreground/10 text-muted-foreground group-hover:border-zinc-500"
+                                                         )}
+                                                         style={{
+                                                             width: is9x16 ? '12px' : is16x9 ? '28px' : '20px',
+                                                             height: is9x16 ? '22px' : is16x9 ? '16px' : '20px',
+                                                         }}
+                                                     >
+                                                         <span className="text-[7px] font-black">{ar.key}</span>
+                                                     </div>
+                                                 </div>
+                                                 <span className={cn("text-[9px] sm:text-[10px] font-black uppercase tracking-widest", isSelected ? "text-primary" : "text-foreground/80")}>{ar.label}</span>
+                                                 <span className="text-[8px] sm:text-[9px] text-muted-foreground font-bold mt-0.5 text-center line-clamp-1">{ar.desc}</span>
+                                             </button>
+                                         );
+                                     })}
+                                 </div>
+                             </div>
+                         </div>
 
-                        <div className="flex items-center justify-between pt-4">
-                            <Button type="button" onClick={handlePrevStep} variant="ghost" size="lg" className="rounded-xl text-muted-foreground hover:text-foreground">
-                                <ChevronLeft className="mr-2 w-4 h-4" /> Go Back
-                            </Button>
-                            <Button onClick={handleNextStep} size="lg" className="rounded-xl px-10 shadow-xl font-bold tracking-wide">
-                                Next Step <ChevronRight className="ml-2 w-4 h-4" />
-                            </Button>
-                        </div>
-                    </motion.div>
+                         <div className="flex items-center justify-between pt-4">
+                             <Button type="button" onClick={handlePrevStep} variant="ghost" size="lg" className="rounded-xl text-muted-foreground hover:text-foreground text-xs h-11">
+                                 <ChevronLeft className="mr-2 w-4 h-4" /> Go Back
+                             </Button>
+                             <Button onClick={handleNextStep} size="lg" className="rounded-xl px-10 shadow-xl font-bold tracking-wide text-xs h-11">
+                                 Next Step <ChevronRight className="ml-2 w-4 h-4" />
+                             </Button>
+                         </div>
+                     </motion.div>
                 )}
 
                 {/* Step 3 */}
@@ -1192,419 +1265,522 @@ export default function NewProjectPage() {
                         initial={{ opacity: 0, x: 20 }}
                         animate={{ opacity: 1, x: 0 }}
                         exit={{ opacity: 0, x: -20 }}
-                        className="space-y-8"
+                        className="space-y-6 sm:space-y-8"
                     >
-                         <div className="space-y-1">
-                            <h2 className="text-2xl font-bold text-foreground">Upload Assets & Scripts</h2>
-                            <p className="text-sm text-muted-foreground">Provide all necessary files for the editor to begin working.</p>
-                        </div>
+                         <div className="space-y-0.5 sm:space-y-1">
+                             <h2 className="text-xl sm:text-2xl font-bold text-foreground">Upload Assets & Scripts</h2>
+                             <p className="text-xs sm:text-sm text-muted-foreground">Provide all necessary files for the editor to begin working.</p>
+                         </div>
 
-                        <div className="space-y-8">
-                            {/* Raw Video/Images */}
-                            <div className="space-y-3">
-                                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1 flex items-center gap-2">
-                                    <FileVideo className="w-4 h-4 text-primary" /> 
-                                    Upload Raw Video / Images
-                                </Label>
-                                <div className="border-2 border-dashed border-border rounded-2xl p-8 hover:bg-muted/50 hover:border-primary/50 transition-all text-center relative overflow-hidden group">
-                                    <input 
-                                        type="file" 
-                                        multiple
-                                        accept="video/*,image/*,.zip,.rar,.7z"
-                                        onChange={(e) => handleFileUpload(e, 'raw')}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                    />
-                                    <div className="flex flex-col items-center justify-center gap-3">
-                                        <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center group-hover:scale-110 transition-transform">
-                                            <UploadCloud className="w-6 h-6" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <p className="text-sm font-bold text-foreground">Click or drag files to upload</p>
-                                            <p className="text-xs text-muted-foreground font-medium tracking-tight">mp4, mov, jpg, png, zip, rar, 7z &nbsp;·&nbsp; Max 5 GB per file</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                {/* File List with Progress */}
-                                {rawFiles.length > 0 && (
-                                    <div className="space-y-2 mt-4">
-                                        {rawFiles.map((fileItem, i) => (
-                                            <div key={i} className="bg-muted/50 border border-border rounded-lg p-3 group">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                        {fileItem.file.type.includes('image') ? <ImageIcon className="w-4 h-4 text-amber-500 shrink-0" /> : fileItem.file.name.match(/\.(zip|rar|7z)$/i) || fileItem.file.type.includes('zip') ? <Archive className="w-4 h-4 text-purple-500 shrink-0" /> : <FileVideo className="w-4 h-4 text-blue-500 shrink-0" />}
-                                                        <span className="text-xs text-foreground truncate font-medium">{fileItem.file.name}</span>
-                                                        <span className="text-[10px] text-muted-foreground">
-                                                            ({(fileItem.file.size / 1024 / 1024).toFixed(1)} MB)
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 shrink-0">
-                                                        {fileItem.status === 'complete' && (
-                                                            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                                                        )}
-                                                        {fileItem.status === 'error' && (
-                                                            <AlertCircle className="w-4 h-4 text-red-500" />
-                                                        )}
-                                                        {fileItem.status === 'uploading' && (
-                                                            <span className="text-[10px] text-primary font-bold">{Math.round(fileItem.progress)}%</span>
-                                                        )}
-                                                        <button type="button" onClick={() => removeFile(i, 'raw')} className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 text-red-500 rounded transition-all">
-                                                            <X className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                {(fileItem.status === 'uploading' || fileItem.status === 'pending') && (
-                                                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                                                        <div 
-                                                            className="h-full bg-gradient-to-r from-primary to-primary/70 transition-all duration-300"
-                                                            style={{ width: `${fileItem.progress}%` }}
-                                                        />
-                                                    </div>
-                                                )}
-                                                {fileItem.status === 'error' && (
-                                                    <p className="text-[10px] text-red-500 mt-1">{fileItem.error || 'Upload failed'}</p>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
+                         <div className="space-y-6 sm:space-y-8">
+                             {/* Raw Video/Images */}
+                             <div className="space-y-3">
+                                 <Label className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1 flex items-center gap-2">
+                                     <FileVideo className="w-4 h-4 text-primary" /> 
+                                     Upload Raw Video / Images
+                                 </Label>
+                                 
+                                 {/* Mobile View (Compact Button) */}
+                                 <div className="block sm:hidden relative">
+                                     <Button type="button" className="w-full h-11 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 flex items-center justify-center gap-2 text-xs font-bold shadow-sm relative overflow-hidden">
+                                         <UploadCloud className="w-4 h-4" />
+                                         Select Raw Video / Images
+                                         <input 
+                                             type="file" 
+                                             multiple
+                                             accept="video/*,image/*,.zip,.rar,.7z"
+                                             onChange={(e) => handleFileUpload(e, 'raw')}
+                                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                         />
+                                     </Button>
+                                     <p className="text-[9px] text-muted-foreground text-center mt-1">Max 5 GB per file</p>
+                                 </div>
 
-                            {/* B-Role Files */}
-                            <div className="space-y-3 pt-4 border-t border-border">
-                                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1 flex items-center gap-2">
-                                    <FileVideo className="w-4 h-4 text-amber-500" /> 
-                                    B-Role Files (Optional)
-                                </Label>
-                                <div className="border-2 border-dashed border-border rounded-2xl p-8 hover:bg-muted/50 hover:border-amber-500/50 transition-all text-center relative overflow-hidden group">
-                                    <input 
-                                        type="file" 
-                                        multiple
-                                        accept="video/*,image/*,audio/*,.pdf,.doc,.docx,.txt,.zip,.rar,.7z"
-                                        onChange={(e) => handleFileUpload(e, 'brole')}
-                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                    />
-                                    <div className="flex flex-col items-center justify-center gap-3">
-                                        <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                                            <UploadCloud className="w-6 h-6" />
-                                        </div>
-                                        <div className="space-y-1">
-                                            <p className="text-sm font-bold text-foreground">Click or drag files to upload</p>
-                                            <p className="text-xs text-muted-foreground font-medium tracking-tight">Videos, images, audio, documents &nbsp;·&nbsp; Max 5 GB per file</p>
-                                        </div>
-                                    </div>
-                                </div>
-                                {/* B-Role Files List with Progress */}
-                                {bRoleFiles.length > 0 && (
-                                    <div className="space-y-2 mt-4">
-                                        {bRoleFiles.map((fileItem, i) => (
-                                            <div key={i} className="bg-muted/50 border border-border rounded-lg p-3 group">
-                                                <div className="flex items-center justify-between mb-2">
-                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                        {fileItem.file.type.includes('image') ? <ImageIcon className="w-4 h-4 text-amber-500 shrink-0" /> : fileItem.file.type.includes('video') ? <FileVideo className="w-4 h-4 text-blue-500 shrink-0" /> : fileItem.file.name.match(/\.(zip|rar|7z)$/i) || fileItem.file.type.includes('zip') ? <Archive className="w-4 h-4 text-purple-500 shrink-0" /> : <FileText className="w-4 h-4 text-gray-500 shrink-0" />}
-                                                        <span className="text-xs text-foreground truncate font-medium">{fileItem.file.name}</span>
-                                                        <span className="text-[10px] text-muted-foreground">
-                                                            ({(fileItem.file.size / 1024 / 1024).toFixed(1)} MB)
-                                                        </span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 shrink-0">
-                                                        {fileItem.status === 'complete' && (
-                                                            <CheckCircle2 className="w-4 h-4 text-emerald-500" />
-                                                        )}
-                                                        {fileItem.status === 'error' && (
-                                                            <AlertCircle className="w-4 h-4 text-red-500" />
-                                                        )}
-                                                        {fileItem.status === 'uploading' && (
-                                                            <span className="text-[10px] text-amber-500 font-bold">{Math.round(fileItem.progress)}%</span>
-                                                        )}
-                                                        <button type="button" onClick={() => removeFile(i, 'brole')} className="opacity-0 group-hover:opacity-100 p-1 hover:bg-red-500/20 text-red-500 rounded transition-all">
-                                                            <X className="w-3.5 h-3.5" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                {(fileItem.status === 'uploading' || fileItem.status === 'pending') && (
-                                                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                                                        <div 
-                                                            className="h-full bg-gradient-to-r from-amber-500 to-amber-500/70 transition-all duration-300"
-                                                            style={{ width: `${fileItem.progress}%` }}
-                                                        />
-                                                    </div>
-                                                )}
-                                                {fileItem.status === 'error' && (
-                                                    <p className="text-[10px] text-red-500 mt-1">{fileItem.error || 'Upload failed'}</p>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Scripts */}
-                            <div className="space-y-3 pt-4 border-t border-border">
-                                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1 flex items-center gap-2">
-                                    <FileText className="w-4 h-4 text-primary" /> 
-                                    Script / Direction
-                                </Label>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="space-y-4">
-                                        <div className="border border-dashed border-border rounded-xl p-6 hover:bg-muted/50 hover:border-primary/50 transition-all text-center relative overflow-hidden group h-full flex flex-col items-center justify-center">
-                                            <input 
-                                                type="file" 
-                                                multiple
-                                                accept=".pdf,.doc,.docx,.txt"
-                                                onChange={(e) => handleFileUpload(e, 'script')}
-                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                            />
-                                            <FileText className="w-8 h-8 text-muted-foreground group-hover:text-primary transition-colors mb-2" />
-                                            <p className="text-xs font-bold text-foreground">Upload Script File</p>
-                                            <p className="text-[10px] text-muted-foreground">PDF, DOC, TXT</p>
-                                        </div>
-                                    </div>
-                                    <div className="space-y-2">
-                                        <Textarea 
-                                            placeholder="Or directly paste your script here..."
-                                            value={scriptText}
-                                            onChange={e => setScriptText(e.target.value)}
-                                            className="h-full min-h-[140px] resize-none bg-muted/50 border-border rounded-xl font-medium text-foreground placeholder:text-muted-foreground text-xs leading-relaxed"
-                                        />
-                                    </div>
-                                </div>
-                                {/* Script Files List with Progress */}
-                                {scriptFiles.length > 0 && (
-                                    <div className="space-y-2 mt-4">
-                                        {scriptFiles.map((fileItem, i) => (
-                                            <div key={i} className="bg-muted/50 border border-border rounded-lg p-3 group">
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                        <FileText className="w-3.5 h-3.5 text-pink-500 shrink-0" />
-                                                        <span className="text-xs text-foreground truncate font-medium">{fileItem.file.name}</span>
-                                                    </div>
-                                                    <div className="flex items-center gap-2 shrink-0">
-                                                        {fileItem.status === 'complete' && <CheckCircle2 className="w-4 h-4 text-emerald-500" />}
-                                                        {fileItem.status === 'error' && <AlertCircle className="w-4 h-4 text-red-500" />}
-                                                        {fileItem.status === 'uploading' && (
-                                                            <span className="text-[10px] text-primary font-bold">{Math.round(fileItem.progress)}%</span>
-                                                        )}
-                                                        <button type="button" onClick={() => removeFile(i, 'script')} className="opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all">
-                                                            <X className="w-3 h-3" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                {(fileItem.status === 'uploading' || fileItem.status === 'pending') && (
-                                                    <div className="h-1 bg-muted rounded-full overflow-hidden">
-                                                        <div 
-                                                            className="h-full bg-gradient-to-r from-pink-500 to-pink-400 transition-all duration-300"
-                                                            style={{ width: `${fileItem.progress}%` }}
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Google Drive Link */}
-                            <div className="space-y-2 pt-4 border-t border-border">
-                                <Label className="text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1 flex items-center gap-2">
-                                    <LinkIcon className="w-4 h-4 text-emerald-500" /> 
-                                    Google Drive Link (Optional)
-                                </Label>
-                                <div className="flex items-center gap-2">
-                                    <Input 
-                                        placeholder="Paste URL here..." 
-                                        value={footageLinkInput}
-                                        onChange={e => setFootageLinkInput(e.target.value)}
-                                        className="h-12 bg-muted/50 border-border focus:border-emerald-500/50 rounded-xl font-medium text-foreground placeholder:text-muted-foreground"
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter') {
-                                                e.preventDefault();
-                                                addFootageLink();
-                                            }
-                                        }}
-                                    />
-                                    <Button
-                                        type="button"
-                                        size="sm"
-                                        className="h-12 px-3 rounded-xl"
-                                        onClick={addFootageLink}
-                                    >
-                                        <Plus className="h-4 w-4" />
-                                    </Button>
-                                </div>
-                                {footageLinks.length > 0 && (
-                                    <div className="space-y-1 pt-1">
-                                        {footageLinks.map((link, idx) => (
-                                            <div key={`${link}-${idx}`} className="flex items-center justify-between gap-2 bg-muted/30 border border-border rounded-lg px-2.5 py-1.5">
-                                                <span className="text-[10px] text-foreground truncate">{link}</span>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => removeFootageLink(idx)}
-                                                    className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
-                                                >
-                                                    <X className="h-3.5 w-3.5" />
-                                                </button>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Reference Link & Files */}
-                            <div className="space-y-4 pt-6 mt-6 border-t-2 border-primary/20 bg-primary/5 p-6 rounded-2xl">
-                                <div className="space-y-1">
-                                    <Label className="text-[11px] font-black uppercase tracking-[0.2em] text-primary flex items-center gap-2">
-                                        <Zap className="h-4 w-4" /> Style Reference (Optional)
-                                    </Label>
-                                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Share a link or upload a file that shows your desired style</p>
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                     <div className="space-y-2">
-                                         <Label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest ml-1">Reference URL(s)</Label>
-                                         <div className="flex items-center gap-2">
-                                            <Input 
-                                                placeholder="Instagram/YouTube link..." 
-                                                value={referenceLinkInput}
-                                                onChange={e => setReferenceLinkInput(e.target.value)}
-                                                className="h-11 bg-background/50 border-border rounded-xl text-xs"
-                                                onKeyDown={(e) => {
-                                                    if (e.key === 'Enter') {
-                                                        e.preventDefault();
-                                                        addReferenceLink();
-                                                    }
-                                                }}
-                                            />
-                                            <Button
-                                                type="button"
-                                                size="sm"
-                                                className="h-11 px-3 rounded-xl"
-                                                onClick={addReferenceLink}
-                                            >
-                                                <Plus className="h-4 w-4" />
-                                            </Button>
+                                 {/* Desktop View (Drag & Drop) */}
+                                 <div className="hidden sm:block border-2 border-dashed border-border rounded-2xl p-8 hover:bg-muted/50 hover:border-primary/50 transition-all text-center relative overflow-hidden group">
+                                     <input 
+                                         type="file" 
+                                         multiple
+                                         accept="video/*,image/*,.zip,.rar,.7z"
+                                         onChange={(e) => handleFileUpload(e, 'raw')}
+                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                     />
+                                     <div className="flex flex-col items-center justify-center gap-3">
+                                         <div className="w-12 h-12 rounded-full bg-primary/10 text-primary flex items-center justify-center group-hover:scale-110 transition-transform">
+                                             <UploadCloud className="w-6 h-6" />
                                          </div>
-                                         {referenceLinks.length > 0 && (
-                                            <div className="space-y-1 pt-1">
-                                                {referenceLinks.map((link, idx) => (
-                                                    <div key={`${link}-${idx}`} className="flex items-center justify-between gap-2 bg-background/40 border border-border rounded-lg px-2.5 py-1.5">
-                                                        <span className="text-[10px] text-foreground truncate">{link}</span>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => removeReferenceLink(idx)}
-                                                            className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
-                                                        >
-                                                            <X className="h-3.5 w-3.5" />
-                                                        </button>
-                                                    </div>
-                                                ))}
-                                            </div>
-                                         )}
+                                         <div className="space-y-1">
+                                             <p className="text-sm font-bold text-foreground">Click or drag files to upload</p>
+                                             <p className="text-xs text-muted-foreground font-medium tracking-tight">mp4, mov, jpg, png, zip, rar, 7z &nbsp;·&nbsp; Max 5 GB per file</p>
+                                         </div>
                                      </div>
+                                 </div>
+
+                                 {/* File List with Progress */}
+                                 {rawFiles.length > 0 && (
+                                     <div className="space-y-2 mt-3">
+                                         {rawFiles.map((fileItem, i) => (
+                                             <div key={i} className="bg-muted/50 border border-border rounded-xl p-3 group w-full min-w-0 flex flex-col gap-2">
+                                                 <div className="flex items-center justify-between gap-2 w-full min-w-0">
+                                                     <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                         {fileItem.file.type.includes('image') ? <ImageIcon className="w-4 h-4 text-amber-500 shrink-0" /> : fileItem.file.name.match(/\.(zip|rar|7z)$/i) || fileItem.file.type.includes('zip') ? <Archive className="w-4 h-4 text-purple-500 shrink-0" /> : <FileVideo className="w-4 h-4 text-blue-500 shrink-0" />}
+                                                         <span className="text-xs text-foreground truncate font-semibold block min-w-0 flex-1">{fileItem.file.name}</span>
+                                                     </div>
+                                                     <button type="button" onClick={() => removeFile(i, 'raw')} className="p-1 hover:bg-red-500/20 text-red-500 rounded-lg transition-all shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                                                         <X className="w-3.5 h-3.5" />
+                                                     </button>
+                                                 </div>
+                                                 <div className="flex items-center justify-between text-[10px] text-muted-foreground gap-2">
+                                                     <span>{(fileItem.file.size / 1024 / 1024).toFixed(1)} MB</span>
+                                                     <div className="flex items-center gap-1.5 font-bold shrink-0">
+                                                         {fileItem.status === 'complete' && (
+                                                             <span className="text-emerald-500 flex items-center gap-1">
+                                                                 <CheckCircle2 className="w-3 h-3" /> Uploaded
+                                                             </span>
+                                                         )}
+                                                         {fileItem.status === 'error' && (
+                                                             <span className="text-red-500 flex items-center gap-1">
+                                                                 <AlertCircle className="w-3 h-3" /> Error
+                                                             </span>
+                                                         )}
+                                                         {fileItem.status === 'uploading' && (
+                                                             <span className="text-primary">{Math.round(fileItem.progress)}%</span>
+                                                         )}
+                                                     </div>
+                                                 </div>
+                                                 {(fileItem.status === 'uploading' || fileItem.status === 'pending') && (
+                                                     <div className="h-1 bg-muted rounded-full overflow-hidden w-full">
+                                                         <div 
+                                                             className="h-full bg-gradient-to-r from-primary to-primary/70 transition-all duration-300"
+                                                             style={{ width: `${fileItem.progress}%` }}
+                                                         />
+                                                     </div>
+                                                 )}
+                                                 {fileItem.status === 'error' && (
+                                                     <p className="text-[10px] text-red-500 font-medium">{fileItem.error || 'Upload failed'}</p>
+                                                 )}
+                                             </div>
+                                         ))}
+                                     </div>
+                                 )}
+                             </div>
+
+                             {/* B-Role Files */}
+                             <div className="space-y-3 pt-4 border-t border-border">
+                                 <Label className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1 flex items-center gap-2">
+                                     <FileVideo className="w-4 h-4 text-amber-500" /> 
+                                     B-Role Files (Optional)
+                                 </Label>
+                                 
+                                 {/* Mobile View (Compact Button) */}
+                                 <div className="block sm:hidden relative">
+                                     <Button type="button" className="w-full h-11 rounded-xl bg-amber-500/10 hover:bg-amber-500/20 text-amber-500 border border-amber-500/20 flex items-center justify-center gap-2 text-xs font-bold shadow-sm relative overflow-hidden">
+                                         <UploadCloud className="w-4 h-4" />
+                                         Select B-Role Files
+                                         <input 
+                                             type="file" 
+                                             multiple
+                                             accept="video/*,image/*,audio/*,.pdf,.doc,.docx,.txt,.zip,.rar,.7z"
+                                             onChange={(e) => handleFileUpload(e, 'brole')}
+                                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                         />
+                                     </Button>
+                                     <p className="text-[9px] text-muted-foreground text-center mt-1">Max 5 GB per file</p>
+                                 </div>
+
+                                 {/* Desktop View (Drag & Drop) */}
+                                 <div className="hidden sm:block border-2 border-dashed border-border rounded-2xl p-8 hover:bg-muted/50 hover:border-amber-500/50 transition-all text-center relative overflow-hidden group">
+                                     <input 
+                                         type="file" 
+                                         multiple
+                                         accept="video/*,image/*,audio/*,.pdf,.doc,.docx,.txt,.zip,.rar,.7z"
+                                         onChange={(e) => handleFileUpload(e, 'brole')}
+                                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                     />
+                                     <div className="flex flex-col items-center justify-center gap-3">
+                                         <div className="w-12 h-12 rounded-full bg-amber-500/10 text-amber-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                                             <UploadCloud className="w-6 h-6" />
+                                         </div>
+                                         <div className="space-y-1">
+                                             <p className="text-sm font-bold text-foreground">Click or drag files to upload</p>
+                                             <p className="text-xs text-muted-foreground font-medium tracking-tight">Videos, images, audio, documents &nbsp;·&nbsp; Max 5 GB per file</p>
+                                         </div>
+                                     </div>
+                                 </div>
+
+                                 {/* B-Role Files List with Progress */}
+                                 {bRoleFiles.length > 0 && (
+                                     <div className="space-y-2 mt-3">
+                                         {bRoleFiles.map((fileItem, i) => (
+                                             <div key={i} className="bg-muted/50 border border-border rounded-xl p-3 group w-full min-w-0 flex flex-col gap-2">
+                                                 <div className="flex items-center justify-between gap-2 w-full min-w-0">
+                                                     <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                         {fileItem.file.type.includes('image') ? <ImageIcon className="w-4 h-4 text-amber-500 shrink-0" /> : fileItem.file.type.includes('video') ? <FileVideo className="w-4 h-4 text-blue-500 shrink-0" /> : fileItem.file.name.match(/\.(zip|rar|7z)$/i) || fileItem.file.type.includes('zip') ? <Archive className="w-4 h-4 text-purple-500 shrink-0" /> : <FileText className="w-4 h-4 text-gray-500 shrink-0" />}
+                                                         <span className="text-xs text-foreground truncate font-semibold block min-w-0 flex-1">{fileItem.file.name}</span>
+                                                     </div>
+                                                     <button type="button" onClick={() => removeFile(i, 'brole')} className="p-1 hover:bg-red-500/20 text-red-500 rounded-lg transition-all shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                                                         <X className="w-3.5 h-3.5" />
+                                                     </button>
+                                                 </div>
+                                                 <div className="flex items-center justify-between text-[10px] text-muted-foreground gap-2">
+                                                     <span>{(fileItem.file.size / 1024 / 1024).toFixed(1)} MB</span>
+                                                     <div className="flex items-center gap-1.5 font-bold shrink-0">
+                                                         {fileItem.status === 'complete' && (
+                                                             <span className="text-emerald-500 flex items-center gap-1">
+                                                                 <CheckCircle2 className="w-3 h-3" /> Uploaded
+                                                             </span>
+                                                         )}
+                                                         {fileItem.status === 'error' && (
+                                                             <span className="text-red-500 flex items-center gap-1">
+                                                                 <AlertCircle className="w-3 h-3" /> Error
+                                                             </span>
+                                                         )}
+                                                         {fileItem.status === 'uploading' && (
+                                                             <span className="text-amber-500">{Math.round(fileItem.progress)}%</span>
+                                                         )}
+                                                     </div>
+                                                 </div>
+                                                 {(fileItem.status === 'uploading' || fileItem.status === 'pending') && (
+                                                     <div className="h-1 bg-muted rounded-full overflow-hidden w-full">
+                                                         <div 
+                                                             className="h-full bg-gradient-to-r from-amber-500 to-amber-500/70 transition-all duration-300"
+                                                             style={{ width: `${fileItem.progress}%` }}
+                                                         />
+                                                     </div>
+                                                 )}
+                                                 {fileItem.status === 'error' && (
+                                                     <p className="text-[10px] text-red-500 font-medium">{fileItem.error || 'Upload failed'}</p>
+                                                 )}
+                                             </div>
+                                         ))}
+                                     </div>
+                                 )}
+                             </div>
+
+                             {/* Scripts */}
+                             <div className="space-y-3 pt-4 border-t border-border">
+                                 <Label className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1 flex items-center gap-2">
+                                     <FileText className="w-4 h-4 text-primary" /> 
+                                     Script / Direction
+                                 </Label>
+                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-6">
                                      <div className="space-y-2">
-                                         <Label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest ml-1">Reference File(s)</Label>
-                                         <div className="relative h-11 border border-dashed border-border rounded-xl flex items-center justify-center hover:bg-background/40 transition-colors cursor-pointer group">
+                                         {/* Mobile View (Compact Button) */}
+                                         <div className="block sm:hidden relative">
+                                             <Button type="button" className="w-full h-11 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 flex items-center justify-center gap-2 text-xs font-bold shadow-sm relative overflow-hidden">
+                                                 <FileText className="w-4 h-4" />
+                                                 Upload Script File
+                                                 <input 
+                                                     type="file" 
+                                                     multiple
+                                                     accept=".pdf,.doc,.docx,.txt"
+                                                     onChange={(e) => handleFileUpload(e, 'script')}
+                                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                 />
+                                             </Button>
+                                             <p className="text-[9px] text-muted-foreground text-center mt-1">PDF, DOC, TXT</p>
+                                         </div>
+
+                                         {/* Desktop View (Drag & Drop box) */}
+                                         <div className="hidden sm:flex border border-dashed border-border rounded-xl p-6 hover:bg-muted/50 hover:border-primary/50 transition-all text-center relative overflow-hidden group h-full flex-col items-center justify-center">
                                              <input 
-                                                type="file" 
-                                                multiple
-                                                onChange={(e) => handleFileUpload(e, 'reference')}
-                                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                 type="file" 
+                                                 multiple
+                                                 accept=".pdf,.doc,.docx,.txt"
+                                                 onChange={(e) => handleFileUpload(e, 'script')}
+                                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                              />
-                                             <UploadCloud className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                                             <span className="ml-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest group-hover:text-foreground transition-colors">Attach File</span>
+                                             <FileText className="w-8 h-8 text-muted-foreground group-hover:text-primary transition-colors mb-2" />
+                                             <p className="text-xs font-bold text-foreground">Upload Script File</p>
+                                             <p className="text-[10px] text-muted-foreground">PDF, DOC, TXT</p>
                                          </div>
                                      </div>
-                                </div>
-                                {referenceFiles.length > 0 && (
-                                    <div className="space-y-2 pt-2">
-                                        {referenceFiles.map((fileItem, i) => (
-                                            <div key={i} className="bg-primary/10 border border-primary/20 rounded-lg p-2.5 group">
-                                                <div className="flex items-center justify-between mb-1">
-                                                    <span className="text-[10px] font-bold text-primary truncate max-w-[150px]">{fileItem.file.name}</span>
-                                                    <div className="flex items-center gap-2">
-                                                        {fileItem.status === 'complete' && <CheckCircle2 className="w-3 h-3 text-emerald-500" />}
-                                                        {fileItem.status === 'error' && <AlertCircle className="w-3 h-3 text-red-500" />}
-                                                        {fileItem.status === 'uploading' && (
-                                                            <span className="text-[9px] text-primary font-bold">{Math.round(fileItem.progress)}%</span>
-                                                        )}
-                                                        <button onClick={() => removeFile(i, 'reference')} className="text-primary hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                            <X className="h-3 w-3" />
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                                {(fileItem.status === 'uploading' || fileItem.status === 'pending') && (
-                                                    <div className="h-1 bg-primary/20 rounded-full overflow-hidden">
-                                                        <div 
-                                                            className="h-full bg-primary transition-all duration-300"
-                                                            style={{ width: `${fileItem.progress}%` }}
-                                                        />
-                                                    </div>
-                                                )}
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-                            </div>
-                        </div>
+                                     <div className="space-y-2">
+                                         <Textarea 
+                                             placeholder="Or directly paste your script here..."
+                                             value={scriptText}
+                                             onChange={e => setScriptText(e.target.value)}
+                                             className="h-full min-h-[90px] sm:min-h-[140px] resize-none bg-muted/50 border-border rounded-xl font-medium text-foreground placeholder:text-muted-foreground text-xs leading-relaxed"
+                                         />
+                                     </div>
+                                 </div>
+                                 {/* Script Files List with Progress */}
+                                 {scriptFiles.length > 0 && (
+                                     <div className="space-y-2 mt-3">
+                                         {scriptFiles.map((fileItem, i) => (
+                                             <div key={i} className="bg-muted/50 border border-border rounded-xl p-3 group w-full min-w-0 flex flex-col gap-2">
+                                                 <div className="flex items-center justify-between gap-2 w-full min-w-0">
+                                                     <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                         <FileText className="w-4 h-4 text-pink-500 shrink-0" />
+                                                         <span className="text-xs text-foreground truncate font-semibold block min-w-0 flex-1">{fileItem.file.name}</span>
+                                                     </div>
+                                                     <button type="button" onClick={() => removeFile(i, 'script')} className="p-2 -mr-1 hover:bg-red-500/20 text-red-500 rounded-lg transition-all shrink-0">
+                                                         <X className="w-3.5 h-3.5" />
+                                                     </button>
+                                                 </div>
+                                                 <div className="flex items-center justify-between text-[10px] text-muted-foreground gap-2">
+                                                     <span>{(fileItem.file.size / 1024 / 1024).toFixed(1)} MB</span>
+                                                     <div className="flex items-center gap-1.5 font-bold shrink-0">
+                                                         {fileItem.status === 'complete' && (
+                                                             <span className="text-emerald-500 flex items-center gap-1">
+                                                                 <CheckCircle2 className="w-3 h-3" /> Uploaded
+                                                             </span>
+                                                         )}
+                                                         {fileItem.status === 'error' && (
+                                                             <span className="text-red-500 flex items-center gap-1">
+                                                                 <AlertCircle className="w-3 h-3" /> Error
+                                                             </span>
+                                                         )}
+                                                         {fileItem.status === 'uploading' && (
+                                                             <span className="text-pink-500 font-bold">{Math.round(fileItem.progress)}%</span>
+                                                         )}
+                                                     </div>
+                                                 </div>
+                                                 {(fileItem.status === 'uploading' || fileItem.status === 'pending') && (
+                                                     <div className="h-1 bg-muted rounded-full overflow-hidden w-full">
+                                                         <div 
+                                                             className="h-full bg-gradient-to-r from-pink-500 to-pink-400 transition-all duration-300"
+                                                             style={{ width: `${fileItem.progress}%` }}
+                                                         />
+                                                     </div>
+                                                 )}
+                                             </div>
+                                         ))}
+                                     </div>
+                                 )}
+                             </div>
 
-                        {/* Overall Upload Progress */}
-                        {(rawFiles.length > 0 || scriptFiles.length > 0 || referenceFiles.length > 0 || audioFiles.length > 0) && (
-                            <div className="bg-muted/30 border border-border rounded-xl p-4">
-                                <div className="flex items-center justify-between mb-2">
-                                    <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
-                                        Upload Progress
-                                    </span>
-                                    <span className={cn(
-                                        "text-xs font-bold",
-                                        allFilesUploaded ? "text-emerald-500" : hasUploadingFiles ? "text-primary" : "text-muted-foreground"
-                                    )}>
-                                        {allFilesUploaded ? (
-                                            <span className="flex items-center gap-1">
-                                                <CheckCircle2 className="w-3 h-3" /> All Files Uploaded
-                                            </span>
-                                        ) : hasUploadingFiles ? (
-                                            `${totalUploadProgress}% Complete`
-                                        ) : (
-                                            'Ready'
-                                        )}
-                                    </span>
-                                </div>
-                                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                                    <div 
-                                        className={cn(
-                                            "h-full transition-all duration-500",
-                                            allFilesUploaded 
-                                                ? "bg-gradient-to-r from-emerald-500 to-emerald-400" 
-                                                : "bg-gradient-to-r from-primary to-primary/70"
-                                        )}
-                                        style={{ width: `${totalUploadProgress}%` }}
-                                    />
-                                </div>
-                                <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
-                                    <span>{rawFiles.length + scriptFiles.length + referenceFiles.length + audioFiles.length} file(s)</span>
-                                    <span>
-                                        {[...rawFiles, ...scriptFiles, ...referenceFiles, ...audioFiles].filter(f => f.status === 'complete').length} uploaded
-                                    </span>
-                                </div>
-                            </div>
-                        )}
+                             {/* Google Drive Link */}
+                             <div className="space-y-2 pt-4 border-t border-border">
+                                 <Label className="text-[10px] sm:text-xs font-bold uppercase tracking-widest text-muted-foreground ml-1 flex items-center gap-2">
+                                     <LinkIcon className="w-4 h-4 text-emerald-500" /> 
+                                     Google Drive Link (Optional)
+                                 </Label>
+                                 <div className="flex items-center gap-2">
+                                     <Input 
+                                         placeholder="Paste URL here..." 
+                                         value={footageLinkInput}
+                                         onChange={e => setFootageLinkInput(e.target.value)}
+                                         className="h-10 sm:h-12 bg-muted/50 border-border focus:border-emerald-500/50 rounded-xl font-medium text-foreground placeholder:text-muted-foreground text-xs"
+                                         onKeyDown={(e) => {
+                                             if (e.key === 'Enter') {
+                                                 e.preventDefault();
+                                                 addFootageLink();
+                                             }
+                                         }}
+                                     />
+                                     <Button
+                                         type="button"
+                                         size="sm"
+                                         className="h-10 sm:h-12 px-3 rounded-xl"
+                                         onClick={addFootageLink}
+                                     >
+                                         <Plus className="h-4 w-4" />
+                                     </Button>
+                                 </div>
+                                 {footageLinks.length > 0 && (
+                                     <div className="space-y-1 pt-1">
+                                         {footageLinks.map((link, idx) => (
+                                             <div key={`${link}-${idx}`} className="flex items-center justify-between gap-2 bg-muted/30 border border-border rounded-lg px-2.5 py-1.5">
+                                                 <span className="text-[10px] text-foreground truncate">{link}</span>
+                                                 <button
+                                                     type="button"
+                                                     onClick={() => removeFootageLink(idx)}
+                                                     className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+                                                 >
+                                                     <X className="h-3.5 w-3.5" />
+                                                 </button>
+                                             </div>
+                                         ))}
+                                     </div>
+                                 )}
+                             </div>
 
-                        <div className="flex items-center justify-between pt-4">
-                            <Button type="button" onClick={handlePrevStep} variant="ghost" size="lg" className="rounded-xl text-muted-foreground hover:text-foreground">
-                                <ChevronLeft className="mr-2 w-4 h-4" /> Go Back
-                            </Button>
-                            <Button 
-                                onClick={handleNextStep} 
-                                size="lg" 
-                                className="rounded-xl px-10 shadow-xl font-bold tracking-wide"
-                                disabled={hasUploadingFiles}
-                            >
-                                {hasUploadingFiles ? (
-                                    <>Uploading... {totalUploadProgress}%</>
-                                ) : (
-                                    <>Next Step <ChevronRight className="ml-2 w-4 h-4" /></>
-                                )}
-                            </Button>
-                        </div>
-                    </motion.div>
+                             {/* Reference Link & Files */}
+                             <div className="space-y-4 pt-4 sm:pt-6 mt-4 sm:mt-6 border-t-2 border-primary/20 bg-primary/5 p-4 sm:p-6 rounded-2xl">
+                                 <div className="space-y-1">
+                                     <Label className="text-[10px] sm:text-[11px] font-black uppercase tracking-[0.2em] text-primary flex items-center gap-2">
+                                         <Zap className="h-4 w-4" /> Style Reference (Optional)
+                                     </Label>
+                                     <p className="text-[9px] sm:text-[10px] text-muted-foreground font-bold uppercase tracking-widest">Share a link or upload a file that shows your desired style</p>
+                                 </div>
+                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
+                                      <div className="space-y-2">
+                                          <Label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest ml-1">Reference URL(s)</Label>
+                                          <div className="flex items-center gap-2">
+                                             <Input 
+                                                 placeholder="Instagram/YouTube link..." 
+                                                 value={referenceLinkInput}
+                                                 onChange={e => setReferenceLinkInput(e.target.value)}
+                                                 className="h-10 sm:h-11 bg-background/50 border-border rounded-xl text-xs"
+                                                 onKeyDown={(e) => {
+                                                     if (e.key === 'Enter') {
+                                                         e.preventDefault();
+                                                         addReferenceLink();
+                                                     }
+                                                 }}
+                                             />
+                                             <Button
+                                                 type="button"
+                                                 size="sm"
+                                                 className="h-10 sm:h-11 px-3 rounded-xl"
+                                                 onClick={addReferenceLink}
+                                             >
+                                                 <Plus className="h-4 w-4" />
+                                             </Button>
+                                          </div>
+                                          {referenceLinks.length > 0 && (
+                                             <div className="space-y-1 pt-1">
+                                                 {referenceLinks.map((link, idx) => (
+                                                     <div key={`${link}-${idx}`} className="flex items-center justify-between gap-2 bg-background/40 border border-border rounded-lg px-2.5 py-1.5">
+                                                         <span className="text-[10px] text-foreground truncate">{link}</span>
+                                                         <button
+                                                             type="button"
+                                                             onClick={() => removeReferenceLink(idx)}
+                                                             className="text-muted-foreground hover:text-red-500 transition-colors shrink-0"
+                                                         >
+                                                             <X className="h-3.5 w-3.5" />
+                                                         </button>
+                                                     </div>
+                                                 ))}
+                                             </div>
+                                          )}
+                                      </div>
+                                      <div className="space-y-2">
+                                          <Label className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest ml-1">Reference File(s)</Label>
+                                          {/* Mobile View */}
+                                          <div className="block sm:hidden relative">
+                                              <Button type="button" className="w-full h-10 rounded-xl bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 flex items-center justify-center gap-2 text-xs font-bold shadow-sm relative overflow-hidden">
+                                                  <UploadCloud className="w-4 h-4" />
+                                                  Attach Reference File
+                                                  <input 
+                                                     type="file" 
+                                                     multiple
+                                                     onChange={(e) => handleFileUpload(e, 'reference')}
+                                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                  />
+                                              </Button>
+                                          </div>
+                                          
+                                          {/* Desktop View */}
+                                          <div className="hidden sm:flex relative h-11 border border-dashed border-border rounded-xl flex items-center justify-center hover:bg-background/40 transition-colors cursor-pointer group">
+                                              <input 
+                                                 type="file" 
+                                                 multiple
+                                                 onChange={(e) => handleFileUpload(e, 'reference')}
+                                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                              />
+                                              <UploadCloud className="h-4 w-4 text-muted-foreground group-hover:text-primary transition-colors" />
+                                              <span className="ml-2 text-[10px] font-bold text-muted-foreground uppercase tracking-widest group-hover:text-foreground transition-colors">Attach File</span>
+                                          </div>
+                                      </div>
+                                 </div>
+                                 {referenceFiles.length > 0 && (
+                                     <div className="space-y-2 pt-2">
+                                         {referenceFiles.map((fileItem, i) => (
+                                             <div key={i} className="bg-primary/10 border border-primary/20 rounded-xl p-3 group w-full min-w-0 flex flex-col gap-2">
+                                                 <div className="flex items-center justify-between gap-2 w-full min-w-0">
+                                                     <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                         <FileText className="w-4 h-4 text-primary shrink-0" />
+                                                         <span className="text-xs text-primary truncate font-semibold block min-w-0 flex-1">{fileItem.file.name}</span>
+                                                     </div>
+                                                     <button type="button" onClick={() => removeFile(i, 'reference')} className="p-1 hover:bg-primary/20 text-primary hover:text-red-500 rounded-lg transition-all shrink-0 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+                                                         <X className="w-3.5 h-3.5" />
+                                                     </button>
+                                                 </div>
+                                                 <div className="flex items-center justify-between text-[10px] text-primary/70 gap-2">
+                                                     <span>{(fileItem.file.size / 1024 / 1024).toFixed(1)} MB</span>
+                                                     <div className="flex items-center gap-1.5 font-bold shrink-0">
+                                                         {fileItem.status === 'complete' && (
+                                                             <span className="text-emerald-500 flex items-center gap-1">
+                                                                 <CheckCircle2 className="w-3 h-3" /> Uploaded
+                                                             </span>
+                                                         )}
+                                                         {fileItem.status === 'error' && (
+                                                             <span className="text-red-500 flex items-center gap-1">
+                                                                 <AlertCircle className="w-3 h-3" /> Error
+                                                             </span>
+                                                         )}
+                                                         {fileItem.status === 'uploading' && (
+                                                             <span className="text-primary">{Math.round(fileItem.progress)}%</span>
+                                                         )}
+                                                     </div>
+                                                 </div>
+                                                 {(fileItem.status === 'uploading' || fileItem.status === 'pending') && (
+                                                     <div className="h-1 bg-primary/20 rounded-full overflow-hidden w-full">
+                                                         <div 
+                                                             className="h-full bg-primary transition-all duration-300"
+                                                             style={{ width: `${fileItem.progress}%` }}
+                                                         />
+                                                     </div>
+                                                 )}
+                                             </div>
+                                         ))}
+                                     </div>
+                                 )}
+                             </div>
+                         </div>
+
+                         {/* Overall Upload Progress */}
+                         {(rawFiles.length > 0 || scriptFiles.length > 0 || referenceFiles.length > 0 || audioFiles.length > 0) && (
+                             <div className="bg-muted/30 border border-border rounded-xl p-4">
+                                 <div className="flex items-center justify-between mb-2">
+                                     <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                                         Upload Progress
+                                     </span>
+                                     <span className={cn(
+                                         "text-xs font-bold",
+                                         allFilesUploaded ? "text-emerald-500" : hasUploadingFiles ? "text-primary" : "text-muted-foreground"
+                                     )}>
+                                         {allFilesUploaded ? (
+                                             <span className="flex items-center gap-1">
+                                                 <CheckCircle2 className="w-3 h-3" /> All Files Uploaded
+                                             </span>
+                                         ) : hasUploadingFiles ? (
+                                             `${totalUploadProgress}% Complete`
+                                         ) : (
+                                             'Ready'
+                                         )}
+                                     </span>
+                                 </div>
+                                 <div className="h-2 bg-muted rounded-full overflow-hidden">
+                                     <div 
+                                         className={cn(
+                                             "h-full transition-all duration-500",
+                                             allFilesUploaded 
+                                                 ? "bg-gradient-to-r from-emerald-500 to-emerald-400" 
+                                                 : "bg-gradient-to-r from-primary to-primary/70"
+                                         )}
+                                         style={{ width: `${totalUploadProgress}%` }}
+                                     />
+                                 </div>
+                                 <div className="flex items-center justify-between mt-2 text-[10px] text-muted-foreground">
+                                     <span>{rawFiles.length + scriptFiles.length + referenceFiles.length + audioFiles.length} file(s)</span>
+                                     <span>
+                                         {[...rawFiles, ...scriptFiles, ...referenceFiles, ...audioFiles].filter(f => f.status === 'complete').length} uploaded
+                                     </span>
+                                 </div>
+                             </div>
+                         )}
+
+                         <div className="flex items-center justify-between pt-4">
+                             <Button type="button" onClick={handlePrevStep} variant="ghost" size="lg" className="rounded-xl text-muted-foreground hover:text-foreground text-xs h-11">
+                                 <ChevronLeft className="mr-2 w-4 h-4" /> Go Back
+                             </Button>
+                             <Button 
+                                 onClick={handleNextStep} 
+                                 size="lg" 
+                                 className="rounded-xl px-10 shadow-xl font-bold tracking-wide text-xs h-11"
+                                 disabled={hasUploadingFiles}
+                             >
+                                 {hasUploadingFiles ? (
+                                     <>Uploading... {totalUploadProgress}%</>
+                                 ) : (
+                                     <>Next Step <ChevronRight className="ml-2 w-4 h-4" /></>
+                                 )}
+                             </Button>
+                         </div>
+                     </motion.div>
                 )}
 
                 {/* Step 4 */}
