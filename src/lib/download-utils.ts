@@ -37,32 +37,14 @@ export async function handleFileDownload(urlOrId: string, filename: string = "vi
             return;
         }
 
-        // 3. For remote URLs, fetch as blob to force download dialog and avoid redirection.
-        // Fallback to direct navigation if fetch fails (e.g. CORS or extremely large files).
+        // 3. For remote URLs, trigger instant download via direct navigation
+        // to avoid loading the entire video file into JavaScript memory (RAM) first,
+        // which causes a long preparation delay for large files.
         if (urlOrId.startsWith("http://") || urlOrId.startsWith("https://")) {
-            try {
-                console.log(`[DownloadUtils] Remote URL detected, fetching as blob to force true download...`);
-                toast.loading(`Downloading ${filename}...`, { id: downloadToastId });
-                
-                const response = await fetch(urlOrId);
-                if (!response.ok) throw new Error(`Fetch failed with status: ${response.status}`);
-                
-                const blob = await response.blob();
-                const blobUrl = URL.createObjectURL(blob);
-                
-                triggerDownload(blobUrl, filename);
-                
-                // Cleanup
-                setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
-                toast.success("Download started!", { id: downloadToastId });
-                return;
-            } catch (fetchError) {
-                console.error("[DownloadUtils] Fetch failed, falling back to direct navigation:", fetchError);
-                // Fallback to old behavior if CORS blocks the fetch or it fails
-                triggerDirectNavigation(urlOrId, filename);
-                toast.success("Download started (direct link)", { id: downloadToastId });
-                return;
-            }
+            console.log(`[DownloadUtils] Remote URL detected, triggering instant direct navigation download...`);
+            triggerDirectNavigation(urlOrId, filename);
+            toast.success("Download started!", { id: downloadToastId });
+            return;
         }
 
         console.log(`[DownloadUtils] Unrecognized url format, attempting direct navigation anyway: ${urlOrId}`);
@@ -103,6 +85,7 @@ function triggerDirectNavigation(url: string, filename: string) {
         link.style.display = 'none';
         link.href = url;
         link.download = filename;
+        link.target = '_blank'; // Opens in a new tab if cross-origin policy prevents direct saving, rather than replacing the current dashboard page
         document.body.appendChild(link);
         link.click();
         
@@ -112,7 +95,7 @@ function triggerDirectNavigation(url: string, filename: string) {
             }
         }, 500);
     } catch (e) {
-        console.error("[DownloadUtils] Anchor click failed, falling back to location.assign", e);
-        window.location.assign(url);
+        console.error("[DownloadUtils] Anchor click failed, falling back to window.open", e);
+        window.open(url, '_blank');
     }
 }
