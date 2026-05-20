@@ -943,17 +943,17 @@ export function ClientDashboard() {
                                     </div>
                                 </div>
 
-                                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3">
+                                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 sm:gap-3">
                                     {[["Type", selectedProject.videoType || "Video"], ["Format", selectedProject.videoFormat || "—"], ["Ratio", selectedProject.aspectRatio || "—"], ["Duration", selectedProject.duration ? `${selectedProject.duration}m` : "—"]].map(([lbl, val]) => (
-                                        <div key={lbl} className="p-3 rounded-lg border border-border bg-muted/20">
-                                            <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">{lbl}</p>
-                                            <p className="text-sm font-semibold mt-1">{val}</p>
+                                        <div key={lbl} className="p-2.5 sm:p-3 rounded-lg border border-border bg-muted/20 min-w-0">
+                                            <p className="text-[9px] sm:text-[10px] text-muted-foreground uppercase tracking-widest font-bold">{lbl}</p>
+                                            <p className="text-xs sm:text-sm font-semibold mt-0.5 sm:mt-1 truncate" title={val}>{val}</p>
                                         </div>
                                     ))}
                                 </div>
 
                                 {/* Cost breakdown */}
-                                <div className="p-4 rounded-xl border border-border bg-muted/20 space-y-2">
+                                <div className="hidden sm:block p-4 rounded-xl border border-border bg-muted/20 space-y-2">
                                     <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Cost Breakdown</p>
                                     <div className="flex justify-between text-xs"><span className="text-muted-foreground">Base Cost</span><span className="font-semibold">{formatInr(selectedProject.totalCost || 0)}</span></div>
                                     <div className="flex justify-between text-xs"><span className="text-muted-foreground">GST (18%)</span><span className="font-semibold text-amber-500">{formatInr((selectedProject.totalCost || 0) * GST_RATE)}</span></div>
