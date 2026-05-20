@@ -1014,14 +1014,14 @@ function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onRevie
 
 function AssetSection({ title, icon: Icon, summary, children }: any) {
     return (
-        <div className="rounded-xl border border-border/50 bg-muted/10 p-4 space-y-4">
-            <div className="flex items-start gap-3">
-                <div className={cn("mt-0.5 flex h-10 w-10 items-center justify-center rounded-xl", summary.hasData ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-500")}>
-                    <Icon size={18} />
+        <div className="rounded-xl border border-border/50 bg-muted/10 p-3.5 sm:p-4 space-y-3 sm:space-y-4">
+            <div className="flex items-start gap-2.5 sm:gap-3">
+                <div className={cn("mt-0.5 flex h-8 w-8 sm:h-10 sm:w-10 items-center justify-center rounded-lg sm:rounded-xl shrink-0", summary.hasData ? "bg-primary/10 text-primary" : "bg-amber-500/10 text-amber-500")}>
+                    <Icon className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
                 </div>
                 <div className="min-w-0 flex-1">
-                    <h3 className="text-sm font-black text-foreground">{title}</h3>
-                    <p className={cn("mt-1 text-xs leading-relaxed", summary.hasData ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400")}>
+                    <h3 className="text-xs sm:text-sm font-black text-foreground">{title}</h3>
+                    <p className={cn("mt-0.5 sm:mt-1 text-[11px] sm:text-xs leading-relaxed truncate", summary.hasData ? "text-muted-foreground" : "text-amber-600 dark:text-amber-400")} title={summary.value}>
                         {summary.value}
                     </p>
                 </div>
@@ -1133,16 +1133,16 @@ function AssetModal({ project, onClose, onRespond, isResponding }: any) {
     return (
         <motion.div 
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xl flex items-center justify-center p-6"
+            className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-xl flex items-center justify-center p-3 sm:p-6"
             onClick={onClose}
         >
             <motion.div 
                 initial={{ scale: 0.9, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.9, y: 20 }}
-                className="w-full max-w-7xl bg-card border border-border/50 rounded-2xl shadow-3xl overflow-hidden flex flex-col max-h-[92vh]"
+                className="w-full max-w-7xl bg-card border border-border/50 rounded-2xl shadow-3xl overflow-hidden flex flex-col max-h-[96vh] sm:max-h-[92vh]"
                 onClick={e => e.stopPropagation()}
             >
-                <div className="p-8 border-b border-border/50 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
-                    <div>
+                <div className="p-4 sm:p-8 border-b border-border/50 flex items-center justify-between gap-4 sm:gap-6">
+                    <div className="hidden sm:block flex-1">
                         <div className="flex items-center gap-3">
                             <h2 className="text-2xl font-black text-foreground">
                                 {isPending ? "Project Assignment Briefing" : "Project Command Center"}
@@ -1180,33 +1180,52 @@ function AssetModal({ project, onClose, onRespond, isResponding }: any) {
                             </div>
                         </div>
                     </div>
-                    <div className="flex items-center gap-3">
-                        <button onClick={onClose} className="h-12 w-12 rounded-2xl bg-muted hover:bg-muted/80 transition-colors flex items-center justify-center text-muted-foreground"><X size={20}/></button>
+                    {/* Compact mobile layout: title and brand box are hidden in favor of standard header row */}
+                    <div className="sm:hidden flex-1 min-w-0 pr-2">
+                        <div className="flex items-center gap-2">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-primary truncate max-w-[150px]">
+                                {project.brand || project.clientName || "Direct Client"}
+                            </span>
+                            {isPending && timeLeft && (
+                                <span className={cn(
+                                    "px-1.5 py-0.5 rounded-full text-[8px] font-black uppercase tracking-widest border shrink-0",
+                                    timeLeft === 'EXPIRED' ? "bg-rose-500/10 text-rose-500 border-rose-500/20" : "bg-primary/10 text-primary border-primary/20"
+                                )}>
+                                    {timeLeft === 'EXPIRED' ? 'Expired' : timeLeft}
+                                </span>
+                            )}
+                        </div>
+                        <h2 className="text-sm font-black text-foreground truncate mt-0.5" title={project.name}>
+                            {project.name}
+                        </h2>
+                    </div>
+                    <div className="flex items-center shrink-0">
+                        <button onClick={onClose} className="h-10 w-10 sm:h-12 sm:w-12 rounded-xl sm:rounded-2xl bg-muted hover:bg-muted/80 transition-colors flex items-center justify-center text-muted-foreground"><X size={18}/></button>
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto p-8 space-y-8">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-4 sm:space-y-8">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 sm:gap-6">
                         {/* Project Description Section */}
-                        <div className="md:col-span-2 rounded-2xl border border-border/50 bg-muted/5 p-8 space-y-6 relative overflow-hidden group">
+                        <div className="md:col-span-2 rounded-2xl border border-border/50 bg-muted/5 p-4 sm:p-8 space-y-4 sm:space-y-6 relative overflow-hidden group">
                             {isPending && (
-                                <div className="absolute top-0 right-0 p-12 opacity-[0.03] -rotate-12 group-hover:opacity-[0.05] transition-all">
+                                <div className="absolute top-0 right-0 p-12 opacity-[0.03] -rotate-12 group-hover:opacity-[0.05] transition-all hidden sm:block">
                                     <FileText size={160} />
                                 </div>
                             )}
-                            <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-primary">
-                                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                                    <FileText size={16} />
+                            <div className="flex items-center gap-2.5 sm:gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-primary">
+                                <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <FileText className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                 </div>
                                 Project Overview & Scope
                             </div>
-                            <div className="space-y-4 relative z-10">
-                                <p className="text-base leading-relaxed text-foreground/90 whitespace-pre-wrap font-medium">
+                            <div className="space-y-3 sm:space-y-4 relative z-10">
+                                <p className="text-sm sm:text-base leading-relaxed text-foreground/90 whitespace-pre-wrap font-medium">
                                     {project.description || "No project description provided by the client."}
                                 </p>
                                 {isPending && (
-                                    <div className="p-4 rounded-xl bg-primary/5 border border-primary/10 text-xs text-primary/80 font-bold flex items-center gap-3">
-                                        <AlertCircle size={16} />
+                                    <div className="p-3 sm:p-4 rounded-xl bg-primary/5 border border-primary/10 text-[11px] sm:text-xs text-primary/80 font-bold flex items-center gap-2.5 sm:gap-3">
+                                        <AlertCircle className="h-4 w-4 shrink-0" />
                                         Please review the scope and technical requirements before accepting this assignment.
                                     </div>
                                 )}
@@ -1214,14 +1233,14 @@ function AssetModal({ project, onClose, onRespond, isResponding }: any) {
                         </div>
 
                         {/* Technical Specs Card */}
-                        <div className="rounded-2xl border border-border/50 bg-card p-8 space-y-6 shadow-xl shadow-black/5">
-                            <div className="flex items-center gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-primary">
-                                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                                    <Settings size={16} />
+                        <div className="rounded-2xl border border-border/50 bg-card p-4 sm:p-8 space-y-4 sm:space-y-6 shadow-xl shadow-black/5">
+                            <div className="flex items-center gap-2.5 sm:gap-3 text-[10px] font-black uppercase tracking-[0.2em] text-primary">
+                                <div className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                                    <Settings className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                 </div>
                                 Production Specs
                             </div>
-                            <div className="space-y-5">
+                            <div className="space-y-3 sm:space-y-5">
                                 {[
                                     { label: "Aspect Ratio", value: project.aspectRatio || "Not specified", icon: Layers },
                                     { label: "Est. Duration", value: project.duration ? `${project.duration} seconds` : "Flexible", icon: Clock },
@@ -1229,11 +1248,11 @@ function AssetModal({ project, onClose, onRespond, isResponding }: any) {
                                     { label: "Deadline", value: project.deadline ? new Date(project.deadline).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' }) : "ASAP", icon: Timer },
                                 ].map((spec, i) => (
                                     <div key={i} className="flex items-center justify-between group/spec">
-                                        <div className="flex items-center gap-4">
-                                            <div className="h-10 w-10 rounded-xl bg-muted/50 border border-border/50 flex items-center justify-center text-muted-foreground group-hover/spec:text-primary transition-all group-hover/spec:scale-110">
-                                                <spec.icon size={16} />
+                                        <div className="flex items-center gap-3 sm:gap-4">
+                                            <div className="h-8 w-8 sm:h-10 sm:w-10 rounded-lg sm:rounded-xl bg-muted/50 border border-border/50 flex items-center justify-center text-muted-foreground group-hover/spec:text-primary transition-all group-hover/spec:scale-110 shrink-0">
+                                                <spec.icon className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                                             </div>
-                                            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">{spec.label}</span>
+                                            <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-widest text-muted-foreground">{spec.label}</span>
                                         </div>
                                         <span className="text-xs font-black text-foreground">{spec.value}</span>
                                     </div>
@@ -1242,7 +1261,7 @@ function AssetModal({ project, onClose, onRespond, isResponding }: any) {
                         </div>
                     </div>
 
-                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                    <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 sm:gap-6">
                         {groupedAssets.map((section) => (
                             <AssetSection key={section.key} title={section.title} icon={section.icon} summary={section.summary}>
                                 {section.remarks && (
