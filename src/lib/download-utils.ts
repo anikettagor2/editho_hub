@@ -37,14 +37,57 @@ export async function handleFileDownload(urlOrId: string, filename: string = "vi
             return;
         }
 
-        // 3. For remote URLs, trigger instant download via direct navigation
-        // to avoid loading the entire video file into JavaScript memory (RAM) first,
-        // which causes a long preparation delay for large files.
+        // 3. For remote URLs, fetch as blob using a progress-tracked reader.
+        // This ensures the browser triggers a direct local save dialog (does not redirect or play in a new tab)
+        // while showing real-time progressive percentage updates so the user is never left waiting in the dark.
         if (urlOrId.startsWith("http://") || urlOrId.startsWith("https://")) {
-            console.log(`[DownloadUtils] Remote URL detected, triggering instant direct navigation download...`);
-            triggerDirectNavigation(urlOrId, filename);
-            toast.success("Download started!", { id: downloadToastId });
-            return;
+            try {
+                console.log(`[DownloadUtils] Remote URL detected, starting progress-tracked fetch...`);
+                toast.loading(`Downloading ${filename}: 0%`, { id: downloadToastId });
+                
+                const response = await fetch(urlOrId);
+                if (!response.ok) throw new Error(`Fetch failed with status: ${response.status}`);
+                
+                const contentLength = response.headers.get('content-length');
+                const total = contentLength ? parseInt(contentLength, 10) : 0;
+                
+                let blob: Blob;
+                
+                if (total === 0 || isNaN(total) || !response.body) {
+                    // Fallback to standard fetch if no content-length or body stream
+                    blob = await response.blob();
+                } else {
+                    const reader = response.body.getReader();
+                    let loaded = 0;
+                    const chunks: BlobPart[] = [];
+                    
+                    while (true) {
+                        const { done, value } = await reader.read();
+                        if (done) break;
+                        if (value) {
+                            chunks.push(value);
+                            loaded += value.length;
+                            const percent = Math.round((loaded / total) * 100);
+                            toast.loading(`Downloading ${filename}: ${percent}%`, { id: downloadToastId });
+                        }
+                    }
+                    blob = new Blob(chunks, { type: response.headers.get('content-type') || 'application/octet-stream' });
+                }
+                
+                const blobUrl = URL.createObjectURL(blob);
+                triggerDownload(blobUrl, filename);
+                
+                // Cleanup
+                setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+                toast.success("Download completed!", { id: downloadToastId });
+                return;
+            } catch (fetchError) {
+                console.error("[DownloadUtils] Fetch failed, falling back to direct navigation:", fetchError);
+                // Fallback to direct navigation if CORS blocks the fetch or it fails
+                triggerDirectNavigation(urlOrId, filename);
+                toast.success("Download started (direct link)", { id: downloadToastId });
+                return;
+            }
         }
 
         console.log(`[DownloadUtils] Unrecognized url format, attempting direct navigation anyway: ${urlOrId}`);
