@@ -14,6 +14,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { revalidatePath } from "next/cache";
 
 const DEFAULT_SHORT_LINK_BASE_URL = "https://previewvideo.online";
+const DEFAULT_APP_BASE_URL = "https://editohub.com";
 
 function normalizeBaseUrl(url: string) {
     return url.replace(/\/+$/, "");
@@ -48,17 +49,16 @@ export async function handleRevisionUploaded(projectId: string) {
             updatedAt: Date.now()
         });
 
-        // 3. Build shareable link for review
-        const baseUrl = normalizeBaseUrl(
-            process.env.SHORT_LINK_BASE_URL ||
-            process.env.NEXT_PUBLIC_SHORT_LINK_BASE_URL ||
+        // 3. Build client dashboard link for draft notifications
+        const appBaseUrl = normalizeBaseUrl(
             process.env.NEXT_PUBLIC_APP_URL ||
-            DEFAULT_SHORT_LINK_BASE_URL
+            process.env.APP_URL ||
+            DEFAULT_APP_BASE_URL
         );
-        const reviewLink = `${baseUrl}/r/${revisionId}`;
+        const clientDashboardLink = `${appBaseUrl}/dashboard/projects/${projectId}`;
 
         // 4. Notify client about new draft with version number and link
-        const draftNotifyResult = await notifyClientDraftSubmitted(projectId, versionNumber, reviewLink);
+        const draftNotifyResult = await notifyClientDraftSubmitted(projectId, versionNumber, clientDashboardLink);
         if (!draftNotifyResult.success) {
             console.error('[WhatsApp] Draft submitted notification failed', {
                 projectId,
