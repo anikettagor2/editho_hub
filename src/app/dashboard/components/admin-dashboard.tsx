@@ -335,7 +335,7 @@ function ProjectStatusBadges({ project }: { project: any }) {
   );
 }
 
-export function AdminDashboard() {
+export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?: string }) {
   // Handler for editing a user (team member)
   const handleEditUser = (uid: string) => {
     const user = users.find((u) => u.uid === uid);
@@ -607,6 +607,41 @@ export function AdminDashboard() {
       unsubUsers();
     };
   }, []);
+
+  // Preselect and open project or review system for dynamic URLs
+  useEffect(() => {
+    if (preselectedProjectId && projects.length > 0) {
+      const found = projects.find(p => p.id === preselectedProjectId);
+      if (found) {
+        if (found.status === 'completed') {
+          setInspectProject(found);
+          setIsProjectDetailModalOpen(true);
+        } else {
+          setReviewProject(found);
+          setIsReviewSystemOpen(true);
+        }
+      }
+    }
+  }, [preselectedProjectId, projects]);
+
+  // Keep browser URL synchronized with open project modal states
+  useEffect(() => {
+    if (inspectProject?.id && isProjectDetailModalOpen) {
+      const targetPath = `/dashboard/${inspectProject.id}`;
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState(null, '', targetPath);
+      }
+    } else if (reviewProject?.id && isReviewSystemOpen) {
+      const targetPath = `/dashboard/${reviewProject.id}`;
+      if (window.location.pathname !== targetPath) {
+        window.history.pushState(null, '', targetPath);
+      }
+    } else if (!isReviewSystemOpen && !isProjectDetailModalOpen) {
+      if (window.location.pathname !== '/dashboard') {
+        window.history.pushState(null, '', '/dashboard');
+      }
+    }
+  }, [inspectProject, reviewProject, isReviewSystemOpen, isProjectDetailModalOpen]);
 
   // Load client profile details when modal opens
   useEffect(() => {
@@ -5738,13 +5773,19 @@ export function AdminDashboard() {
 
       <ReviewSystemModal
         isOpen={isReviewSystemOpen}
-        onClose={() => setIsReviewSystemOpen(false)}
+        onClose={() => {
+          setIsReviewSystemOpen(false);
+          setReviewProject(null);
+        }}
         project={reviewProject}
       />
 
       <Modal
         isOpen={isProjectDetailModalOpen}
-        onClose={() => setIsProjectDetailModalOpen(false)}
+        onClose={() => {
+          setIsProjectDetailModalOpen(false);
+          setInspectProject(null);
+        }}
         title={`Infrastructure Audit // ${inspectProject?.name}`}
         maxWidth="max-w-7xl"
       >

@@ -161,7 +161,7 @@ function PaymentBadge({ type, paid }: { type: "client" | "editor"; paid: boolean
     );
 }
 
-export function ProjectManagerDashboard() {
+export function ProjectManagerDashboard({ preselectedProjectId }: { preselectedProjectId?: string }) {
         // Track multiple open upload modals for editor
         const [openDraftModals, setOpenDraftModals] = useState<Array<{ id: string; projectId?: string; projectName?: string }>>([]);
     const { user } = useAuth();
@@ -374,6 +374,40 @@ export function ProjectManagerDashboard() {
             setReviewLoading(false);
         }
     };
+
+    // Preselect and open project or review system for dynamic URLs
+    useEffect(() => {
+        if (preselectedProjectId && projects.length > 0) {
+            const found = projects.find(p => p.id === preselectedProjectId);
+            if (found) {
+                if (found.status === 'completed') {
+                    setInspectProject(found);
+                    setIsProjectDetailModalOpen(true);
+                } else {
+                    handleOpenReview(preselectedProjectId);
+                }
+            }
+        }
+    }, [preselectedProjectId, projects]);
+
+    // Keep browser URL synchronized with open project modal states
+    useEffect(() => {
+        if (inspectProject?.id && isProjectDetailModalOpen) {
+            const targetPath = `/dashboard/${inspectProject.id}`;
+            if (window.location.pathname !== targetPath) {
+                window.history.pushState(null, '', targetPath);
+            }
+        } else if (reviewProject?.id && isReviewSystemOpen) {
+            const targetPath = `/dashboard/${reviewProject.id}`;
+            if (window.location.pathname !== targetPath) {
+                window.history.pushState(null, '', targetPath);
+            }
+        } else if (!isReviewSystemOpen && !isProjectDetailModalOpen) {
+            if (window.location.pathname !== '/dashboard') {
+                window.history.pushState(null, '', '/dashboard');
+            }
+        }
+    }, [inspectProject, reviewProject, isReviewSystemOpen, isProjectDetailModalOpen]);
 
     const handleDeleteProject = async (projectId: string) => {
         if(!confirm("Are you sure you want to delete this project? This action cannot be undone.")) return;
@@ -1524,10 +1558,12 @@ export function ProjectManagerDashboard() {
                 </div>
             </Modal>
 
-            {/* Project Details Modal */}
             <Modal 
                 isOpen={isProjectDetailModalOpen} 
-                onClose={() => setIsProjectDetailModalOpen(false)} 
+                onClose={() => {
+                    setIsProjectDetailModalOpen(false);
+                    setInspectProject(null);
+                }} 
                 title="Project Details"
                 maxWidth="max-w-4xl"
             >
@@ -2149,7 +2185,7 @@ export function ProjectManagerDashboard() {
 
             <ReviewSystemModal
                 isOpen={isReviewSystemOpen}
-                onClose={() => setIsReviewSystemOpen(false)}
+                onClose={() => { setIsReviewSystemOpen(false); setReviewProject(null); }}
                 project={reviewProject ? { 
                     id: reviewProject.id, 
                     name: reviewProject.name,

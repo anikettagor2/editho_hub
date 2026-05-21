@@ -192,7 +192,7 @@ function summarizeProjectResources(project: Project) {
 
 // --- Main Dashboard ---
 
-export function EditorDashboardV2() {
+export function EditorDashboardV2({ preselectedProjectId }: { preselectedProjectId?: string }) {
     const { user } = useAuth();
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
@@ -220,6 +220,40 @@ export function EditorDashboardV2() {
     const [isUploading, setIsUploading] = useState(false);
     const [uploadProg, setUploadProg] = useState<UploadProgress | null>(null);
     const abortRef = useRef<(() => void) | null>(null);
+
+    // Preselect and open project or review system for dynamic URLs
+    useEffect(() => {
+        if (preselectedProjectId && projects.length > 0) {
+            const found = projects.find(p => p.id === preselectedProjectId);
+            if (found) {
+                const hasRevisions = !!projectRevisions[found.id];
+                if (hasRevisions || found.status === 'in_review') {
+                    setReviewProject(found);
+                } else {
+                    setSelectedProjectAssets(found);
+                }
+            }
+        }
+    }, [preselectedProjectId, projects, projectRevisions]);
+
+    // Keep browser URL synchronized with open project modal states
+    useEffect(() => {
+        if (reviewProject?.id) {
+            const targetPath = `/dashboard/${reviewProject.id}`;
+            if (window.location.pathname !== targetPath) {
+                window.history.pushState(null, '', targetPath);
+            }
+        } else if (selectedProjectAssets?.id) {
+            const targetPath = `/dashboard/${selectedProjectAssets.id}`;
+            if (window.location.pathname !== targetPath) {
+                window.history.pushState(null, '', targetPath);
+            }
+        } else if (!reviewProject && !selectedProjectAssets) {
+            if (window.location.pathname !== '/dashboard') {
+                window.history.pushState(null, '', '/dashboard');
+            }
+        }
+    }, [reviewProject, selectedProjectAssets]);
 
     const handleRespond = async (projectId: string, response: 'accepted' | 'rejected', reason?: string) => {
         try {

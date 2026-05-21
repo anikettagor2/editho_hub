@@ -1,8 +1,7 @@
-
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
@@ -11,6 +10,7 @@ import Link from "next/link";
 import { SnowBackground } from "@/components/snow-background";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { consumePostLoginRedirect, rememberPostLoginRedirect } from "@/lib/auth-redirect";
 
 import Image from "next/image";
 import { useBranding } from "@/lib/context/branding-context";
@@ -27,16 +27,24 @@ function isValidIdentifier(identifier: string): boolean {
   return identifier.trim().length > 0 && (isValidPhone(identifier) || !isValidPhone(identifier));
 }
 
-export default function LoginPage() {
+function LoginPageContent() {
   const { user, firebaseUser, signInWithGoogle, loginWithEmail, loading } = useAuth();
   const { logoUrl } = useBranding();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+
+  useEffect(() => {
+    const nextPath = searchParams?.get("next");
+    if (nextPath) {
+      rememberPostLoginRedirect(nextPath);
+    }
+  }, [searchParams]);
 
   // Auto-redirect if already logged in
   useEffect(() => {
     if (!loading && (user || firebaseUser)) {
-      router.push("/dashboard");
+      router.push(consumePostLoginRedirect("/dashboard"));
     }
   }, [user, firebaseUser, loading, router]);
   const [error, setError] = useState<string | null>(null);
@@ -300,5 +308,17 @@ export default function LoginPage() {
           </p>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={
+       <div className="flex h-screen w-full items-center justify-center bg-background text-foreground">
+         <Loader2 className="h-8 w-8 animate-spin text-primary" />
+       </div>
+    }>
+      <LoginPageContent />
+    </Suspense>
   );
 }

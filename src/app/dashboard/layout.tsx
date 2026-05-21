@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState, Suspense } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/context/auth-context";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
 import { Loader2, Menu, X, Zap } from "lucide-react";
@@ -10,19 +10,25 @@ import { AnimatePresence, motion } from "framer-motion";
 import Link from "next/link";
 import Image from "next/image";
 import { useBranding } from "@/lib/context/branding-context";
+import { rememberPostLoginRedirect } from "@/lib/auth-redirect";
 
-export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
   const { user, firebaseUser, loading } = useAuth();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   useEffect(() => {
     // Only redirect when Firebase session is truly gone.
     // This avoids false logouts during transient profile sync states.
     if (!loading && !firebaseUser) {
-      router.push("/login");
+      const query = searchParams?.toString();
+      const nextPath = `${pathname}${query ? `?${query}` : ""}`;
+      rememberPostLoginRedirect(nextPath);
+      router.push(`/login?next=${encodeURIComponent(nextPath)}`);
     }
-  }, [firebaseUser, loading, router]);
+  }, [firebaseUser, loading, pathname, router, searchParams]);
 
 
   // Close mobile menu on navigation
@@ -122,5 +128,17 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         </main>
       </div>
     </div>
+  );
+}
+
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={
+       <div className="flex h-screen w-full items-center justify-center bg-background text-foreground">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+       </div>
+    }>
+      <DashboardLayoutContent>{children}</DashboardLayoutContent>
+    </Suspense>
   );
 }

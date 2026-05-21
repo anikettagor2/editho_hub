@@ -67,19 +67,7 @@ export async function POST(request: NextRequest) {
                                         DEFAULT_APP_BASE_URL
                                     ).replace(/\/+$/, "");
                                     
-                                    let clientDashboardLink = `${appBaseUrl}/dashboard/projects/${finalProjectId}`;
-                                    try {
-                                        const projectSnap = await adminDb.collection("projects").doc(finalProjectId).get();
-                                        if (projectSnap.exists) {
-                                            const projectData = projectSnap.data();
-                                            const clientId = projectData?.clientId;
-                                            if (clientId) {
-                                                clientDashboardLink = `${appBaseUrl}/r/${revisionId}?cToken=${clientId}`;
-                                            }
-                                        }
-                                    } catch (err) {
-                                        console.error("[SyncMuxVideo] Failed to fetch project clientId for notification url:", err);
-                                    }
+                                    const clientDashboardLink = `${appBaseUrl}/dashboard/${finalProjectId}`;
 
                                     console.log(`[SyncMuxVideo] Sending draft ready notification for project ${finalProjectId}, version ${versionNumber}`);
                                     const { notifyClientDraftSubmitted } = await import("@/lib/whatsapp");

@@ -104,19 +104,7 @@ export async function POST(request: NextRequest) {
                                         DEFAULT_APP_BASE_URL
                                     ).replace(/\/+$/, "");
                                     
-                                    let clientDashboardLink = `${appBaseUrl}/dashboard/projects/${finalProjectId}`;
-                                    try {
-                                        const projectSnap = await adminDb.collection("projects").doc(finalProjectId).get();
-                                        if (projectSnap.exists) {
-                                            const projectData = projectSnap.data();
-                                            const clientId = projectData?.clientId;
-                                            if (clientId) {
-                                                clientDashboardLink = `${appBaseUrl}/r/${revisionId}?cToken=${clientId}`;
-                                            }
-                                        }
-                                    } catch (err) {
-                                        console.error("[MuxWebhook] Failed to fetch project clientId for notification url:", err);
-                                    }
+                                    const clientDashboardLink = `${appBaseUrl}/dashboard/${finalProjectId}`;
 
                                     console.log(`[MuxWebhook] Sending draft ready notification for project ${finalProjectId}, version ${versionNumber}`);
                                     const draftNotifyResult = await notifyClientDraftSubmitted(finalProjectId, versionNumber, clientDashboardLink);

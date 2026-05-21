@@ -19,6 +19,7 @@ import { doc, getDoc, setDoc, onSnapshot } from "firebase/firestore";
 import { User, UserRole } from "@/types/schema";
 import { useRouter } from "next/navigation";
 import { clearVideoBlobCache } from "@/components/dashboard-video-optimizer";
+import { consumePostLoginRedirect } from "@/lib/auth-redirect";
 
 interface AuthContextType {
   user: User | null;
@@ -51,6 +52,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
+  const resolvePostLoginDestination = (fallback = "/dashboard") => consumePostLoginRedirect(fallback);
 
   // Auth state listener with token refresh handling
   useEffect(() => {
@@ -192,7 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(existingData);
       }
       
-      router.push("/dashboard");
+      router.push(resolvePostLoginDestination("/dashboard"));
 
     } catch (error) {
       console.error("❌ Error signing in with Google:", error);
@@ -267,7 +269,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           
           await signInWithEmailAndPassword(auth, email, password);
           console.log("✅ Email Login Successful - Session authenticated (Persistent)");
-          router.push("/dashboard");
+          router.push(resolvePostLoginDestination("/dashboard"));
       } catch (error: any) {
           console.error("❌ Error signing in with Email/Pass", error);
           
@@ -326,7 +328,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await setDoc(doc(db, "users", result.user.uid), newUser);
           setUser(newUser);
           
-          router.push("/dashboard");
+          router.push(resolvePostLoginDestination("/dashboard"));
       } catch (error) {
           console.error("Error signing up with Email/Pass", error);
           throw error;
@@ -340,7 +342,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
          // Now sign in with the verified credentials
          await signInWithEmailAndPassword(auth, "admin@editohub.com", "admin1234");
-         router.push("/dashboard");
+         router.push(resolvePostLoginDestination("/dashboard"));
 
      } catch (error: any) {
          console.error("Admin login failed:", error);

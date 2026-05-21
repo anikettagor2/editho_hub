@@ -175,7 +175,9 @@ export function DashboardSidebar({}: DashboardSidebarProps) {
           <nav className="space-y-0.5">
             {links.map((link) => {
               const Icon = link.icon;
-              const isActive = pathname === link.href;
+              const isActive = link.href === "/dashboard"
+                ? (pathname === "/dashboard" || (pathname.startsWith("/dashboard/") && !["invoices", "invoice-settings", "settings", "team", "finance", "projects", "history"].some(sub => pathname.startsWith(`/dashboard/${sub}`))))
+                : pathname === link.href;
               
               return (
                 <Link

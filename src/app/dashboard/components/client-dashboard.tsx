@@ -111,7 +111,7 @@ function PaymentBadge({ paid, partial }: { paid: boolean; partial?: boolean }) {
 
 // ── Main Component ───────────────────────────────────────────────────────────
 
-export function ClientDashboard() {
+export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId?: string }) {
     const { user } = useAuth();
     const [projects, setProjects] = useState<Project[]>([]);
     const [loading, setLoading] = useState(true);
@@ -158,6 +158,31 @@ export function ClientDashboard() {
         }
         return () => unsubs.forEach((u) => u());
     }, [projects]);
+
+    // Preselect and open ReviewSystemModal for dynamic URLs
+    useEffect(() => {
+        if (preselectedProjectId && projects.length > 0) {
+            const found = projects.find(p => p.id === preselectedProjectId);
+            if (found) {
+                setSelectedProject(found);
+                setIsReviewSystemOpen(true);
+            }
+        }
+    }, [preselectedProjectId, projects]);
+
+    // Keep browser URL synchronized with open project modal states
+    useEffect(() => {
+        if (selectedProject?.id && (isReviewSystemOpen || isProjectModalOpen)) {
+            const targetPath = `/dashboard/${selectedProject.id}`;
+            if (window.location.pathname !== targetPath) {
+                window.history.pushState(null, '', targetPath);
+            }
+        } else if (!isReviewSystemOpen && !isProjectModalOpen) {
+            if (window.location.pathname !== '/dashboard') {
+                window.history.pushState(null, '', '/dashboard');
+            }
+        }
+    }, [selectedProject, isReviewSystemOpen, isProjectModalOpen]);
 
     // Preload videos
     useEffect(() => {
