@@ -567,19 +567,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         const loadingToast = toast.loading("Preparing secure download link...");
 
         try {
-            console.log("[Download Flow] Checking local memory for file");
-            // 1. First check local memory for instant download
-            const localFile = localFileManager.getFile(selectedRevisionId);
-            if (localFile) {
-                console.log("[Download Flow] Local file found, downloading from memory");
-                toast.dismiss(loadingToast);
-                await handleFileDownload(selectedRevisionId, localFile.name);
-                await registerDownload(project.id, selectedRevisionId);
-                return;
-            }
-
             console.log("[Download Flow] Requesting download URL from server");
-            // 2. If not in memory, get authorized URL and use utility to fetch & download
             const res = await registerDownload(project.id, selectedRevisionId);
             console.log("[Download Flow] Server response received", res);
             toast.dismiss(loadingToast);
@@ -589,8 +577,25 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
             }
 
             const fileName = `draft_v${selectedRevision?.version || "final"}.mp4`;
-            console.log("[Download Flow] Proceeding to file download with URL");
-            await handleFileDownload(res.downloadUrl, fileName);
+            console.log("[Download Flow] Proceeding to direct high-speed download");
+            
+            // Bypass local storage / JS fetch-blob flow for main draft video downloads.
+            // S3 and Firebase presigned URLs are pre-configured with response-content-disposition=attachment,
+            // which guarantees that the browser natively downloads the file at maximum speed instead of playing it.
+            const link = document.createElement('a');
+            link.style.display = 'none';
+            link.href = res.downloadUrl;
+            link.download = fileName;
+            document.body.appendChild(link);
+            link.click();
+            
+            setTimeout(() => {
+                if (document.body.contains(link)) {
+                    document.body.removeChild(link);
+                }
+            }, 500);
+
+            toast.success("Download started directly from high-speed storage!");
 
         } catch (err: any) {
             console.error("[Download Flow] Download Error:", err);
