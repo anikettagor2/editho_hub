@@ -97,14 +97,7 @@ export async function POST(request: NextRequest) {
                                 const finalProjectId = revisionData?.projectId || projectId;
 
                                 if (finalProjectId) {
-                                    const DEFAULT_APP_BASE_URL = "https://editohub.com";
-                                    const appBaseUrl = (
-                                        process.env.NEXT_PUBLIC_APP_URL ||
-                                        process.env.APP_URL ||
-                                        DEFAULT_APP_BASE_URL
-                                    ).replace(/\/+$/, "");
-                                    
-                                    const clientDashboardLink = `${appBaseUrl}/dashboard/${finalProjectId}`;
+                                    const clientDashboardLink = `https://www.editohub.com/dashboard/${finalProjectId}`;
 
                                     console.log(`[MuxWebhook] Sending draft ready notification for project ${finalProjectId}, version ${versionNumber}`);
                                     const draftNotifyResult = await notifyClientDraftSubmitted(finalProjectId, versionNumber, clientDashboardLink);

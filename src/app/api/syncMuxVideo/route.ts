@@ -67,7 +67,7 @@ export async function POST(request: NextRequest) {
                                         DEFAULT_APP_BASE_URL
                                     ).replace(/\/+$/, "");
                                     
-                                    const clientDashboardLink = `${appBaseUrl}/dashboard/${finalProjectId}`;
+                                    const clientDashboardLink = `https://www.editohub.com/dashboard/${finalProjectId}`;
 
                                     console.log(`[SyncMuxVideo] Sending draft ready notification for project ${finalProjectId}, version ${versionNumber}`);
                                     const { notifyClientDraftSubmitted } = await import("@/lib/whatsapp");
