@@ -8,8 +8,12 @@ export const dynamic = 'force-dynamic';
 
 export async function GET(request: Request) {
     try {
-        // Optional: Verify authorization header for cron job security 
-        // e.g. checking process.env.CRON_SECRET
+        const DEFAULT_APP_BASE_URL = "https://editohub.com";
+        const appBaseUrl = (
+            process.env.NEXT_PUBLIC_APP_URL ||
+            process.env.APP_URL ||
+            DEFAULT_APP_BASE_URL
+        ).replace(/\/+$/, "");
 
         const now = Date.now();
         
@@ -32,6 +36,16 @@ export async function GET(request: Request) {
                 const projectId = doc.id;
                 expiredProjectIds.push(projectId);
                 
+                // Check if client is auto-assigned
+                let isAutoAssign = false;
+                if (projectData?.clientId) {
+                    const clientSnap = await adminDb.collection('users').doc(projectData.clientId).get();
+                    if (clientSnap.exists) {
+                        const clientData = clientSnap.data();
+                        isAutoAssign = (clientData?.assignedEditorPriority?.length || 0) > 0;
+                    }
+                }
+
                 // 1. Update project document
                 batch.update(doc.ref, {
                     assignmentStatus: 'expired',
@@ -44,9 +58,9 @@ export async function GET(request: Request) {
                     updatedAt: now
                 });
 
-                // 2. Add Notification for PM
+                // 2. Add Notification for PM (only if not an auto-assigned project)
                 const expiredPmId = projectData?.assignedPMId;
-                if (expiredPmId) {
+                if (expiredPmId && !isAutoAssign) {
                     let expiredEditorName = 'Editor';
                     if (projectData?.assignedEditorId) {
                         const expiredEditorSnap = await adminDb.collection('users').doc(projectData.assignedEditorId).get();
@@ -138,7 +152,7 @@ export async function GET(request: Request) {
                 
                 if (!projectData.editor10mAlertSent && projectData.assignmentAt && (now - projectData.assignmentAt >= TEN_MINUTES_MS)) {
                     if (projectData.assignedEditorId) {
-                        const link = `https://editohub.in/dashboard?project=${projectId}`;
+                        const link = `${appBaseUrl}/dashboard/${projectId}`;
                         
                         batch.update(doc.ref, {
                             editor10mAlertSent: true,
@@ -179,7 +193,7 @@ export async function GET(request: Request) {
                             const isAutoAssign = priorities.length > 0;
                             
                             if (!isAutoAssign) {
-                                const link = `https://editohub.in/dashboard?project=${projectId}`;
+                                const link = `${appBaseUrl}/dashboard/${projectId}`;
                                 
                                 batch.update(doc.ref, {
                                     pm10mAlertSent: true,

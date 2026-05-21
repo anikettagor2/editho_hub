@@ -504,9 +504,19 @@ export async function respondToAssignment(projectId: string, response: 'accepted
                 updatedAt: now
             });
 
-            // Notify PM about timeout via pro_delay WhatsApp template
+            // Check if client is auto-assigned
+            let isAutoAssign = false;
+            if (projectData?.clientId) {
+                const clientSnap = await adminDb.collection('users').doc(projectData.clientId).get();
+                if (clientSnap.exists) {
+                    const clientData = clientSnap.data();
+                    isAutoAssign = (clientData?.assignedEditorPriority?.length || 0) > 0;
+                }
+            }
+
+            // Notify PM about timeout via pro_delay WhatsApp template (only if NOT auto-assign)
             const expiredPmId = projectData?.assignedPMId;
-            if (expiredPmId) {
+            if (expiredPmId && !isAutoAssign) {
                 const expiredEditorSnap = await adminDb.collection('users').doc(projectData?.assignedEditorId || '').get();
                 const expiredEditorName = expiredEditorSnap.exists ? expiredEditorSnap.data()?.displayName || 'Editor' : 'Editor';
 
@@ -528,6 +538,10 @@ export async function respondToAssignment(projectId: string, response: 'accepted
 
                 // WhatsApp via pro_delay template
                 void notifyPMEditorRejected(projectId, expiredPmId, expiredEditorName, 'No response within 15 minutes');
+            }
+
+            if (isAutoAssign) {
+                await tryNextAutoAssign(projectId);
             }
 
             revalidatePath('/dashboard');
@@ -589,8 +603,18 @@ export async function respondToAssignment(projectId: string, response: 'accepted
                 });
             }
         } else if (response === 'rejected') {
-            // Create in-app notification for PM about rejection (CRITICAL - must succeed)
-            if (pmId) {
+            // Check if client is auto-assigned
+            let isAutoAssign = false;
+            if (projectData?.clientId) {
+                const clientSnap = await adminDb.collection('users').doc(projectData.clientId).get();
+                if (clientSnap.exists) {
+                    const clientData = clientSnap.data();
+                    isAutoAssign = (clientData?.assignedEditorPriority?.length || 0) > 0;
+                }
+            }
+
+            // Create in-app notification for PM about rejection (only if NOT auto-assign)
+            if (pmId && !isAutoAssign) {
                 const notificationRef = adminDb.collection('notifications').doc();
                 await notificationRef.set({
                     id: notificationRef.id,
@@ -607,7 +631,7 @@ export async function respondToAssignment(projectId: string, response: 'accepted
                 });
             }
             
-            if (pmId) {
+            if (pmId && !isAutoAssign) {
                 const rejectedNotifyResult = await notifyPMEditorRejected(projectId, pmId, editorName, reason?.trim() || 'No reason provided');
                 if (!rejectedNotifyResult.success) {
                     console.error('[WhatsApp] PM editor-rejected notification failed', {
