@@ -772,13 +772,13 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     const canModifyComment = (comment: CommentDoc) => {
         if (user?.uid === comment.userId || isAdmin || isStaff) return true;
         if (clientAccess && (comment.userId === project?.clientId || comment.userId === "client")) return true;
-        return isGuestReviewer && comment.userRole === "guest" && comment.userName === `${guestName} (Guest)`;
+        return isGuestReviewer && comment.userRole === "guest" && (comment.userName === guestName || comment.userName === `${guestName} (Guest)`);
     };
 
     const canSubmitCommentNotification = (comment: CommentDoc) => {
         if (user?.uid && comment.userId === user.uid) return true;
         if (clientAccess && (comment.userId === project?.clientId || comment.userId === "client")) return true;
-        return isGuestReviewer && comment.userRole === "guest" && comment.userName === `${guestName} (Guest)`;
+        return isGuestReviewer && comment.userRole === "guest" && (comment.userName === guestName || comment.userName === `${guestName} (Guest)`);
     };
 
     const startEditingComment = (comment: CommentDoc) => {
