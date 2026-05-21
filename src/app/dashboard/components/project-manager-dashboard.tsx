@@ -2156,7 +2156,8 @@ export function ProjectManagerDashboard() {
                     clientName: reviewProject.clientName || reviewProject.name,
                     paymentStatus: reviewProject.paymentStatus,
                     editorRating: reviewProject.editorRating,
-                    createdAt: reviewProject.createdAt
+                    createdAt: reviewProject.createdAt,
+                    isPayLaterRequest: reviewProject.isPayLaterRequest
                 } : null}
             />
 

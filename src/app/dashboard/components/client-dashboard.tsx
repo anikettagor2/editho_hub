@@ -1122,7 +1122,8 @@ export function ClientDashboard() {
                     paymentStatus: selectedProject.paymentStatus,
                     editorRating: selectedProject.editorRating,
                     editorReview: selectedProject.editorReview,
-                    createdAt: selectedProject.createdAt
+                    createdAt: selectedProject.createdAt,
+                    isPayLaterRequest: selectedProject.isPayLaterRequest
                 } : null}
             />
 

@@ -36,6 +36,7 @@ type ReviewProject = {
     assignedEditorId?: string;
     assignedPMId?: string;
     createdAt?: number;
+    isPayLaterRequest?: boolean;
 };
 
 type RevisionDoc = {
@@ -605,7 +606,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         console.log("[Download Flow] Context:", { isClient, isPaymentComplete, hasFeedback, selectedRevisionId });
         if (!project?.id || !selectedRevisionId) return;
         if (isClient) {
-            if (!isPaymentComplete && !user?.payLater) {
+            if (!isPaymentComplete && !user?.payLater && !project?.isPayLaterRequest && project?.paymentStatus !== "pay_later") {
                 console.log("[Download Flow] Pending payment, opening payment modal");
                 setPendingDownloadAfterFlow(true);
                 setIsPaymentModalOpen(true);
@@ -1056,7 +1057,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         >
                             <Share2 size={18} />
                         </button>
-                        {!guestPreview && (
+                        {(!guestPreview || project?.isPayLaterRequest || project?.paymentStatus === "pay_later") && (
                             <button
                                 onClick={handleDownloadClick}
                                 disabled={!selectedRevisionId || isDownloading}
@@ -1081,28 +1082,28 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         >
                             <Share2 size={15} />
                         </button>
+                        {(!guestPreview || project?.isPayLaterRequest || project?.paymentStatus === "pay_later") && (
+                            <button
+                                onClick={handleDownloadClick}
+                                disabled={!selectedRevisionId || isDownloading}
+                                className="flex h-7 w-7 items-center justify-center rounded bg-[#2f80ff]/15 text-[#7fb2ff] transition-all disabled:opacity-50 lg:hidden"
+                                title="Secure Download"
+                            >
+                                {isDownloading ? (
+                                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                    <Download size={15} />
+                                )}
+                            </button>
+                        )}
                         {!guestPreview && (
-                            <>
-                                <button
-                                    onClick={handleDownloadClick}
-                                    disabled={!selectedRevisionId || isDownloading}
-                                    className="flex h-7 w-7 items-center justify-center rounded bg-[#2f80ff]/15 text-[#7fb2ff] transition-all disabled:opacity-50 lg:hidden"
-                                    title="Secure Download"
-                                >
-                                    {isDownloading ? (
-                                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                                    ) : (
-                                        <Download size={15} />
-                                    )}
-                                </button>
-                                <button
-                                    onClick={() => void handleCloseReview()}
-                                    className="flex h-7 w-7 items-center justify-center rounded bg-white/5 text-zinc-300 transition-all hover:bg-white/10 hover:text-white lg:hidden"
-                                    title="Close review"
-                                >
-                                    <X size={15} />
-                                </button>
-                            </>
+                            <button
+                                onClick={() => void handleCloseReview()}
+                                className="flex h-7 w-7 items-center justify-center rounded bg-white/5 text-zinc-300 transition-all hover:bg-white/10 hover:text-white lg:hidden"
+                                title="Close review"
+                            >
+                                <X size={15} />
+                            </button>
                         )}
                     </div>
                 </div>

@@ -34,6 +34,7 @@ type ReviewProject = {
     assignedEditorId?: string;
     assignedPMId?: string;
     createdAt?: number;
+    isPayLaterRequest?: boolean;
 };
 
 interface GuestReviewPageClientProps {
