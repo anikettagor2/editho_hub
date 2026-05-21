@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { Loader2, AlertCircle } from "lucide-react";
+import { Loader2, AlertCircle, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { SnowBackground } from "@/components/snow-background";
 import { Input } from "@/components/ui/input";
@@ -44,6 +44,7 @@ export default function LoginPage() {
   // Form state
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   
   // Validation state
   const [touched, setTouched] = useState({ identifier: false, password: false });
@@ -198,14 +199,26 @@ export default function LoginPage() {
                       <Label className="text-foreground/80">Password</Label>
                       <Link href="#" className="text-xs text-primary hover:text-primary/80">Forgot Password?</Link>
                   </div>
-                  <Input 
-                      type="password" 
+                  <div className="relative">
+                    <Input 
+                      type={showPassword ? "text" : "password"} 
+                      minLength={6}
                       placeholder="••••••••"
-                      className={`bg-black/5 dark:bg-black/40 border-border text-foreground ${passwordError ? 'border-red-500 focus:ring-red-500' : ''}`}
+                      className={`bg-black/5 dark:bg-black/40 border-border pr-11 text-foreground ${passwordError ? 'border-red-500 focus:ring-red-500' : ''}`}
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       onBlur={() => setTouched(t => ({ ...t, password: true }))}
-                  />
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((value) => !value)}
+                      className="absolute right-0 top-0 flex h-10 w-10 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      title={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                   {passwordError && (
                     <p className="text-xs text-red-400 flex items-center gap-1">
                       <AlertCircle className="w-3 h-3" />

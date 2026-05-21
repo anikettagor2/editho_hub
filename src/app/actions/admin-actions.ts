@@ -1422,6 +1422,21 @@ export async function updateUserDetails(uid: string, updates: Partial<any>, upda
             }
         }
 
+        // If phoneNumber changed, update Firebase Auth phoneNumber as well (if system settings allow)
+        if (updates.phoneNumber !== undefined && userData && updates.phoneNumber !== userData.phoneNumber) {
+            try {
+                const settingsSnap = await adminDb.collection('settings').doc('system').get();
+                const systemSettings = settingsSnap.exists ? settingsSnap.data() : {};
+                const allowDuplicatePhone = systemSettings?.allowDuplicatePhone === true;
+
+                if (!allowDuplicatePhone) {
+                    await adminAuth.updateUser(uid, { phoneNumber: updates.phoneNumber || null });
+                }
+            } catch (authError: any) {
+                console.warn('Warning: Could not update Firebase Auth phoneNumber:', authError.message);
+            }
+        }
+
         // If initialPassword changed, update Firebase Auth password
         if (updates.initialPassword) {
             try {

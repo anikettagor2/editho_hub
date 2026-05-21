@@ -49,22 +49,8 @@ export async function handleRevisionUploaded(projectId: string) {
             updatedAt: Date.now()
         });
 
-        // 3. Build client dashboard link for draft notifications
-        const appBaseUrl = normalizeBaseUrl(
-            process.env.NEXT_PUBLIC_APP_URL ||
-            process.env.APP_URL ||
-            DEFAULT_APP_BASE_URL
-        );
-        const clientDashboardLink = `${appBaseUrl}/dashboard/projects/${projectId}`;
-
-        // 4. Notify client about new draft with version number and link
-        const draftNotifyResult = await notifyClientDraftSubmitted(projectId, versionNumber, clientDashboardLink);
-        if (!draftNotifyResult.success) {
-            console.error('[WhatsApp] Draft submitted notification failed', {
-                projectId,
-                error: draftNotifyResult.error,
-            });
-        }
+        // 3. Build client dashboard link for draft notifications - deferred to Mux webhook when video is ready!
+        console.log(`[NotificationActions] Revision ${revisionId} saved for project ${projectId}. Notification deferred until MUX video is ready.`);
 
         revalidatePath(`/dashboard/projects/${projectId}`);
         return { success: true };

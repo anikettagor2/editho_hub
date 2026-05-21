@@ -90,7 +90,9 @@ interface ReviewSystemModalProps {
     guestPreview?: boolean;
     guestName?: string;
     defaultRevisionId?: string;
+    clientAccess?: boolean;
 }
+
 
 function formatTime(seconds: number): string {
     const m = Math.floor(seconds / 60);
@@ -255,14 +257,14 @@ function getVideoSource(revision: RevisionDoc | null | undefined): { playbackId?
     };
 }
 
-export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, guestPreview = false, guestName, defaultRevisionId }: ReviewSystemModalProps) {
+export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, guestPreview = false, guestName, defaultRevisionId, clientAccess = false }: ReviewSystemModalProps) {
     // Track multiple open upload modals
     const [openDraftModals, setOpenDraftModals] = useState<Array<{ id: string }>>([]);
     const { user } = useAuth();
     const fileInputRef = useRef<HTMLInputElement | null>(null);
     const videoPlayerRef = useRef<any>(null);
     const reviewShellRef = useRef<HTMLDivElement | null>(null);
-    const isClient = user?.role === "client";
+    const isClient = user?.role === "client" || clientAccess;
     const isAdmin = user?.role === "admin";
     const isStaff = ["manager", "sales_executive", "project_manager"].includes(user?.role || "") || isAdmin;
     const isEditor = user?.role === "editor";
@@ -683,12 +685,16 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                 setUploadingAttachment(false);
             }
 
+            const commentUserId = user?.uid || (clientAccess ? (project.clientId || "client") : "guest");
+            const commentUserName = user?.displayName || (clientAccess ? (project.clientName || guestName || "Client") : (guestName || "User"));
+            const commentUserRole = (user as any)?.role || (clientAccess ? "client" : "guest");
+
             const newCommentPayload = {
                 projectId: project.id,
                 revisionId: selectedRevisionId,
-                userId: user?.uid || "guest",
-                userName: user?.displayName || guestName || "User",
-                userRole: (user as any)?.role || "guest",
+                userId: commentUserId,
+                userName: commentUserName,
+                userRole: commentUserRole,
                 content: content,
                 imageUrl: attachmentIsImage ? attachmentUrl || null : null,
                 attachmentUrl: attachmentUrl || null,
@@ -765,11 +771,13 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
 
     const canModifyComment = (comment: CommentDoc) => {
         if (user?.uid === comment.userId || isAdmin || isStaff) return true;
+        if (clientAccess && (comment.userId === project?.clientId || comment.userId === "client")) return true;
         return isGuestReviewer && comment.userRole === "guest" && comment.userName === `${guestName} (Guest)`;
     };
 
     const canSubmitCommentNotification = (comment: CommentDoc) => {
         if (user?.uid && comment.userId === user.uid) return true;
+        if (clientAccess && (comment.userId === project?.clientId || comment.userId === "client")) return true;
         return isGuestReviewer && comment.userRole === "guest" && comment.userName === `${guestName} (Guest)`;
     };
 
@@ -835,11 +843,15 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
             if (!res.empty) {
                 const comment = res.docs[0].data();
                 const replies = comment.replies || [];
+                const replyUserId = user?.uid || (clientAccess ? (project?.clientId || "client") : "guest");
+                const replyUserName = user?.displayName || (clientAccess ? (project?.clientName || guestName || "Client") : (guestName || "User"));
+                const replyUserRole = (user as any)?.role || (clientAccess ? "client" : "guest");
+
                 replies.push({
                     id: `reply_${Date.now()}`,
-                    userId: user?.uid || "guest",
-                    userName: user?.displayName || guestName || "User",
-                    userRole: (user as any)?.role || "guest",
+                    userId: replyUserId,
+                    userName: replyUserName,
+                    userRole: replyUserRole,
                     content: newReply[commentId].trim(),
                     imageUrl: null,
                     createdAt: Date.now(),
@@ -1676,7 +1688,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         amount={remainingAmount}
                         accountingAmount={remainingBaseAmount}
                         description={`Final Balance: ${project?.name || "Project"}`}
-                        prefill={{ name: user?.displayName || "", email: user?.email || "" }}
+                        prefill={{ name: user?.displayName || project?.clientName || guestName || "Client", email: user?.email || "" }}
                         onSuccess={async () => {
                             if (!project?.id) return;
                             await updateDoc(doc(db, "projects", project.id), { paymentStatus: "full_paid", amountPaid: liveTotalCost, updatedAt: Date.now() });

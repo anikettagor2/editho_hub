@@ -47,6 +47,70 @@ export async function POST(request: NextRequest) {
                     }, { merge: true });
                     
                     console.log(`[SyncMuxVideo] Manually synced revision ${revisionId} with playbackId ${playbackId}`);
+
+                    // Send the draft submitted notification as a fallback
+                    try {
+                        const revisionSnap = await adminDb.collection("revisions").doc(revisionId).get();
+                        if (revisionSnap.exists) {
+                            const revisionData = revisionSnap.data();
+                            const clientNotified = revisionData?.clientNotified || false;
+
+                            if (!clientNotified) {
+                                const versionNumber = revisionData?.version || 1;
+                                const finalProjectId = revisionData?.projectId;
+
+                                if (finalProjectId) {
+                                    const DEFAULT_APP_BASE_URL = "https://editohub.com";
+                                    const appBaseUrl = (
+                                        process.env.NEXT_PUBLIC_APP_URL ||
+                                        process.env.APP_URL ||
+                                        DEFAULT_APP_BASE_URL
+                                    ).replace(/\/+$/, "");
+                                    
+                                    let clientDashboardLink = `${appBaseUrl}/dashboard/projects/${finalProjectId}`;
+                                    try {
+                                        const projectSnap = await adminDb.collection("projects").doc(finalProjectId).get();
+                                        if (projectSnap.exists) {
+                                            const projectData = projectSnap.data();
+                                            const clientId = projectData?.clientId;
+                                            if (clientId) {
+                                                clientDashboardLink = `${appBaseUrl}/r/${revisionId}?cToken=${clientId}`;
+                                            }
+                                        }
+                                    } catch (err) {
+                                        console.error("[SyncMuxVideo] Failed to fetch project clientId for notification url:", err);
+                                    }
+
+                                    console.log(`[SyncMuxVideo] Sending draft ready notification for project ${finalProjectId}, version ${versionNumber}`);
+                                    const { notifyClientDraftSubmitted } = await import("@/lib/whatsapp");
+                                    const draftNotifyResult = await notifyClientDraftSubmitted(finalProjectId, versionNumber, clientDashboardLink);
+                                    if (!draftNotifyResult.success) {
+                                        console.error('[SyncMuxVideo] Draft submitted notification failed', {
+                                            projectId: finalProjectId,
+                                            error: draftNotifyResult.error,
+                                        });
+                                    } else {
+                                        console.log('[SyncMuxVideo] Draft submitted notification sent successfully (via sync)', {
+                                            projectId: finalProjectId,
+                                            versionNumber,
+                                        });
+                                        // Mark as notified in revision doc
+                                        await adminDb.collection("revisions").doc(revisionId).set({
+                                            clientNotified: true,
+                                            clientNotifiedAt: Date.now()
+                                        }, { merge: true });
+                                    }
+                                } else {
+                                    console.warn(`[SyncMuxVideo] Could not determine projectId for revision ${revisionId}. Notification skipped.`);
+                                }
+                            } else {
+                                console.log(`[SyncMuxVideo] Draft notification already sent for revision ${revisionId}. Skipping.`);
+                            }
+                        }
+                    } catch (notifyError) {
+                        console.error('[SyncMuxVideo] Error in draft notification block:', notifyError);
+                    }
+
                     return NextResponse.json({ success: true, playbackId });
                 }
             }

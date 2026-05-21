@@ -5552,6 +5552,20 @@ export function AdminDashboard() {
                         className="w-full h-10 bg-muted border border-border rounded-xl px-4 text-xs font-semibold focus:border-primary/50 transition-colors"
                       />
                     </div>
+
+                    <div className="space-y-2">
+                      <Label className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">
+                        Phone Number
+                      </Label>
+                      <Input
+                        type="text"
+                        id={`cred-phone-${selectedUserDetail.uid}`}
+                        key={`cred-phone-${selectedUserDetail.uid}`}
+                        defaultValue={(selectedUserDetail.phoneNumber || selectedUserDetail.whatsappNumber || "").replace(/^\+91/, "")}
+                        placeholder="Enter 10-digit phone number"
+                        className="w-full h-10 bg-muted border border-border rounded-xl px-4 text-xs font-semibold focus:border-primary/50 transition-colors"
+                      />
+                    </div>
                     
                     <div className="space-y-2">
                       <Label className="text-[9px] font-black text-muted-foreground uppercase tracking-[0.2em] ml-1">
@@ -5570,13 +5584,25 @@ export function AdminDashboard() {
                     <Button
                       onClick={async () => {
                         const emailInput = document.getElementById(`cred-email-${selectedUserDetail.uid}`) as HTMLInputElement;
+                        const phoneInput = document.getElementById(`cred-phone-${selectedUserDetail.uid}`) as HTMLInputElement;
                         const passInput = document.getElementById(`cred-pass-${selectedUserDetail.uid}`) as HTMLInputElement;
                         const newEmail = emailInput?.value.trim();
+                        const newPhone = phoneInput?.value.trim();
                         const newPass = passInput?.value.trim();
 
                         if (!newEmail) {
                           toast.error("Email cannot be empty");
                           return;
+                        }
+
+                        let formattedPhone = "";
+                        if (newPhone) {
+                          const cleaned = newPhone.replace(/\D/g, '');
+                          if (cleaned.length !== 10) {
+                            toast.error("Phone number must be exactly 10 digits");
+                            return;
+                          }
+                          formattedPhone = `+91${cleaned}`;
                         }
 
                         const loadingToast = toast.loading("Updating credentials...");
@@ -5585,6 +5611,8 @@ export function AdminDashboard() {
                             selectedUserDetail.uid,
                             {
                               email: newEmail,
+                              phoneNumber: formattedPhone || null,
+                              whatsappNumber: formattedPhone || null,
                               ...(newPass ? { initialPassword: newPass } : {}),
                             },
                             {
@@ -5598,6 +5626,8 @@ export function AdminDashboard() {
                             setSelectedUserDetail({
                               ...selectedUserDetail,
                               email: newEmail,
+                              phoneNumber: formattedPhone || undefined,
+                              whatsappNumber: formattedPhone || undefined,
                               ...(newPass ? { initialPassword: newPass } : {}),
                             });
                           } else {

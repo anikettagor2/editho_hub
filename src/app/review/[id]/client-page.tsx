@@ -46,6 +46,27 @@ export default function GuestReviewPageClient({ revisionId }: GuestReviewPageCli
     const [loading, setLoading] = useState(true);
     const [guestName, setGuestName] = useState("");
     const [isIdentified, setIsIdentified] = useState(false);
+    const [cToken, setCToken] = useState<string | null>(null);
+
+    useEffect(() => {
+        if (typeof window !== "undefined") {
+            const params = new URLSearchParams(window.location.search);
+            const token = params.get("cToken");
+            if (token) {
+                setCToken(token);
+            }
+        }
+    }, []);
+
+    useEffect(() => {
+        if (!project || !cToken) return;
+
+        if (project.clientId && cToken === project.clientId) {
+            console.log("[Auto-Login] Client token matched! Bypassing name entry form and granting client access.");
+            setGuestName(project.clientName || "Client");
+            setIsIdentified(true);
+        }
+    }, [project, cToken]);
 
     useEffect(() => {
         if (!revisionId) return;
@@ -172,15 +193,18 @@ export default function GuestReviewPageClient({ revisionId }: GuestReviewPageCli
         );
     }
 
+    const hasClientAccess = Boolean(project && cToken && project.clientId && cToken === project.clientId);
+
     return (
         <ReviewSystemModal
             isOpen={true}
             onClose={() => {}}
             project={project}
             allowUploadDraft={false}
-            guestPreview={true}
+            guestPreview={!hasClientAccess}
             guestName={guestName}
             defaultRevisionId={revision.id}
+            clientAccess={hasClientAccess}
         />
     );
 }

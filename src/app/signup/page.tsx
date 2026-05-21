@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/lib/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { motion } from "framer-motion";
-import { Loader2, Film, Check, User, PenTool, ArrowRight } from "lucide-react";
+import { Loader2, Film, Check, User, PenTool, ArrowRight, Eye, EyeOff } from "lucide-react";
 import Link from "next/link";
 import { SnowBackground } from "@/components/snow-background";
 import { UserRole } from "@/types/schema";
@@ -36,15 +36,26 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   // Editor Experience Meta
   const [whatsapp, setWhatsapp] = useState("");
   const [portfolio, setPortfolio] = useState("");
 
+  const passwordError =
+    password.length > 0 && password.length < 6
+      ? "Password must be at least 6 characters"
+      : null;
+
 
   const handleGoogleSignup = async () => {
     if (!name || !password) {
         setError("A Full Name and Password are required for dashboard access. Please enter them above before using Google Sign-up.");
+        return;
+    }
+
+    if (password.length < 6) {
+        setError("Password must be at least 6 characters");
         return;
     }
 
@@ -81,6 +92,11 @@ export default function SignupPage() {
     e.preventDefault();
     if (!name || !email || !password || !phone) {
         setError("Please fill in all mandatory fields (Name, Email, Phone, Password)");
+        return;
+    }
+
+    if (password.length < 6) {
+        setError("Password must be at least 6 characters");
         return;
     }
     
@@ -285,14 +301,29 @@ export default function SignupPage() {
                       value={email}
                       onChange={e => setEmail(e.target.value)}
                   />
-                  <Input 
-                      type="password"
-                      placeholder="Create Password" 
-                      className="bg-black/5 dark:bg-black/40 border-border text-foreground h-10"
-                      value={password}
-                      onChange={e => setPassword(e.target.value)}
-                  />
-              </div>
+                  <div className="relative">
+                      <Input 
+                          type={showPassword ? "text" : "password"}
+                          minLength={6}
+                          placeholder="Create Password" 
+                          className={`bg-black/5 dark:bg-black/40 text-foreground h-10 pr-11 ${passwordError ? "border-red-500 focus:ring-red-500" : "border-border"}`}
+                          value={password}
+                          onChange={e => setPassword(e.target.value)}
+                      />
+                      <button
+                          type="button"
+                          onClick={() => setShowPassword((value) => !value)}
+                          className="absolute right-0 top-0 flex h-10 w-10 items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+                          aria-label={showPassword ? "Hide password" : "Show password"}
+                          title={showPassword ? "Hide password" : "Show password"}
+                       >
+                           {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                       </button>
+                   </div>
+                  {passwordError && (
+                    <p className="text-xs text-red-400">{passwordError}</p>
+                  )}
+               </div>
               <Button type="submit" className="w-full bg-primary hover:bg-primary/90 mt-2 text-primary-foreground font-semibold" disabled={isSigningUp}>
                   {isSigningUp ? "Creating Account..." : "Sign Up with Email"}
               </Button>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase/admin";
 import Mux from "@mux/mux-node";
+import { notifyClientDraftSubmitted } from "@/lib/whatsapp";
 
 const mux = new Mux({
     tokenId: process.env.MUX_TOKEN_ID!,
@@ -83,6 +84,70 @@ export async function POST(request: NextRequest) {
                     }
                     
                     console.log(`[MuxWebhook] Updated revision ${revisionId} to ready`);
+
+                    // Send the draft submitted notification now that the Mux video is ready!
+                    try {
+                        const revisionSnap = await adminDb.collection("revisions").doc(revisionId).get();
+                        if (revisionSnap.exists) {
+                            const revisionData = revisionSnap.data();
+                            const clientNotified = revisionData?.clientNotified || false;
+
+                            if (!clientNotified) {
+                                const versionNumber = revisionData?.version || 1;
+                                const finalProjectId = revisionData?.projectId || projectId;
+
+                                if (finalProjectId) {
+                                    const DEFAULT_APP_BASE_URL = "https://editohub.com";
+                                    const appBaseUrl = (
+                                        process.env.NEXT_PUBLIC_APP_URL ||
+                                        process.env.APP_URL ||
+                                        DEFAULT_APP_BASE_URL
+                                    ).replace(/\/+$/, "");
+                                    
+                                    let clientDashboardLink = `${appBaseUrl}/dashboard/projects/${finalProjectId}`;
+                                    try {
+                                        const projectSnap = await adminDb.collection("projects").doc(finalProjectId).get();
+                                        if (projectSnap.exists) {
+                                            const projectData = projectSnap.data();
+                                            const clientId = projectData?.clientId;
+                                            if (clientId) {
+                                                clientDashboardLink = `${appBaseUrl}/r/${revisionId}?cToken=${clientId}`;
+                                            }
+                                        }
+                                    } catch (err) {
+                                        console.error("[MuxWebhook] Failed to fetch project clientId for notification url:", err);
+                                    }
+
+                                    console.log(`[MuxWebhook] Sending draft ready notification for project ${finalProjectId}, version ${versionNumber}`);
+                                    const draftNotifyResult = await notifyClientDraftSubmitted(finalProjectId, versionNumber, clientDashboardLink);
+                                    if (!draftNotifyResult.success) {
+                                        console.error('[MuxWebhook] Draft submitted notification failed', {
+                                            projectId: finalProjectId,
+                                            error: draftNotifyResult.error,
+                                        });
+                                    } else {
+                                        console.log('[MuxWebhook] Draft submitted notification sent successfully', {
+                                            projectId: finalProjectId,
+                                            versionNumber,
+                                        });
+                                        // Mark as notified in revision doc to prevent duplicates
+                                        await adminDb.collection("revisions").doc(revisionId).set({
+                                            clientNotified: true,
+                                            clientNotifiedAt: Date.now()
+                                        }, { merge: true });
+                                    }
+                                } else {
+                                    console.warn(`[MuxWebhook] Could not determine projectId for revision ${revisionId}. Notification skipped.`);
+                                }
+                            } else {
+                                console.log(`[MuxWebhook] Draft notification already sent for revision ${revisionId}. Skipping.`);
+                            }
+                        } else {
+                            console.warn(`[MuxWebhook] Revision doc ${revisionId} not found in Firestore. Cannot send draft notification.`);
+                        }
+                    } catch (notifyError) {
+                        console.error('[MuxWebhook] Error in draft notification block:', notifyError);
+                    }
                 } else if (projectId) {
                     // Handle raw footage/assets
                     const projectRef = adminDb.collection("projects").doc(projectId);

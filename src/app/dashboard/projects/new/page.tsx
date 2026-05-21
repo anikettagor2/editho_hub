@@ -1225,18 +1225,19 @@ export default function NewProjectPage() {
                                                          : "bg-muted/30 border-border hover:border-border hover:bg-muted/50"
                                                  )}
                                              >
-                                                 <div className="mb-1 sm:mb-3 flex items-center justify-center h-8 sm:h-14 w-full">
+                                                 <div className="mb-1 sm:mb-3 flex items-center justify-center h-12 sm:h-16 w-full">
                                                      <div 
                                                          className={cn(
-                                                             "border-2 transition-all duration-300 rounded-sm flex items-center justify-center shadow-lg",
-                                                             isSelected ? "border-primary bg-primary/20 text-primary scale-105 sm:scale-110" : "border-zinc-700 bg-muted-foreground/10 text-muted-foreground group-hover:border-zinc-500"
+                                                             "border-2 transition-all duration-300 flex items-center justify-center shadow-lg",
+                                                             isSelected 
+                                                                 ? "border-primary bg-primary/20 text-primary scale-105 sm:scale-110" 
+                                                                 : "border-zinc-700 bg-muted-foreground/10 text-muted-foreground group-hover:border-zinc-500",
+                                                             is9x16 && "rounded-[6px] sm:rounded-[8px] w-[24px] h-[42px] sm:w-[27px] sm:h-[48px]",
+                                                             is16x9 && "rounded-[4px] sm:rounded-[6px] w-[56px] h-[32px] sm:w-[64px] sm:h-[36px]",
+                                                             is1x1 && "rounded-[4px] sm:rounded-[6px] w-[34px] h-[34px] sm:w-[38px] sm:h-[38px]"
                                                          )}
-                                                         style={{
-                                                             width: is9x16 ? '12px' : is16x9 ? '28px' : '20px',
-                                                             height: is9x16 ? '22px' : is16x9 ? '16px' : '20px',
-                                                         }}
                                                      >
-                                                         <span className="text-[7px] font-black">{ar.key}</span>
+                                                         <span className="text-[8px] sm:text-[10px] font-black tracking-tighter">{ar.key}</span>
                                                      </div>
                                                  </div>
                                                  <span className={cn("text-[9px] sm:text-[10px] font-black uppercase tracking-widest", isSelected ? "text-primary" : "text-foreground/80")}>{ar.label}</span>
