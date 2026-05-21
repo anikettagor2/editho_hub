@@ -18,6 +18,8 @@ import { warmVideoInMemory } from "@/lib/video-preload";
 import { VideoPlayer } from "@/components/video-player";
 import { handleFileDownload } from "@/lib/download-utils";
 import { safeJsonParse, cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 
 type ReviewProject = {
@@ -653,7 +655,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         }
     };
 
-    const persistCurrentDraftComment = async (options?: { silent?: boolean }) => {
+    const persistCurrentDraftComment = async (options?: { silent?: boolean; forceNotify?: boolean }) => {
         if (!project?.id || !selectedRevisionId || savingComment) return false;
         
         const content = newComment.trim();
@@ -710,16 +712,49 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
             };
 
             const commentRef = await addDoc(collection(db, "comments"), newCommentPayload);
-            if (!options?.silent) {
-                setPendingNotificationComment({
-                    id: commentRef.id,
-                    ...newCommentPayload,
-                });
-            }
 
+            if (options?.forceNotify) {
+                try {
+                    const res = await handleNewComment(
+                        project.id,
+                        commentUserId,
+                        commentUserName,
+                        commentUserRole === "guest" ? "client" : (commentUserRole || "guest"),
+                        content || "Image comment",
+                        selectedRevisionId
+                    );
+
+                    if (!res.success) throw new Error(res.error || "WhatsApp notification failed.");
+
+                    await updateDoc(doc(db, "comments", commentRef.id), {
+                        notificationSubmitted: true,
+                        notificationSubmittedAt: Date.now(),
+                    });
+
+                    if (!options?.silent) {
+                        toast.success("Comment saved and WhatsApp notification sent!");
+                    }
+                } catch (notifyError: any) {
+                    console.error("Auto-submit notification failed:", notifyError);
+                    if (!options?.silent) {
+                        setPendingNotificationComment({
+                            id: commentRef.id,
+                            ...newCommentPayload,
+                        });
+                        toast.error(`Comment saved, but WhatsApp notification failed: ${notifyError.message || "Unknown error"}`);
+                    }
+                }
+            } else {
+                if (!options?.silent) {
+                    setPendingNotificationComment({
+                        id: commentRef.id,
+                        ...newCommentPayload,
+                    });
+                    toast.success("Comment visible in review. Submit it to send WhatsApp.");
+                }
+            }
             setNewComment("");
             clearAttachmentSelection();
-            if (!options?.silent) toast.success("Comment visible in review. Submit it to send WhatsApp.");
             return true;
         } catch (error) {
             console.error("Comment send error:", error);
@@ -737,7 +772,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
 
     const handleCloseReview = async () => {
         if (newComment.trim() || selectedAttachment) {
-            await persistCurrentDraftComment({ silent: true });
+            await persistCurrentDraftComment({ silent: true, forceNotify: true });
         }
         onClose();
     };
@@ -946,6 +981,9 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         () => comments.filter((comment) => comment.timestamp >= 0 && duration > 0),
         [comments, duration]
     );
+
+    const isTyping = newComment.trim() !== "" || !!selectedAttachment;
+    const hasPendingSubmit = !isTyping && !!pendingCommentForNotification && canSubmitCommentNotification(pendingCommentForNotification);
 
     const uiContent = (
         <div
@@ -1523,23 +1561,33 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                 <input type="file" ref={fileInputRef} className="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.txt,.zip,.rar,.7z" onChange={handleAttachmentSelect} />
                             </div>
                             <div className="flex items-center gap-2">
-                                {pendingCommentForNotification && canSubmitCommentNotification(pendingCommentForNotification) && (
+                                {hasPendingSubmit ? (
                                     <button
                                         onClick={() => handleSubmitCommentNotification(pendingCommentForNotification)}
                                         disabled={submittingCommentId === pendingCommentForNotification.id}
-                                        className="flex h-7 items-center rounded-lg bg-emerald-500 px-2.5 text-[9px] font-black uppercase tracking-widest text-emerald-950 transition-all hover:brightness-110 disabled:opacity-50"
+                                        className="flex h-7 px-4 items-center justify-center rounded-lg bg-emerald-600 text-white transition-all hover:bg-emerald-500 active:scale-95 disabled:opacity-50 lg:h-8 lg:px-5 lg:text-[10px] lg:font-black lg:uppercase lg:tracking-widest"
                                     >
+                                        {submittingCommentId === pendingCommentForNotification.id ? (
+                                            <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
+                                        ) : (
+                                            <Check className="h-3 w-3 mr-1.5" />
+                                        )}
                                         {submittingCommentId === pendingCommentForNotification.id ? "Submitting..." : "Submit"}
                                     </button>
+                                ) : (
+                                    <button
+                                        onClick={handleSendComment}
+                                        disabled={savingComment || !isTyping}
+                                        className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#5b55b8] text-white transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 lg:h-8 lg:w-auto lg:px-5 lg:bg-primary lg:text-primary-foreground lg:text-[10px] lg:font-black lg:uppercase lg:tracking-widest"
+                                    >
+                                        {(savingComment || uploadingAttachment) ? (
+                                            <Loader2 className="h-3 w-3 animate-spin" />
+                                        ) : (
+                                            <Send className="h-3 w-3" />
+                                        )}
+                                        <span className="hidden lg:inline ml-1.5">Send</span>
+                                    </button>
                                 )}
-                                <button
-                                    onClick={handleSendComment}
-                                    disabled={savingComment || (!newComment.trim() && !selectedAttachment)}
-                                    className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#5b55b8] text-white transition-all hover:brightness-110 active:scale-95 disabled:opacity-50 lg:h-8 lg:w-auto lg:px-5 lg:bg-primary lg:text-primary-foreground lg:text-[10px] lg:font-black lg:uppercase lg:tracking-widest"
-                                >
-                                    {(savingComment || uploadingAttachment) ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                                    <span className="hidden lg:inline">Send</span>
-                                </button>
                             </div>
                         </div>
                     </div>
