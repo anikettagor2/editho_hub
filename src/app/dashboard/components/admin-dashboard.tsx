@@ -1081,7 +1081,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
     // Prevent negative platform revenue
     if (price > (selectedProject.totalCost || 0)) {
       toast.error(
-        `Editor revenue cannot exceed project cost (â‚¹${selectedProject.totalCost || 0}). Negative platform margin is not allowed.`,
+        `Editor revenue cannot exceed project cost (\u20B9${selectedProject.totalCost || 0}). Negative platform margin is not allowed.`,
       );
       return;
     }
@@ -1125,7 +1125,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
             uid: currentUser?.uid || "system",
             displayName: currentUser?.displayName || "Admin",
           },
-          `Editor payout of â‚¹${result.payout?.amount ? result.payout.amount / 100 : "unknown"} initiated via RazorpayX. Payout ID: ${result.payoutId}`,
+          `Editor payout of \u20B9${result.payout?.amount ? result.payout.amount / 100 : "unknown"} initiated via RazorpayX. Payout ID: ${result.payoutId}`,
         );
       } else {
         toast.error(result.error || "Failed to initiate payout");
@@ -2342,10 +2342,10 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                           : "Not Assigned"}
                       </td>
                       <td className="px-3 py-3 text-xs font-black text-foreground tabular-nums whitespace-nowrap">
-                        â‚¹{(project.totalCost || 0).toLocaleString()}
+                        {"\u20B9"}{(project.totalCost || 0).toLocaleString()}
                       </td>
                       <td className="px-3 py-3 text-xs font-black text-blue-400 tabular-nums whitespace-nowrap">
-                        â‚¹{(project.editorPrice || 0).toLocaleString()}
+                        {"\u20B9"}{(project.editorPrice || 0).toLocaleString()}
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex flex-col gap-1 min-w-[140px]">
@@ -4655,7 +4655,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest ml-1">
-              Editor Revenue (â‚¹)
+              Editor Revenue ({"\u20B9"})
             </label>
             <input
               type="number"
@@ -4783,7 +4783,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
         <div className="space-y-6 mt-8">
           <div className="space-y-2">
             <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
-              Project Price (â‚¹)
+              Project Price ({"\u20B9"})
             </Label>
             <input
               className="w-full h-12 bg-muted/50 border border-border rounded-lg px-4 text-foreground focus:outline-none focus:border-primary/50 transition-all font-bold text-lg tabular-nums"
@@ -4977,7 +4977,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                             <div className="flex flex-col">
                               <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Lifetime Investment</span>
                               <span className="text-2xl font-black text-foreground tracking-tighter">
-                                â‚¹{(selectedUserDetail.lifetimeTotal || 0).toLocaleString()}
+                                {"\u20B9"}{(selectedUserDetail.lifetimeTotal || 0).toLocaleString()}
                               </span>
                             </div>
                             <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
@@ -4988,7 +4988,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                             <div className="flex flex-col">
                               <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Outstanding Liability</span>
                               <span className="text-2xl font-black text-red-500 tracking-tighter">
-                                â‚¹{(selectedUserDetail.pendingOutstanding || 0).toLocaleString()}
+                                {"\u20B9"}{(selectedUserDetail.pendingOutstanding || 0).toLocaleString()}
                               </span>
                             </div>
                             <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500">
@@ -5008,7 +5008,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                             <div className="flex items-center justify-between">
                               <span className="text-[9px] font-bold text-muted-foreground uppercase">Credit Ceiling</span>
                               <span className="text-[10px] font-black text-primary">
-                                â‚¹{(selectedUserDetail.creditLimit || 5000).toLocaleString()}
+                                {"\u20B9"}{(selectedUserDetail.creditLimit || 5000).toLocaleString()}
                               </span>
                             </div>
                             <input
@@ -5083,7 +5083,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                           key={`${formatKey}-${idx}`}
                                           className="text-[9px] font-bold px-2 py-0.5 rounded-md border border-primary/20 bg-primary/10 text-primary"
                                         >
-                                          {tier?.label || `Tier ${idx + 1}`}: â‚¹{(tier?.price || 0).toLocaleString()}
+                                          {tier?.label || `Tier ${idx + 1}`}: {"\u20B9"}{(tier?.price || 0).toLocaleString()}
                                         </span>
                                       ))}
                                     </div>
@@ -5097,7 +5097,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                     <p className="text-[10px] font-black text-foreground uppercase tracking-wider">
                                       {formatKey.replace(/_/g, " ")}
                                     </p>
-                                    <p className="text-[10px] font-black text-emerald-500">â‚¹{Number(price || 0).toLocaleString()}</p>
+                                    <p className="text-[10px] font-black text-emerald-500">{"\u20B9"}{Number(price || 0).toLocaleString()}</p>
                                   </div>
                                 ))}
                               </div>
@@ -5275,7 +5275,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         </div>
                         <div className="p-4 bg-card border border-border rounded-xl text-center">
                           <div className="text-xl font-black text-emerald-500">
-                            â‚¹
+                            {"\u20B9"}
                             {(
                               (selectedUserDetail as any).totalEarned || 0
                             ).toLocaleString()}
@@ -5286,7 +5286,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         </div>
                         <div className="p-4 bg-card border border-border rounded-xl text-center">
                           <div className="text-xl font-black text-red-500">
-                            â‚¹
+                            {"\u20B9"}
                             {(
                               (selectedUserDetail as any).pendingDues || 0
                             ).toLocaleString()}
@@ -5329,7 +5329,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                 {skill}
                               </span>
                               <span className="text-xs font-black text-foreground">
-                                â‚¹
+                                {"\u20B9"}
                                 {(
                                   (selectedUserDetail as any).skillPrices?.[
                                     skill
@@ -5370,7 +5370,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         </div>
                         <div className="p-4 bg-card border border-border rounded-xl text-center">
                           <div className="text-xl font-black text-emerald-500 truncate">
-                            â‚¹
+                            {"\u20B9"}
                             {projects
                               .filter(
                                 (p) =>
@@ -5437,7 +5437,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                       </div>
                       <div className="p-5 bg-card border border-border rounded-xl">
                         <div className="text-3xl font-black text-emerald-500">
-                          â‚¹
+                          {"\u20B9"}
                           {projects
                             .filter((p) =>
                               users.some(
@@ -6106,7 +6106,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         Global Order Value
                       </span>
                       <div className="text-3xl font-black text-foreground tabular-nums tracking-tighter mt-1">
-                        â‚¹{inspectProject.totalCost?.toLocaleString()}
+                        {"\u20B9"}{inspectProject.totalCost?.toLocaleString()}
                       </div>
                     </div>
 
@@ -6117,7 +6117,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                             Editor Revenue
                           </span>
                           <span className="text-lg font-black text-emerald-500 tabular-nums">
-                            â‚¹
+                            {"\u20B9"}
                             {inspectProject.editorPrice?.toLocaleString() ||
                               "0"}
                           </span>
@@ -6130,7 +6130,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                             Platform Margin
                           </span>
                           <span className="text-lg font-black text-primary tabular-nums">
-                            â‚¹
+                            {"\u20B9"}
                             {(
                               (inspectProject.totalCost || 0) -
                               (inspectProject.editorPrice || 0)
@@ -6436,7 +6436,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         <div className="pl-6">
                           <input
                             type="text"
-                            placeholder="Price (e.g. â‚¹500 - â‚¹1000)"
+                            placeholder={"Price (e.g. \u20B9500 - \u20B91000)"}
                             value={newEditor.skillPrices[skill] || ""}
                             onChange={(e) =>
                               setNewEditor({
@@ -6485,7 +6485,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
           <div className="flex flex-col items-center justify-center p-4 space-y-6">
             <div className="text-center space-y-1">
                 <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">Amount to Pay</p>
-                <p className="text-3xl font-black text-foreground tabular-nums">â‚¹{qrPaymentModal.amount.toLocaleString()}</p>
+                <p className="text-3xl font-black text-foreground tabular-nums">{"\u20B9"}{qrPaymentModal.amount.toLocaleString()}</p>
             </div>
             
             <div className="bg-white p-4 rounded-xl border border-border shadow-sm flex items-center justify-center overflow-hidden w-[200px] h-[200px]">
