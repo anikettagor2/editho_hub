@@ -14,18 +14,13 @@ const ASSET_PURGE_DELAY_MS = 24 * 60 * 60 * 1000;
 /**
  * ⚠️ CRITICAL BUSINESS RULE ⚠️
  * 
- * PROJECT COMPLETION IS TIED TO CLIENT DOWNLOADS ONLY
+ * PROJECT COMPLETION REQUIRES DELIVERY AND ADMIN-CONFIRMED EDITOR PAYMENT
  * 
- * A project is marked as "completed" ONLY when:
- * 1. The client successfully downloads the final video (registerDownload function)
- * 2. The clientHasDownloaded flag is set to true
+ * A delivered project remains "completed_pending_payment" until the admin
+ * confirms the editor payout from the QR settlement flow. A download can only
+ * set "completed" when that payout was already confirmed.
  * 
- * NO OTHER FUNCTION should manually set status to "completed"
- * - Editors CANNOT mark projects as complete
- * - Project Managers CANNOT mark projects as complete  
- * - Only client downloads trigger the "completed" status
- * 
- * @see registerDownload() - The ONLY function that should set status to 'completed'
+ * @see settleEditorPayment() - Admin QR confirmation completes delivered work.
  */
 
 function extractS3KeyFromUrl(url: string, bucketName: string | undefined): string | null {
@@ -113,6 +108,34 @@ async function purgeProjectAssets(projectId: string, projectData: any): Promise<
     });
 }
 
+export async function finalizePaidDeliveredProject(projectId: string) {
+    const projectRef = adminDb.collection("projects").doc(projectId);
+    const projectSnap = await projectRef.get();
+    if (!projectSnap.exists) {
+        return { success: false, error: "Project not found" };
+    }
+
+    const projectData = projectSnap.data() as Project & { completionNotifiedAt?: number };
+    if (projectData.status !== "completed" || !projectData.editorPaid || !projectData.clientHasDownloaded) {
+        return { success: false, error: "Project is not ready for paid completion" };
+    }
+
+    if (!projectData.assetsPurgedAt) {
+        await purgeProjectAssets(projectId, projectData);
+    }
+
+    if (!projectData.completionNotifiedAt) {
+        const { handleProjectCompleted } = await import("./notification-actions");
+        await handleProjectCompleted(projectId);
+        await projectRef.update({
+            completionNotifiedAt: Date.now(),
+            updatedAt: Date.now(),
+        });
+    }
+
+    return { success: true };
+}
+
 async function purgeProjectRevisionVideos(projectId: string): Promise<void> {
     const revisionsSnap = await adminDb
         .collection("revisions")
@@ -184,7 +207,7 @@ export async function registerDownload(projectId: string, revisionId: string) {
             downloadCount: nextCount
         });
 
-        const newStatus = (projectData.paymentStatus === 'full_paid' || projectData.downloadsUnlocked) ? 'completed' : 'completed_pending_payment';
+        const newStatus = projectData.editorPaid ? 'completed' : 'completed_pending_payment';
         const projectUpdate: any = {
             clientHasDownloaded: true,
             downloadedAt: now,
@@ -195,8 +218,6 @@ export async function registerDownload(projectId: string, revisionId: string) {
 
         console.log(`[registerDownload] Updating project status to: ${newStatus}`);
 
-        const isFirstSuccessfulClientDownload = !projectData.clientHasDownloaded;
-
         // Keep a retention timestamp for audit/history, even though raw assets are purged immediately now.
         if (!projectData.downloadRetentionStartedAt) {
             projectUpdate.downloadRetentionStartedAt = now;
@@ -205,13 +226,8 @@ export async function registerDownload(projectId: string, revisionId: string) {
 
         await projectRef.update(projectUpdate);
 
-        if (newStatus === 'completed' && !projectData.assetsPurgedAt) {
-            await purgeProjectAssets(projectId, projectData);
-        }
-
-        if (newStatus === 'completed' && isFirstSuccessfulClientDownload) {
-            const { handleProjectCompleted } = await import("./notification-actions");
-            await handleProjectCompleted(projectId);
+        if (newStatus === 'completed') {
+            await finalizePaidDeliveredProject(projectId);
         }
 
         let downloadUrl = data.videoUrl || "";

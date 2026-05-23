@@ -77,22 +77,41 @@ function formatCurrency(value?: number | null) {
     return inrFormatter.format(value || 0);
 }
 
-function StatusBadge({ status }: { status: string }) {
+function getEditorDisplayStatus(status?: string, editorPaid?: boolean) {
+    if (!status) return "active";
+    if (status === "completed" && !editorPaid) return "completed_pending_payment";
+    if (status === "approved") return "in_review";
+    if (status === "review") return "in_review";
+    return status;
+}
+
+function isEditorCompletedProject(project: Pick<Project, "status">) {
+    return project.status === "completed" || project.status === "archived";
+}
+
+function isEditorDeliveredProject(project: Pick<Project, "status">) {
+    return isEditorCompletedProject(project) || project.status === "completed_pending_payment";
+}
+
+function StatusBadge({ status, editorPaid }: { status: string; editorPaid?: boolean }) {
     const colors = {
         active: "bg-blue-500/10 text-blue-500 border-blue-500/20",
         in_production: "bg-indigo-500/10 text-indigo-500 border-indigo-500/20",
         in_review: "bg-amber-500/10 text-amber-500 border-amber-500/20",
         completed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
         approved: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-        completed_pending_payment: "bg-purple-500/10 text-purple-500 border-purple-500/20",
+        completed_pending_payment: "bg-amber-500/10 text-amber-500 border-amber-500/20",
         editor_assigned: "bg-sky-500/10 text-sky-500 border-sky-500/20",
         editor_not_assigned: "bg-rose-500/10 text-rose-500 border-rose-500/20",
     } as any;
 
-    const label = status.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+    const resolvedStatus = getEditorDisplayStatus(status, editorPaid);
+    const label = resolvedStatus === "completed_pending_payment"
+        ? "Completed (Payment Pending)"
+        : resolvedStatus.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     
     return (
-        <span className={cn("px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm transition-all hover:brightness-110", colors[status] || "bg-muted text-muted-foreground")}>
+        <span className={cn("px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm transition-all hover:brightness-110", colors[resolvedStatus] || "bg-muted text-muted-foreground")}>
             {label}
         </span>
     );
@@ -433,14 +452,15 @@ export function EditorDashboardV2({ preselectedProjectId }: { preselectedProject
         if (projectFilter === "editing") return ["active", "in_production", "editor_assigned"].includes(p.status);
         if (projectFilter === "in_review") return ["review", "in_review"].includes(p.status);
         if (projectFilter === "pending") return p.assignmentStatus !== "accepted" && p.assignmentStatus !== "rejected";
-        if (projectFilter === "completed") return ["completed", "approved"].includes(p.status);
+        if (projectFilter === "completed") return isEditorDeliveredProject(p);
         if (projectFilter === "pay_later") return Boolean(p.isPayLaterRequest);
-        if (projectFilter === "payment_due") return p.paymentStatus !== "full_paid" || p.status === "completed_pending_payment";
+        if (projectFilter === "payment_due") return p.status === "completed_pending_payment" && !p.editorPaid;
         return true;
     });
-    const earnings = projects.filter(p => ['completed', 'approved', 'completed_pending_payment'].includes(p.status));
-    const totalPaid = earnings.filter(p => p.editorPaid).reduce((acc, p) => acc + (p.editorPrice || 0), 0);
-    const pendingEarnings = earnings.filter(p => !p.editorPaid).reduce((acc, p) => acc + (p.editorPrice || 0), 0);
+    const completedProjects = projects.filter((p) => isEditorCompletedProject(p));
+    const financeProjects = projects.filter((p) => isEditorDeliveredProject(p));
+    const totalPaid = financeProjects.filter(p => p.editorPaid).reduce((acc, p) => acc + (p.editorPrice || 0), 0);
+    const pendingEarnings = financeProjects.filter(p => !p.editorPaid).reduce((acc, p) => acc + (p.editorPrice || 0), 0);
     const totalProjectPages = Math.max(1, Math.ceil(filteredProjects.length / rowsPerPage));
     const paginatedProjects = filteredProjects.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
     const activeProjectCount = projects.filter(p => ['active', 'in_production', 'in_review'].includes(p.status)).length;
@@ -498,9 +518,9 @@ export function EditorDashboardV2({ preselectedProjectId }: { preselectedProject
                 {/* --- Stats Overview --- */}
                 <div className="grid grid-cols-2 gap-2.5 md:gap-3 xl:grid-cols-4">
                     <StatCard icon={Gauge} label="Active Projects" value={activeProjectCount} trend={pendingAssignmentCount > 0 ? `${pendingAssignmentCount} pending` : undefined} variant="primary" />
-                    <StatCard icon={CheckCircle2} label="Completed" value={earnings.length} subValue="All settled and due projects" />
+                    <StatCard icon={CheckCircle2} label="Completed" value={completedProjects.length} subValue="Paid and closed projects" />
                     <StatCard icon={Banknote} label="Paid Earnings" value={formatCurrency(totalPaid)} subValue="Successfully settled" />
-                    <StatCard icon={Wallet} label="Pending" value={formatCurrency(pendingEarnings)} subValue="Awaiting client settlement" />
+                    <StatCard icon={Wallet} label="Pending" value={formatCurrency(pendingEarnings)} subValue="Awaiting admin settlement" />
                 </div>
 
                 {/* --- Project Controls --- */}
@@ -573,7 +593,7 @@ export function EditorDashboardV2({ preselectedProjectId }: { preselectedProject
                                     <option value="pending" className="bg-card text-foreground">Pending</option>
                                     <option value="completed" className="bg-card text-foreground">Completed</option>
                                     <option value="pay_later" className="bg-card text-foreground">Pay Later</option>
-                                    <option value="payment_due" className="bg-card text-foreground">Payment Due</option>
+                                    <option value="payment_due" className="bg-card text-foreground">Completed (Payment Pending)</option>
                                 </select>
                                 <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-muted-foreground">
                                     <ChevronRight className="h-3.5 w-3.5 rotate-90" />
@@ -661,15 +681,15 @@ export function EditorDashboardV2({ preselectedProjectId }: { preselectedProject
                                 <div className="flex items-center justify-between">
                                     <h3 className="text-xl font-black text-foreground tracking-tight">Earning History</h3>
                                     <div className="text-[10px] font-black text-muted-foreground uppercase tracking-widest bg-muted/30 px-3 py-1 rounded-full border border-border/50">
-                                        {earnings.length} Projects
+                                        {financeProjects.length} Delivered Projects
                                     </div>
                                 </div>
                                 
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {earnings.map((p) => (
+                                    {financeProjects.map((p) => (
                                         <FinanceCard key={p.id} project={p} />
                                     ))}
-                                    {earnings.length === 0 && (
+                                    {financeProjects.length === 0 && (
                                         <div className="col-span-full py-20 text-center space-y-6 bg-muted/10 rounded-[32px] border border-dashed border-border/50">
                                             <div className="h-20 w-20 bg-muted/20 rounded-2xl flex items-center justify-center mx-auto text-muted-foreground">
                                                 <Banknote size={32} />
@@ -809,25 +829,26 @@ function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets
 
     const isPending = project.assignmentStatus !== 'accepted' && project.assignmentStatus !== 'rejected';
     const isAccepted = project.assignmentStatus === 'accepted';
+    const isDeliveryLocked = isEditorDeliveredProject(project);
 
     return (
         <motion.div 
             whileHover={{ y: -6 }}
             className={cn(
                 "group bg-card border border-border/50 rounded-2xl overflow-hidden shadow-2xl shadow-black/5 hover:shadow-primary/10 transition-all flex flex-col relative",
-                isPending && "ring-4 ring-primary/30 bg-primary/[0.03] animate-pulse-subtle"
+                isPending && !isDeliveryLocked && "ring-4 ring-primary/30 bg-primary/[0.03] animate-pulse-subtle"
             )}
         >
             {/* Top Bar for status/timer */}
             <div className="flex items-center justify-between px-5 py-3 bg-muted/20 border-b border-border/50">
-                <StatusBadge status={project.status} />
-                {isPending && timeLeft && (
+                <StatusBadge status={project.status} editorPaid={project.editorPaid} />
+                {isPending && !isDeliveryLocked && timeLeft && (
                     <div className="flex items-center gap-2 text-primary font-black text-[10px] uppercase tracking-widest">
                         <Timer size={12} className={cn(timeLeft === 'EXPIRED' ? 'text-rose-500' : 'animate-pulse')} />
                         {timeLeft === 'EXPIRED' ? 'INVITATION EXPIRED' : `EXPIRES IN ${timeLeft}`}
                     </div>
                 )}
-                {!isPending && project.deadline && (
+                {!isPending && !isDeliveryLocked && project.deadline && (
                     <div className="flex items-center gap-2 text-rose-500 font-black text-[10px] uppercase tracking-widest">
                         <Clock size={12} />
                         Due {new Date(project.deadline).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
@@ -871,7 +892,14 @@ function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets
 
                 {/* Action Section */}
                 <div className="flex items-center gap-2 pt-1">
-                    {isPending ? (
+                    {isDeliveryLocked ? (
+                        <div className="flex w-full items-center justify-between rounded-xl border border-border/50 bg-muted/30 px-4 py-3">
+                            <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Editor Share</span>
+                            <span className={cn("text-[10px] font-black uppercase tracking-widest", project.editorPaid ? "text-emerald-500" : "text-amber-500")}>
+                                {project.editorPaid ? "Paid by Admin" : "Payment Pending"}
+                            </span>
+                        </div>
+                    ) : isPending ? (
                         <button 
                             onClick={onAssets}
                             className="flex-1 h-11 rounded-xl bg-primary text-white font-black text-xs shadow-lg shadow-primary/20 hover:shadow-primary/40 hover:brightness-110 active:scale-95 transition-all flex items-center justify-center gap-2 group/btn"
@@ -915,13 +943,72 @@ function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets
 }
 
 function ProjectTable({ projects, allUsers, projectRevisions, startIndex = 0, onUpload, onReview, onAssets, onRespond, isResponding }: any) {
+    const tableContainerRef = useRef<HTMLDivElement>(null);
+    const topScrollRef = useRef<HTMLDivElement>(null);
+    const [tableWidth, setTableWidth] = useState(0);
+
+    useEffect(() => {
+        const tableContainer = tableContainerRef.current;
+        const topScroll = topScrollRef.current;
+        if (!tableContainer || !topScroll) return;
+
+        const syncFromTable = () => {
+            if (topScroll.scrollLeft !== tableContainer.scrollLeft) {
+                topScroll.scrollLeft = tableContainer.scrollLeft;
+            }
+        };
+
+        const syncFromTop = () => {
+            if (tableContainer.scrollLeft !== topScroll.scrollLeft) {
+                tableContainer.scrollLeft = topScroll.scrollLeft;
+            }
+        };
+
+        tableContainer.addEventListener("scroll", syncFromTable);
+        topScroll.addEventListener("scroll", syncFromTop);
+
+        const observer = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                setTableWidth(entry.target.scrollWidth);
+            }
+        });
+
+        observer.observe(tableContainer);
+        setTableWidth(tableContainer.scrollWidth);
+        syncFromTable();
+
+        return () => {
+            tableContainer.removeEventListener("scroll", syncFromTable);
+            topScroll.removeEventListener("scroll", syncFromTop);
+            observer.disconnect();
+        };
+    }, [projects, projectRevisions]);
+
     return (
         <div className="overflow-hidden rounded-2xl border border-border/50 bg-card shadow-xl shadow-black/5">
-            <div className="overflow-x-auto">
-                <table className="min-w-[1220px] w-full table-fixed text-left">
+            <div
+                ref={topScrollRef}
+                className="overflow-x-auto overflow-y-hidden h-[6px] w-full transition-opacity duration-300"
+                style={{ opacity: tableWidth > (tableContainerRef.current?.offsetWidth || 0) ? 1 : 0 }}
+            >
+                <div style={{ width: tableWidth, height: "1px" }} />
+            </div>
+            <div ref={tableContainerRef} className="overflow-x-auto">
+                <table className="min-w-[1080px] w-full table-fixed text-left">
+                    <colgroup>
+                        <col className="w-[54px]" />
+                        <col className="w-[230px]" />
+                        <col className="w-[118px]" />
+                        <col className="w-[118px]" />
+                        <col className="w-[150px]" />
+                        <col className="w-[118px]" />
+                        <col className="w-[150px]" />
+                        <col className="w-[112px]" />
+                        <col className="w-[170px]" />
+                    </colgroup>
                     <thead>
                         <tr className="bg-muted/30">
-                            {["S.No", "Project", "Type", "PM", "Status", "Created", "Last Draft", "Editor Share", "Actions"].map((header) => (
+                            {["S.No", "Project", "Type", "PM", "Status", "Created", "Last Draft", "Editor Share", "Payment / Actions"].map((header) => (
                                 <th key={header} className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
                                     {header}
                                 </th>
@@ -960,25 +1047,23 @@ function ProjectTable({ projects, allUsers, projectRevisions, startIndex = 0, on
 function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onReview, onAssets, onRespond, isResponding }: any) {
     const isPending = project.assignmentStatus !== "accepted" && project.assignmentStatus !== "rejected";
     const isAccepted = project.assignmentStatus === "accepted";
+    const isDeliveryLocked = isEditorDeliveredProject(project);
 
     return (
         <tr className="align-top transition-colors hover:bg-muted/50 group">
             <td className="px-3 py-2 text-xs font-bold text-foreground/80 tabular-nums">{index + 1}</td>
             <td className="px-3 py-2">
-                <div className="min-w-[280px] max-w-[400px]">
+                <div className="max-w-[230px]">
                     <p className="text-xs font-bold text-foreground leading-tight">{project.name}</p>
                     <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ID: {project.id.slice(0, 10)}</p>
-                    <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
-                        {project.description || "Client has not added a project description yet."}
-                    </p>
                 </div>
             </td>
             <td className="px-3 py-2 text-xs text-foreground font-semibold whitespace-nowrap">{project.videoFormat || project.videoType || "Not set"}</td>
             <td className="px-3 py-2 text-xs text-foreground font-semibold whitespace-nowrap">{pm?.displayName || "System Manager"}</td>
             <td className="px-3 py-2">
                 <div className="space-y-1">
-                    <StatusBadge status={project.status} />
-                    {isPending && (
+                    <StatusBadge status={project.status} editorPaid={project.editorPaid} />
+                    {isPending && !isDeliveryLocked && (
                         <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest text-amber-500">
                             <Clock size={12} className="animate-pulse" />
                             Awaiting Response
@@ -1009,8 +1094,17 @@ function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onRevie
             </td>
             <td className="px-3 py-2 text-xs font-black text-blue-400 whitespace-nowrap">{formatCurrency(project.editorPrice)}</td>
             <td className="px-3 py-2">
-                <div className="flex min-w-[220px] flex-wrap gap-1.5">
-                    {isPending ? (
+                <div className="flex min-w-[160px] flex-wrap gap-1.5">
+                    {isDeliveryLocked ? (
+                        <span className={cn(
+                            "inline-flex rounded-lg border px-2.5 py-2 text-[10px] font-black uppercase tracking-widest",
+                            project.editorPaid
+                                ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500"
+                                : "border-amber-500/20 bg-amber-500/10 text-amber-500"
+                        )}>
+                            {project.editorPaid ? "Paid by Admin" : "Payment Pending"}
+                        </span>
+                    ) : isPending ? (
                         <button
                             onClick={onAssets}
                             className="h-8 px-3 rounded-lg bg-primary text-[10px] font-black uppercase tracking-widest text-white hover:brightness-110 active:scale-95 transition-all flex items-center gap-1.5 shadow-md shadow-primary/20"
@@ -1035,7 +1129,7 @@ function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onRevie
                             )}
                         </>
                     )}
-                    {!isPending && (
+                    {!isPending && !isDeliveryLocked && (
                         <p className="mt-1 text-[10px] font-medium text-muted-foreground">
                             Client details and uploads are available inside Assets.
                         </p>
@@ -1423,11 +1517,11 @@ function FinanceCard({ project }: any) {
             </div>
             <div className="space-y-1">
                 <h4 className="font-bold text-foreground truncate">{project.name}</h4>
-                <p className="text-xs text-muted-foreground">Completed on {new Date(project.updatedAt).toLocaleDateString()}</p>
+                <p className="text-xs text-muted-foreground">{project.editorPaid ? "Completed" : "Delivered"} on {new Date(project.updatedAt).toLocaleDateString()}</p>
             </div>
             <div className="pt-2 border-t border-border/30 flex items-center justify-between">
                 <span className={cn("text-[10px] font-bold uppercase", project.editorPaid ? "text-emerald-500" : "text-amber-500")}>
-                    {project.editorPaid ? "Paid" : "Pending"}
+                    {project.editorPaid ? "Paid by Admin" : "Not Paid"}
                 </span>
                 <span className="text-[10px] font-bold text-muted-foreground uppercase">{project.category}</span>
             </div>

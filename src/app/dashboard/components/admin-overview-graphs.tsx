@@ -2,116 +2,29 @@ import { useState, useMemo } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
 import { Project, User } from '@/types/schema';
 import { motion } from 'framer-motion';
-import { format, subDays, startOfDay, endOfDay, isWithinInterval, startOfWeek, endOfWeek, startOfMonth, subMonths, startOfYear, subYears } from 'date-fns';
 import { cn } from '@/lib/utils';
 import { Calendar, TrendingUp, Users, FolderOpen, Activity, Shield } from 'lucide-react';
+import { AdminAnalyticsRange, buildAdminAnalytics } from '@/lib/admin-analytics';
 
 interface AdminOverviewGraphsProps {
     projects: Project[];
     users: User[];
+    timeRange: AdminAnalyticsRange;
+    onTimeRangeChange: (timeRange: AdminAnalyticsRange) => void;
 }
 
-type TimeRange = 'Day' | 'Week' | 'Month' | 'Year';
-
-export function AdminOverviewGraphs({ projects, users }: AdminOverviewGraphsProps) {
-    const [timeRange, setTimeRange] = useState<TimeRange>('Week');
+export function AdminOverviewGraphs({ projects, users, timeRange, onTimeRangeChange }: AdminOverviewGraphsProps) {
     const [activeMiniChart, setActiveMiniChart] = useState<'completed' | 'clients' | 'team'>('completed');
 
-    const chartData = useMemo(() => {
-        const now = new Date();
-        let periods = 7;
-        let getStartOfPeriod: (date: Date) => Date;
-        let getFormatString: string;
-        let getSubPeriod: (date: Date, amount: number) => Date;
-
-        switch (timeRange) {
-            case 'Day':
-                periods = 24;
-                getStartOfPeriod = (date) => new Date(date.getFullYear(), date.getMonth(), date.getDate(), date.getHours());
-                getFormatString = 'HH:00';
-                getSubPeriod = (date, amount) => new Date(date.getTime() - amount * 60 * 60 * 1000);
-                break;
-            case 'Week':
-                periods = 7;
-                getStartOfPeriod = startOfDay;
-                getFormatString = 'EEE';
-                getSubPeriod = subDays;
-                break;
-            case 'Month':
-                periods = 30;
-                getStartOfPeriod = startOfDay;
-                getFormatString = 'dd MMM';
-                getSubPeriod = subDays;
-                break;
-            case 'Year':
-                periods = 12;
-                getStartOfPeriod = startOfMonth;
-                getFormatString = 'MMM yyyy';
-                getSubPeriod = subMonths;
-                break;
-        }
-
-        const dataPoints = Array.from({ length: periods }).map((_, i) => {
-            const date = getSubPeriod(now, periods - 1 - i);
-            return {
-                timestamp: getStartOfPeriod(date).getTime(),
-                display: format(date, getFormatString),
-                revenue: 0,
-                profit: 0,
-                completedProjects: 0,
-                newClients: 0,
-                newTeam: 0,
-            };
-        });
-
-        // Fill Revenue & Projects
-        projects.forEach(project => {
-            if (!project.createdAt) return;
-            const projectDate = new Date(project.createdAt);
-            
-            // Find appropriate bucket
-            const bucket = dataPoints.find((dp, index) => {
-                const nextDpTimestamp = index < dataPoints.length - 1 ? dataPoints[index + 1].timestamp : Infinity;
-                return projectDate.getTime() >= dp.timestamp && projectDate.getTime() < nextDpTimestamp;
-            });
-
-            if (bucket) {
-                bucket.revenue += (project.amountPaid || 0);
-                if (project.totalCost && project.assignedEditorId) {
-                    bucket.profit += (project.totalCost - (project.editorPrice || 0));
-                }
-                if (project.status === 'completed') {
-                    bucket.completedProjects += 1;
-                }
-            }
-        });
-
-        // Fill Clients & Team
-        users.forEach(user => {
-            if (!user.createdAt) return;
-            const userDate = new Date(user.createdAt);
-            
-            const bucket = dataPoints.find((dp, index) => {
-                const nextDpTimestamp = index < dataPoints.length - 1 ? dataPoints[index + 1].timestamp : Infinity;
-                return userDate.getTime() >= dp.timestamp && userDate.getTime() < nextDpTimestamp;
-            });
-
-            if (bucket) {
-                if (user.role === 'client') {
-                    bucket.newClients += 1;
-                } else if (['admin', 'project_manager', 'editor', 'sales_executive'].includes(user.role)) {
-                    bucket.newTeam += 1;
-                }
-            }
-        });
-
-        return dataPoints;
-    }, [projects, users, timeRange]);
-
-    const totalRevenue = chartData.reduce((acc, curr) => acc + curr.revenue, 0);
-    const totalCompleted = chartData.reduce((acc, curr) => acc + curr.completedProjects, 0);
-    const totalClients = chartData.reduce((acc, curr) => acc + curr.newClients, 0);
-    const totalTeam = chartData.reduce((acc, curr) => acc + curr.newTeam, 0);
+    const analytics = useMemo(
+        () => buildAdminAnalytics(projects, users, timeRange),
+        [projects, users, timeRange]
+    );
+    const chartData = analytics.chartData;
+    const totalRevenue = analytics.totalRevenue;
+    const totalCompleted = analytics.totalCompletedProjects;
+    const totalClients = analytics.totalClients;
+    const totalTeam = analytics.totalTeamMembers;
 
     const CustomTooltip = ({ active, payload, label }: any) => {
         if (active && payload && payload.length) {
@@ -156,10 +69,10 @@ export function AdminOverviewGraphs({ projects, users }: AdminOverviewGraphsProp
                 </div>
                 
                 <div className="flex bg-muted/50 border border-border rounded-lg p-1">
-                    {(['Day', 'Week', 'Month', 'Year'] as TimeRange[]).map(r => (
+                    {(['Day', 'Week', 'Month', 'Year'] as AdminAnalyticsRange[]).map(r => (
                         <button
                             key={r}
-                            onClick={() => setTimeRange(r)}
+                            onClick={() => onTimeRangeChange(r)}
                             className={cn(
                                 "px-4 py-1.5 text-[9px] font-bold uppercase tracking-widest rounded transition-all flex items-center gap-1.5",
                                 timeRange === r 

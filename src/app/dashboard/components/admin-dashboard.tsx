@@ -108,6 +108,7 @@ import {
   updateUserDetails,
   assignManagerToClient,
   settleEditorPayment,
+  repairLegacyEditorCompletionStatuses,
 } from "@/app/actions/admin-actions";
 import { initiateEditorPayout, bulkInitiateEditorPayouts } from "@/app/actions/payout-actions";
 import { AdminOverviewGraphs } from "./admin-overview-graphs";
@@ -115,6 +116,12 @@ import { AdminPerformanceTab } from "./admin-performance";
 import { ClientDocuments } from "./client-documents";
 import { downloadCSV, formatProjectForExport, formatUserForExport } from "@/lib/export-utils";
 import { handleFileDownload } from "@/lib/download-utils";
+import {
+  AdminAnalyticsRange,
+  buildAdminAnalytics,
+  buildAdminFinanceSummary,
+  getProjectRevenueValue,
+} from "@/lib/admin-analytics";
 
 import { IndicatorCard } from "@/components/ui/indicator-card";
 
@@ -185,7 +192,7 @@ function ProjectStatusBadges({ project }: { project: any }) {
     });
   } else if (project.status === "completed_pending_payment") {
     badges.push({
-      label: "Completed (Payment Due)",
+      label: "Delivered - Editor Payout Due",
       color: "text-amber-400",
       bg: "bg-amber-400/10",
       border: "border-amber-400/20",
@@ -490,18 +497,10 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
 
   // Payout Processing State
   const [payoutProcessing, setPayoutProcessing] = useState<Record<string, boolean>>({});
+  const [isRepairingLegacyStatuses, setIsRepairingLegacyStatuses] = useState(false);
 
-  const [stats, setStats] = useState({
-    revenue: 0,
-    activeProjects: 0,
-    totalDuePending: 0,
-    clientPending: 0,
-    editorPending: 0,
-    avgPayout: 0,
-    profit: 0,
-    totalClients: 0,
-    lastPaymentDate: null as number | null,
-  });
+  const [overviewTimeRange, setOverviewTimeRange] = useState<AdminAnalyticsRange>("Week");
+  const [expandedFinanceGroups, setExpandedFinanceGroups] = useState<Record<string, boolean>>({});
 
   const [whatsappTemplates, setWhatsappTemplates] = useState<any>({});
   const [isUpdatingTemplates, setIsUpdatingTemplates] = useState(false);
@@ -796,67 +795,97 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
   useEffect(() => {
     if (projects.length > 0 || users.length > 0) {
       setLoading(false);
-      const realizedRevenue = projects.reduce(
-        (acc, curr) => acc + (curr.amountPaid || 0),
-        0,
-      );
-      const clientPending = projects.reduce(
-        (acc, curr) =>
-          acc + Math.max(0, (curr.totalCost || 0) - (curr.amountPaid || 0)),
-        0,
-      );
-
-      const editorPending = projects.reduce((acc, curr) => {
-        if (
-          curr.assignedEditorId &&
-          !curr.editorPaid &&
-          curr.clientHasDownloaded
-        ) {
-          return acc + (curr.editorPrice || 0);
-        }
-        return acc;
-      }, 0);
-
-      const totalEditorpayouts = projects.reduce(
-        (acc, curr) => acc + (curr.editorPrice || 0),
-        0,
-      );
-      const projectsWithEditors = projects.filter(
-        (p) => p.assignedEditorId,
-      ).length;
-      const avgPayout =
-        projectsWithEditors > 0 ? totalEditorpayouts / projectsWithEditors : 0;
-
-      const profit = projects.reduce((acc, curr) => {
-        if (curr.totalCost && curr.assignedEditorId) {
-          return acc + (curr.totalCost - (curr.editorPrice || 0));
-        }
-        return acc;
-      }, 0);
-
-      const projectsWithPayment = projects.filter(
-        (p) => (p.amountPaid || 0) > 0,
-      );
-      const lastPaymentDate =
-        projectsWithPayment.length > 0
-          ? Math.max(...projectsWithPayment.map((p) => p.updatedAt))
-          : null;
-
-      setStats({
-        revenue: realizedRevenue,
-        totalDuePending: clientPending,
-        clientPending,
-        editorPending,
-        avgPayout,
-        profit,
-        activeProjects: projects.filter(
-          (p) => !["completed", "approved", "archived"].includes(p.status),
-        ).length,
-        totalClients: users.filter((u) => u.role === "client").length,
-        lastPaymentDate,
-      });
     }
-  }, [projects, users]);
+  }, [projects.length, users.length]);
+
+  const overviewStats = useMemo(
+    () => buildAdminAnalytics(projects, users, overviewTimeRange),
+    [projects, users, overviewTimeRange],
+  );
+
+  const financeStats = useMemo(
+    () => buildAdminFinanceSummary(projects),
+    [projects],
+  );
+
+  const toggleFinanceGroup = (groupKey: string) => {
+    setExpandedFinanceGroups((prev) => ({
+      ...prev,
+      [groupKey]: !prev[groupKey],
+    }));
+  };
+
+  const clientDueGroups = useMemo(
+    () =>
+      users
+        .filter((u) => u.role === "client")
+        .map((client) => {
+          const dueProjects = projects
+            .filter((project) => project.clientId === client.uid)
+            .map((project) => {
+              const dueAmount = Math.max(
+                0,
+                getProjectRevenueValue(project) - (project.amountPaid || 0),
+              );
+              return { project, dueAmount };
+            })
+            .filter(({ dueAmount }) => dueAmount > 0)
+            .sort(
+              (a, b) =>
+                (b.project.updatedAt || b.project.createdAt || 0) -
+                (a.project.updatedAt || a.project.createdAt || 0),
+            );
+
+          return {
+            client,
+            dueProjects,
+            totalDue: dueProjects.reduce(
+              (sum, { dueAmount }) => sum + dueAmount,
+              0,
+            ),
+          };
+        })
+        .filter((group) => group.totalDue > 0)
+        .sort((a, b) => b.totalDue - a.totalDue),
+    [projects, users],
+  );
+
+  const editorDueGroups = useMemo(
+    () =>
+      users
+        .filter((u) => u.role === "editor")
+        .map((editor) => {
+          const dueProjects = projects
+            .filter(
+              (project) =>
+                project.assignedEditorId === editor.uid &&
+                project.clientHasDownloaded &&
+                !project.editorPaid &&
+                (project.editorPrice || 0) > 0,
+            )
+            .map((project) => ({
+              project,
+              dueAmount: project.editorPrice || 0,
+            }))
+            .sort(
+              (a, b) =>
+                (b.project.updatedAt || b.project.createdAt || 0) -
+                (a.project.updatedAt || a.project.createdAt || 0),
+            );
+
+          return {
+            editor,
+            dueProjects,
+            totalDue: dueProjects.reduce(
+              (sum, { dueAmount }) => sum + dueAmount,
+              0,
+            ),
+          };
+        })
+        .filter((group) => group.totalDue > 0)
+        .sort((a, b) => b.totalDue - a.totalDue),
+    [projects, users],
+  );
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -958,7 +987,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
   const handleSettlePayment = async (projectId: string) => {
     if (
       !confirm(
-        "Are you sure you want to mark this Pay Later project as Settled (fully paid)?",
+        "Are you sure you want to mark this client due as settled (fully paid)?",
       )
     )
       return;
@@ -973,12 +1002,19 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
   };
 
   const handleSettleAllClientDues = async (clientId: string) => {
-    if (!confirm("Are you sure you want to mark ALL pending Pay Later projects for this client as Settled (fully paid)?")) return;
+    if (
+      !confirm(
+        "Are you sure you want to mark all pending client dues for this account as settled?",
+      )
+    )
+      return;
 
     const loadingToast = toast.loading("Settling all dues...");
     try {
       const clientProjects = projects.filter(
-        (p) => p.clientId === clientId && p.paymentStatus !== "full_paid" && ((p as any).isPayLaterRequest || users.find(u => u.uid === clientId)?.payLater),
+        (p) =>
+          p.clientId === clientId &&
+          Math.max(0, getProjectRevenueValue(p) - (p.amountPaid || 0)) > 0,
       );
 
       let successCount = 0;
@@ -1045,7 +1081,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
     // Prevent negative platform revenue
     if (price > (selectedProject.totalCost || 0)) {
       toast.error(
-        `Editor revenue cannot exceed project cost (₹${selectedProject.totalCost || 0}). Negative platform margin is not allowed.`,
+        `Editor revenue cannot exceed project cost (â‚¹${selectedProject.totalCost || 0}). Negative platform margin is not allowed.`,
       );
       return;
     }
@@ -1089,7 +1125,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
             uid: currentUser?.uid || "system",
             displayName: currentUser?.displayName || "Admin",
           },
-          `Editor payout of ₹${result.payout?.amount ? result.payout.amount / 100 : "unknown"} initiated via RazorpayX. Payout ID: ${result.payoutId}`,
+          `Editor payout of â‚¹${result.payout?.amount ? result.payout.amount / 100 : "unknown"} initiated via RazorpayX. Payout ID: ${result.payoutId}`,
         );
       } else {
         toast.error(result.error || "Failed to initiate payout");
@@ -1125,7 +1161,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
     else toast.error("Failed to initiate automated payouts");
   };
 
-  const handleMarkEditorManualPaid = async (editorId: string) => {
+  const handleConfirmQrEditorPaid = async (editorId: string) => {
     const editorProjects = projects.filter(
       (p) =>
         p.assignedEditorId === editorId &&
@@ -1136,24 +1172,59 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
 
     if (
       !confirm(
-        `Are you sure you want to mark ${editorProjects.length} projects as manually paid?`,
+        `Confirm QR payment for ${editorProjects.length} project payout${editorProjects.length === 1 ? "" : "s"} and mark them complete?`,
       )
     )
       return;
 
-    const loadingToast = toast.loading("Marking projects as paid...");
+    const loadingToast = toast.loading("Confirming QR payouts...");
     try {
-      const batch = writeBatch(db);
+      let successCount = 0;
       for (const p of editorProjects) {
-        batch.update(doc(db, "projects", p.id), {
-          editorPaid: true,
-          updatedAt: Date.now(),
-        });
+        const res = await settleEditorPayment(
+          p.id,
+          {
+            uid: currentUser?.uid || "system",
+            displayName: currentUser?.displayName || "Admin",
+            designation: "Admin",
+          },
+          "qr",
+        );
+        if (res.success) successCount += 1;
       }
-      await batch.commit();
-      toast.success(`Successfully marked ${editorProjects.length} projects as paid`, { id: loadingToast });
+      if (successCount !== editorProjects.length) {
+        toast.error(`Confirmed ${successCount} of ${editorProjects.length} QR payouts`, { id: loadingToast });
+        return;
+      }
+      toast.success(`Confirmed ${successCount} QR payout${successCount === 1 ? "" : "s"}; projects completed`, { id: loadingToast });
     } catch (err: any) {
-      toast.error(err.message || "Failed to mark projects as paid", { id: loadingToast });
+      toast.error(err.message || "Failed to confirm QR payouts", { id: loadingToast });
+    }
+  };
+
+  const handleRepairLegacyEditorStatuses = async () => {
+    if (!currentUser?.uid || isRepairingLegacyStatuses) return;
+    if (!confirm("Repair older delivered projects to match the editor payout completion rule?")) return;
+
+    setIsRepairingLegacyStatuses(true);
+    const loadingToast = toast.loading("Repairing legacy project statuses...");
+    try {
+      const result = await repairLegacyEditorCompletionStatuses(currentUser.uid);
+      if (!result.success) {
+        toast.error(result.error || "Failed to repair legacy statuses", { id: loadingToast });
+        return;
+      }
+
+      const changed = (result.updatedToPending || 0) + (result.updatedToCompleted || 0);
+      const skipped = result.skippedWithoutDeliveryEvidence || 0;
+      toast.success(
+        `Repaired ${changed} project${changed === 1 ? "" : "s"}${skipped ? `; ${skipped} need manual review` : ""}.`,
+        { id: loadingToast },
+      );
+    } catch (error: any) {
+      toast.error(error.message || "Failed to repair legacy statuses", { id: loadingToast });
+    } finally {
+      setIsRepairingLegacyStatuses(false);
     }
   };
 
@@ -1476,7 +1547,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
             {/* Two-column assignment grid */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
 
-              {/* ── Sales Executive Block ── */}
+              {/* â”€â”€ Sales Executive Block â”€â”€ */}
               <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
                 <div className="flex items-center gap-2">
                   <div className="h-7 w-7 rounded-lg bg-amber-500/10 flex items-center justify-center">
@@ -1536,7 +1607,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                 </button>
               </div>
 
-              {/* ── Project Manager Block ── */}
+              {/* â”€â”€ Project Manager Block â”€â”€ */}
               <div className="space-y-3 p-4 rounded-xl border border-border bg-muted/20">
                 <div className="flex items-center gap-2">
                   <div className="h-7 w-7 rounded-lg bg-blue-500/10 flex items-center justify-center">
@@ -1692,7 +1763,12 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
       {/* Graphs - Shown above numbers on overview */}
       {activeTab === "overview" && (
         <div className="mb-4">
-          <AdminOverviewGraphs projects={projects} users={users} />
+          <AdminOverviewGraphs
+            projects={projects}
+            users={users}
+            timeRange={overviewTimeRange}
+            onTimeRangeChange={setOverviewTimeRange}
+          />
         </div>
       )}
 
@@ -1700,49 +1776,49 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
       {activeTab === "overview" && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 mb-8">
           <IndicatorCard
-            label="Total Earned"
-            value={`₹${stats.revenue.toLocaleString()}`}
+            label="Total Revenue"
+            value={`\u20B9${overviewStats.totalRevenue.toLocaleString()}`}
             icon={<IndianRupee className="h-4 w-4" />}
-            subtext="Total payments received"
+            subtext="Project value in selected range"
           />
           <IndicatorCard
             label="Client Pending Dues"
-            value={`₹${stats.clientPending.toLocaleString()}`}
-            alert={stats.clientPending > 0}
+            value={`\u20B9${overviewStats.clientPending.toLocaleString()}`}
+            alert={overviewStats.clientPending > 0}
             icon={<Clock className="h-4 w-4" />}
-            subtext="Payments from clients"
+            subtext="Outstanding in selected range"
           />
           <IndicatorCard
             label="Editor Pending Dues"
-            value={`₹${stats.editorPending.toLocaleString()}`}
-            alert={stats.editorPending > 0}
+            value={`\u20B9${overviewStats.editorPending.toLocaleString()}`}
+            alert={overviewStats.editorPending > 0}
             icon={<Clock className="h-4 w-4 text-amber-500" />}
-            subtext="Payouts to editors"
+            subtext="Payouts in selected range"
           />
           <IndicatorCard
             label="Profit Contribution"
-            value={`₹${stats.profit.toLocaleString()}`}
+            value={`\u20B9${overviewStats.totalProfit.toLocaleString()}`}
             icon={<TrendingUp className="h-4 w-4" />}
-            subtext="Total realized margin"
+            subtext="Margin in selected range"
           />
           <IndicatorCard
-            label="Avg Payout / Project"
-            value={`₹${Math.round(stats.avgPayout).toLocaleString()}`}
+            label="Total Projects"
+            value={overviewStats.totalProjects.toLocaleString()}
             icon={<ArrowUpRight className="h-4 w-4" />}
-            subtext="Average editor cost"
+            subtext="Projects in selected range"
           />
           <IndicatorCard
             label="Last Payment Date"
             value={
-              stats.lastPaymentDate
-                ? new Date(stats.lastPaymentDate).toLocaleDateString("en-IN", {
+              overviewStats.lastPaymentDate
+                ? new Date(overviewStats.lastPaymentDate).toLocaleDateString("en-IN", {
                     day: "2-digit",
                     month: "short",
                   })
                 : "N/A"
             }
             icon={<Calendar className="h-4 w-4" />}
-            subtext="Recent activity"
+            subtext="Latest payment in range"
           />
         </div>
       )}
@@ -2266,10 +2342,10 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                           : "Not Assigned"}
                       </td>
                       <td className="px-3 py-3 text-xs font-black text-foreground tabular-nums whitespace-nowrap">
-                        ₹{(project.totalCost || 0).toLocaleString()}
+                        â‚¹{(project.totalCost || 0).toLocaleString()}
                       </td>
                       <td className="px-3 py-3 text-xs font-black text-blue-400 tabular-nums whitespace-nowrap">
-                        ₹{(project.editorPrice || 0).toLocaleString()}
+                        â‚¹{(project.editorPrice || 0).toLocaleString()}
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex flex-col gap-1 min-w-[140px]">
@@ -3392,7 +3468,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                   </p>
                 </div>
 
-                {/* ── Campaign Status Panel ────────────────────────────── */}
+                {/* â”€â”€ Campaign Status Panel â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
                 {(() => {
                   const globalOn = whatsappTemplates.enabled !== false;
 
@@ -4110,35 +4186,35 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
                   <IndicatorCard
-                    label="Total Earned"
-                    value={`₹${stats.revenue.toLocaleString()}`}
+                    label="Total Revenue"
+                    value={`\u20B9${financeStats.revenue.toLocaleString()}`}
                     icon={<IndianRupee className="h-4 w-4" />}
-                    subtext="Total realized revenue"
+                    subtext="All project value in system"
                   />
                   <IndicatorCard
                     label="Total Pending"
-                    value={`₹${(stats.clientPending + stats.editorPending).toLocaleString()}`}
-                    alert={stats.clientPending + stats.editorPending > 0}
+                    value={`\u20B9${(financeStats.clientPending + financeStats.editorPending).toLocaleString()}`}
+                    alert={financeStats.clientPending + financeStats.editorPending > 0}
                     icon={<Clock className="h-4 w-4 text-orange-500" />}
                     subtext="Unsettled ledgers"
                   />
                   <IndicatorCard
                     label="Profit Contribution"
-                    value={`₹${stats.profit.toLocaleString()}`}
+                    value={`\u20B9${financeStats.profit.toLocaleString()}`}
                     icon={<TrendingUp className="h-4 w-4" />}
-                    subtext="Total realized margin"
+                    subtext="System-wide margin"
                   />
                   <IndicatorCard
-                    label="Avg Payout / Project"
-                    value={`₹${Math.round(stats.avgPayout).toLocaleString()}`}
+                    label="Total Projects"
+                    value={financeStats.totalProjects.toLocaleString()}
                     icon={<ArrowUpRight className="h-4 w-4" />}
-                    subtext="Average editor cost"
+                    subtext="Projects in system"
                   />
                   <IndicatorCard
                     label="Last Payment Date"
                     value={
-                      stats.lastPaymentDate
-                        ? new Date(stats.lastPaymentDate).toLocaleDateString(
+                      financeStats.lastPaymentDate
+                        ? new Date(financeStats.lastPaymentDate).toLocaleDateString(
                             "en-IN",
                             { day: "2-digit", month: "short" },
                           )
@@ -4225,7 +4301,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                               </div>
                               <div className="text-right">
                                 <div className="text-sm font-black text-foreground tabular-nums">
-                                  ₹{amount.toLocaleString()}
+                                  {"\u20B9"}{amount.toLocaleString()}
                                 </div>
                                 <div className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">
                                   {(log as any).designation || "System"}
@@ -4239,375 +4315,321 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                   </div>
                 </div>
 
-                <div className="grid gap-8">
-                  {/* Client Dues Section */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2 px-1">
-                      <div className="h-2 w-2 rounded-full bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.5)]" />
-                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
-                        Client Receivables (Pay Later)
-                      </h3>
+                <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                  <div className="enterprise-card bg-muted/50 border border-border rounded-xl overflow-hidden flex min-h-[420px] xl:h-[720px] flex-col">
+                    <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-4 py-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg border border-orange-500/20 bg-orange-500/10 flex items-center justify-center text-orange-400 shrink-0">
+                          <IndianRupee className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-bold text-foreground">
+                            Client Receivables
+                          </h3>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                            Pending client dues
+                          </p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                          {clientDueGroups.length} accounts
+                        </div>
+                        <div className="text-lg font-black text-orange-400 tabular-nums">
+                          {"\u20B9"}{financeStats.clientPending.toLocaleString()}
+                        </div>
+                      </div>
                     </div>
-                    <div className="grid gap-6">
-                      {users
-                        .filter(
-                          (u) =>
-                            u.role === "client" &&
-                            (u.payLater ||
-                              projects.some(
-                                (p) =>
-                                  p.clientId === u.uid &&
-                                  (p as any).isPayLaterRequest,
-                              )),
-                        )
-                        .map((client) => {
-                          const clientProjects = projects.filter(
-                            (p) =>
-                              p.clientId === client.uid &&
-                              p.paymentStatus !== "full_paid" &&
-                              ((p as any).isPayLaterRequest || client.payLater),
-                          );
-                          const totalDues = clientProjects.reduce(
-                            (sum, p) => sum + (p.totalCost || 0),
-                            0,
-                          );
 
-                          if (totalDues === 0) return null;
+                    <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-border bg-card/30">
+                      {clientDueGroups.length === 0 ? (
+                        <div className="flex h-full items-center justify-center p-8 text-center">
+                          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                            All client balances cleared
+                          </p>
+                        </div>
+                      ) : (
+                        clientDueGroups.map(({ client, dueProjects, totalDue }) => {
+                          const groupKey = `client-${client.uid}`;
+                          const isOpen = !!expandedFinanceGroups[groupKey];
 
                           return (
-                            <motion.div
-                              key={client.uid}
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="enterprise-card bg-muted/50 border border-border rounded-xl overflow-hidden"
-                            >
-                              <div className="p-6 border-b border-border bg-muted/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                <div className="flex items-center gap-4">
-                                  <div className="h-12 w-12 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center justify-center text-orange-500">
-                                    <IndianRupee className="h-6 w-6" />
-                                  </div>
-                                  <div>
-                                    <h3 className="text-lg font-bold text-foreground tracking-tight">
+                            <div key={client.uid} className="bg-card/10">
+                              <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <Avatar className="h-10 w-10 border border-orange-500/20 bg-orange-500/10">
+                                    <AvatarFallback className="text-orange-400 font-bold uppercase">
+                                      {client.displayName?.[0] || "C"}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-bold text-foreground">
                                       {client.displayName || "Unknown Client"}
-                                    </h3>
-                                    <p className="text-xs text-muted-foreground font-bold uppercase tracking-widest mt-1">
+                                    </div>
+                                    <div className="truncate text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                                       {client.companyName || client.email}
-                                    </p>
+                                    </div>
+                                    <div className="mt-1 text-[10px] font-bold uppercase tracking-widest text-orange-400">
+                                      {dueProjects.length} pending project{dueProjects.length === 1 ? "" : "s"}
+                                    </div>
                                   </div>
                                 </div>
-                                <div className="flex flex-col md:items-end gap-3">
-                                  <div className="flex flex-col md:items-end gap-1 border border-orange-500/20 bg-orange-500/5 px-6 py-3 rounded-xl w-full">
-                                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">
-                                      Total Pending Dues
-                                    </span>
-                                    <span className="text-2xl font-black text-orange-400 tabular-nums">
-                                      ₹{totalDues.toLocaleString()}
-                                    </span>
+
+                                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                                  <div className="rounded-lg border border-orange-500/20 bg-orange-500/5 px-3 py-2 text-right">
+                                    <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+                                      Pending
+                                    </div>
+                                    <div className="text-sm font-black text-orange-400 tabular-nums">
+                                      {"\u20B9"}{totalDue.toLocaleString()}
+                                    </div>
                                   </div>
                                   <button
                                     onClick={() => handleSettleAllClientDues(client.uid)}
-                                    className="w-full md:w-auto h-9 px-4 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-500 font-bold uppercase tracking-widest transition-all hover:bg-orange-500 hover:text-foreground text-[10px] flex items-center justify-center gap-2 active:scale-95"
+                                    className="h-9 rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 text-[10px] font-bold uppercase tracking-widest text-orange-400 transition-colors hover:bg-orange-500 hover:text-foreground"
                                   >
-                                    <CheckCircle2 className="h-3.5 w-3.5" />
                                     Mark All Received
+                                  </button>
+                                  <button
+                                    onClick={() => toggleFinanceGroup(groupKey)}
+                                    className="h-9 w-9 rounded-lg border border-border bg-muted/50 flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+                                    aria-expanded={isOpen}
+                                  >
+                                    <ChevronDown
+                                      className={cn(
+                                        "h-4 w-4 transition-transform",
+                                        isOpen && "rotate-180",
+                                      )}
+                                    />
                                   </button>
                                 </div>
                               </div>
 
-                              <div className="divide-y divide-border bg-card/40">
-                                {clientProjects.map((project) => (
-                                  <div
-                                    key={project.id}
-                                    className="p-4 px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/50 transition-colors"
-                                  >
-                                    <div className="flex items-center gap-4 min-w-0">
-                                      <div className="h-8 w-8 rounded bg-muted/50 border border-border flex items-center justify-center shrink-0">
-                                        <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                                      </div>
+                              {isOpen && (
+                                <div className="border-t border-border bg-card/40">
+                                  {dueProjects.map(({ project, dueAmount }) => (
+                                    <div
+                                      key={project.id}
+                                      className="grid gap-3 border-t border-border/70 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center first:border-t-0"
+                                    >
                                       <div className="min-w-0">
                                         <Link
                                           href={`/dashboard/projects/${project.id}`}
-                                          className="text-sm font-bold text-foreground tracking-tight truncate hover:text-primary transition-colors block"
+                                          className="block truncate text-sm font-bold text-foreground transition-colors hover:text-primary"
                                         >
                                           {project.name}
                                         </Link>
-                                        <div className="flex items-center gap-2 mt-1">
-                                          <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">
-                                            ID: {project.id.slice(0, 8)}
-                                          </span>
+                                        <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                          <span>ID: {project.id.slice(0, 8)}</span>
                                           <div className="h-1 w-1 rounded-full bg-muted-foreground" />
-                                          <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-500">
-                                            File Downloaded
+                                          <span>
+                                            {(project as any).paymentOption === "pay_later" || (project as any).isPayLaterRequest
+                                              ? "Pay Later"
+                                              : "Pending Payment"}
                                           </span>
                                         </div>
                                       </div>
-                                    </div>
-                                    <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto shrink-0">
-                                      <span className="text-sm font-black text-foreground tabular-nums">
-                                        ₹
-                                        {project.totalCost?.toLocaleString() ||
-                                          0}
-                                      </span>
-                                      <button
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          handleSettlePayment(project.id);
-                                        }}
-                                        className="h-9 px-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 hover:bg-emerald-500 text-[10px] hover:text-foreground font-bold uppercase tracking-widest transition-all shadow-[0_0_15px_rgba(16,185,129,0.1)] hover:shadow-[0_0_20px_rgba(16,185,129,0.4)] active:scale-95 flex items-center gap-2"
-                                      >
-                                        <CheckCircle2 className="h-3.5 w-3.5" />
-                                        Mark Received
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </motion.div>
-                          );
-                        })}
 
-                      {users
-                        .filter(
-                          (u) =>
-                            u.role === "client" &&
-                            (u.payLater ||
-                              projects.some(
-                                (p) =>
-                                  p.clientId === u.uid &&
-                                  (p as any).isPayLaterRequest,
-                              )),
-                        )
-                        .every((client) => {
-                          return (
-                            projects
-                              .filter(
-                                (p) =>
-                                  p.clientId === client.uid &&
-                                  p.paymentStatus !== "full_paid" &&
-                                  ((p as any).isPayLaterRequest ||
-                                    client.payLater),
-                              )
-                              .reduce(
-                                (sum, p) => sum + (p.totalCost || 0),
-                                0,
-                              ) === 0
+                                      <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                                        <div className="min-w-[88px] text-sm font-black text-foreground tabular-nums">
+                                          {"\u20B9"}{dueAmount.toLocaleString()}
+                                        </div>
+                                        <button
+                                          onClick={() => handleSettlePayment(project.id)}
+                                          className="h-8 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 text-[10px] font-bold uppercase tracking-widest text-emerald-400 transition-colors hover:bg-emerald-500 hover:text-foreground"
+                                        >
+                                          Mark Received
+                                        </button>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
                           );
-                        }) && (
-                        <div className="enterprise-card p-8 text-center flex flex-col items-center justify-center border-dashed border-2 border-border opacity-60">
-                          <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">
-                            All client balances cleared
-                          </h3>
-                        </div>
+                        })
                       )}
                     </div>
                   </div>
 
-                  {/* Editor Dues Section */}
-                  <div className="mt-8">
-                    <div className="flex items-center gap-2 px-1">
-                      <div className="h-2 w-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-                      <h3 className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground">
-                        Editor Payables (Pending Payouts)
-                      </h3>
+                  <div className="enterprise-card bg-muted/50 border border-border rounded-xl overflow-hidden flex min-h-[420px] xl:h-[720px] flex-col">
+                    <div className="flex items-center justify-between gap-3 border-b border-border bg-muted/40 px-4 py-4">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-9 w-9 rounded-lg border border-blue-500/20 bg-blue-500/10 flex items-center justify-center text-blue-400 shrink-0">
+                          <Wallet className="h-4 w-4" />
+                        </div>
+                        <div className="min-w-0">
+                          <h3 className="text-sm font-bold text-foreground">
+                            Editor Payables
+                          </h3>
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                            Pending editor payouts
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <button
+                          onClick={handleRepairLegacyEditorStatuses}
+                          disabled={isRepairingLegacyStatuses}
+                          className="hidden sm:inline-flex h-9 items-center rounded-lg border border-border bg-muted/40 px-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground transition-colors hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {isRepairingLegacyStatuses ? "Repairing..." : "Repair Old Statuses"}
+                        </button>
+                        <div className="text-right">
+                        <div className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                          {editorDueGroups.length} editors
+                        </div>
+                        <div className="text-lg font-black text-blue-400 tabular-nums">
+                          {"\u20B9"}{financeStats.editorPending.toLocaleString()}
+                        </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="grid gap-6">
-                      {users
-                        .filter(
-                          (u) =>
-                            u.role === "editor" &&
-                            projects.some(
-                              (p) =>
-                                p.assignedEditorId === u.uid &&
-                                p.clientHasDownloaded &&
-                                !p.editorPaid,
-                            ),
-                        )
-                        .map((editor) => {
-                          const editorProjects = projects.filter(
-                            (p) =>
-                              p.assignedEditorId === editor.uid &&
-                              p.clientHasDownloaded &&
-                              !p.editorPaid,
-                          );
-                          const totalEditorDues = editorProjects.reduce(
-                            (sum, p) => sum + (p.editorPrice || 0),
-                            0,
-                          );
 
-                          if (totalEditorDues === 0) return null;
+                    <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-border bg-card/30">
+                      {editorDueGroups.length === 0 ? (
+                        <div className="flex h-full items-center justify-center p-8 text-center">
+                          <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground">
+                            All editor payouts settled
+                          </p>
+                        </div>
+                      ) : (
+                        editorDueGroups.map(({ editor, dueProjects, totalDue }) => {
+                          const groupKey = `editor-${editor.uid}`;
+                          const isOpen = !!expandedFinanceGroups[groupKey];
 
                           return (
-                            <motion.div
-                              key={editor.uid}
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              className="enterprise-card bg-muted/50 border border-border rounded-xl overflow-hidden"
-                            >
-                              <div className="p-6 border-b border-border bg-muted/50 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                                <div className="flex items-center gap-4">
-                                  <Avatar className="h-12 w-12 border border-border rounded-xl bg-muted/50">
+                            <div key={editor.uid} className="bg-card/10">
+                              <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <Avatar className="h-10 w-10 border border-blue-500/20 bg-blue-500/10">
                                     <AvatarImage
                                       src={editor.photoURL || undefined}
                                       className="object-cover"
                                     />
-                                    <AvatarFallback className="text-primary font-bold text-sm uppercase">
-                                      {editor.displayName?.[0]}
+                                    <AvatarFallback className="text-blue-400 font-bold uppercase">
+                                      {editor.displayName?.[0] || "E"}
                                     </AvatarFallback>
                                   </Avatar>
-                                  <div>
-                                    <h3 className="text-lg font-bold text-foreground tracking-tight">
+                                  <div className="min-w-0">
+                                    <div className="truncate text-sm font-bold text-foreground">
                                       {editor.displayName || "Unknown Editor"}
-                                    </h3>
-                                    <p className="text-xs text-blue-400/80 font-bold uppercase tracking-widest mt-1">
+                                    </div>
+                                    <div className="truncate text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
                                       {editor.email}
-                                    </p>
+                                    </div>
+                                    <div className="mt-1 text-[10px] font-bold uppercase tracking-widest text-blue-400">
+                                      {dueProjects.length} pending project{dueProjects.length === 1 ? "" : "s"}
+                                    </div>
                                   </div>
                                 </div>
-                                <div className="flex flex-col md:items-end gap-3">
-                                  <div className="flex flex-col md:items-end gap-1 border border-blue-500/20 bg-blue-500/5 px-6 py-3 rounded-xl w-full">
-                                    <span className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">
-                                      Total Payout Pending
-                                    </span>
-                                    <span className="text-2xl font-black text-blue-400 tabular-nums">
-                                      ₹{totalEditorDues.toLocaleString()}
-                                    </span>
+
+                                <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                                  <div className="rounded-lg border border-blue-500/20 bg-blue-500/5 px-3 py-2 text-right">
+                                    <div className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+                                      Pending
+                                    </div>
+                                    <div className="text-sm font-black text-blue-400 tabular-nums">
+                                      {"\u20B9"}{totalDue.toLocaleString()}
+                                    </div>
                                   </div>
-                                  <div className="flex gap-2 w-full md:w-auto">
-                                    <button
-                                      onClick={() => {
-                                        if (editor.upiDetails?.vpa) {
-                                            setQrPaymentModal({ editorId: editor.uid, amount: totalEditorDues, upiId: editor.upiDetails.vpa, editorName: editor.displayName || "Editor" });
-                                        } else {
-                                            toast.error("Editor has no UPI ID configured.");
-                                        }
-                                      }}
-                                      className="flex-1 md:w-auto h-9 px-4 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 font-bold uppercase tracking-widest transition-all hover:bg-emerald-500 hover:text-foreground text-[10px] flex items-center justify-center gap-2 active:scale-95"
-                                    >
-                                      <IndianRupee className="h-3.5 w-3.5" />
-                                      Pay Once
-                                    </button>
-                                    <button
-                                      onClick={() =>
-                                        handleSettleAllDues(editor.uid)
+                                  <button
+                                    onClick={() => {
+                                      if (editor.upiDetails?.vpa) {
+                                        setQrPaymentModal({
+                                          editorId: editor.uid,
+                                          amount: totalDue,
+                                          upiId: editor.upiDetails.vpa,
+                                          editorName: editor.displayName || "Editor",
+                                        });
+                                      } else {
+                                        toast.error("Editor has no UPI ID configured.");
                                       }
-                                      className="flex-1 md:w-auto h-9 px-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-400 font-bold uppercase tracking-widest transition-all hover:bg-blue-500 hover:text-foreground text-[10px] flex items-center justify-center gap-2 active:scale-95"
-                                    >
-                                      <RefreshCw className="h-3.5 w-3.5" />
-                                      Settle All Dues
-                                    </button>
-                                  </div>
+                                    }}
+                                    className="h-9 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 text-[10px] font-bold uppercase tracking-widest text-emerald-400 transition-colors hover:bg-emerald-500 hover:text-foreground"
+                                  >
+                                    QR Total
+                                  </button>
+                                  <button
+                                    onClick={() => toggleFinanceGroup(groupKey)}
+                                    className="h-9 w-9 rounded-lg border border-border bg-muted/50 flex items-center justify-center text-muted-foreground transition-colors hover:text-foreground"
+                                    aria-expanded={isOpen}
+                                  >
+                                    <ChevronDown
+                                      className={cn(
+                                        "h-4 w-4 transition-transform",
+                                        isOpen && "rotate-180",
+                                      )}
+                                    />
+                                  </button>
                                 </div>
                               </div>
 
-                              <div className="divide-y divide-border bg-card/40">
-                                {editorProjects.map((project) => (
-                                  <div
-                                    key={project.id}
-                                    className="p-4 px-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4 hover:bg-muted/50 transition-colors"
-                                  >
-                                    <div className="flex items-center gap-4 min-w-0">
-                                      <div className="h-8 w-8 rounded bg-muted/50 border border-border flex items-center justify-center shrink-0">
-                                        <FileText className="h-3.5 w-3.5 text-muted-foreground" />
-                                      </div>
-                                      <div className="min-w-0">
-                                        <Link
-                                          href={`/dashboard/projects/${project.id}`}
-                                          className="text-sm font-bold text-foreground tracking-tight truncate hover:text-primary transition-colors block"
-                                        >
-                                          {project.name}
-                                        </Link>
-                                        <div className="flex items-center gap-2 mt-1">
-                                          <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-widest">
-                                            ID: {project.id.slice(0, 8)}
-                                          </span>
-                                          <div className="h-1 w-1 rounded-full bg-muted-foreground" />
-                                          <span className="text-[9px] font-bold uppercase tracking-widest text-emerald-500">
-                                            File Downloaded
-                                          </span>
+                              {isOpen && (
+                                <div className="border-t border-border bg-card/40">
+                                  {dueProjects.map(({ project, dueAmount }) => {
+                                    const isProcessing =
+                                      payoutProcessing[project.id] ||
+                                      project.payoutStatus === "processing" ||
+                                      project.payoutStatus === "queued" ||
+                                      project.payoutStatus === "pending";
+                                    const needsRetry =
+                                      project.payoutStatus === "failed" ||
+                                      project.payoutStatus === "rejected";
+
+                                    return (
+                                      <div
+                                        key={project.id}
+                                        className="grid gap-3 border-t border-border/70 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center first:border-t-0"
+                                      >
+                                        <div className="min-w-0">
+                                          <Link
+                                            href={`/dashboard/projects/${project.id}`}
+                                            className="block truncate text-sm font-bold text-foreground transition-colors hover:text-primary"
+                                          >
+                                            {project.name}
+                                          </Link>
+                                          <div className="mt-1 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+                                            <span>ID: {project.id.slice(0, 8)}</span>
+                                            <div className="h-1 w-1 rounded-full bg-muted-foreground" />
+                                            <span>
+                                              {project.payoutStatus === "processed" || project.editorPaid
+                                                ? "Paid"
+                                                : project.payoutStatus || "Ready For Payout"}
+                                            </span>
+                                          </div>
+                                        </div>
+
+                                        <div className="flex flex-wrap items-center gap-2 md:justify-end">
+                                          <div className="min-w-[88px] text-sm font-black text-foreground tabular-nums">
+                                            {"\u20B9"}{dueAmount.toLocaleString()}
+                                          </div>
+                                          <button
+                                            onClick={() => handleReimburseEditor(project.id)}
+                                            disabled={isProcessing}
+                                            className={cn(
+                                              "h-8 rounded-lg border px-3 text-[10px] font-bold uppercase tracking-widest transition-colors",
+                                              needsRetry
+                                                ? "border-red-500/20 bg-red-500/10 text-red-400 hover:bg-red-500 hover:text-foreground"
+                                                : "border-blue-500/20 bg-blue-500/10 text-blue-400 hover:bg-blue-500 hover:text-foreground",
+                                              isProcessing && "cursor-not-allowed opacity-50",
+                                            )}
+                                          >
+                                            {isProcessing
+                                              ? "Processing"
+                                              : needsRetry
+                                                ? "Retry Payout"
+                                                : "Auto Pay"}
+                                          </button>
                                         </div>
                                       </div>
-                                    </div>
-                                    <div className="flex items-center justify-between sm:justify-end gap-6 w-full sm:w-auto shrink-0">
-                                      <div className="flex flex-col items-end mr-4">
-                                        <span className="text-[9px] text-muted-foreground font-bold uppercase tracking-tighter">
-                                          Editor Share
-                                        </span>
-                                        <span className="text-sm font-black text-foreground tabular-nums">
-                                          ₹
-                                          {project.editorPrice?.toLocaleString() ||
-                                            0}
-                                        </span>
-                                      </div>
-                                      <button
-                                        onClick={(e) => {
-                                          e.preventDefault();
-                                          handleReimburseEditor(project.id);
-                                        }}
-                                        disabled={
-                                          payoutProcessing[project.id] ||
-                                          project.payoutStatus === "processing" ||
-                                          project.payoutStatus === "queued" ||
-                                          project.payoutStatus === "pending"
-                                        }
-                                        className={cn(
-                                          "h-9 px-4 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all active:scale-95 flex items-center gap-2",
-                                          project.payoutStatus === "failed" ||
-                                            project.payoutStatus === "rejected"
-                                            ? "bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500 hover:text-foreground"
-                                            : "bg-blue-500/10 border border-blue-500/20 text-blue-400 hover:bg-blue-500 hover:text-foreground",
-                                          (payoutProcessing[project.id] ||
-                                            project.payoutStatus === "processing" ||
-                                            project.payoutStatus === "queued" ||
-                                            project.payoutStatus === "pending") &&
-                                            "opacity-50 cursor-not-allowed",
-                                        )}
-                                      >
-                                        <RefreshCw
-                                          className={cn(
-                                            "h-3.5 w-3.5",
-                                            (payoutProcessing[project.id] ||
-                                              project.payoutStatus ===
-                                                "processing" ||
-                                              project.payoutStatus ===
-                                                "queued" ||
-                                              project.payoutStatus ===
-                                                "pending") &&
-                                              "animate-spin",
-                                          )}
-                                        />
-                                        {payoutProcessing[project.id] ||
-                                        project.payoutStatus === "processing" ||
-                                        project.payoutStatus === "queued" ||
-                                        project.payoutStatus === "pending"
-                                          ? "Processing..."
-                                          : project.payoutStatus === "failed" ||
-                                              project.payoutStatus === "rejected"
-                                            ? "Retry Payout"
-                                            : "Settle Payout"}
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </motion.div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
                           );
-                        })}
-
-                      {users.filter(
-                        (u) =>
-                          u.role === "editor" &&
-                          projects.some(
-                            (p) =>
-                              p.assignedEditorId === u.uid &&
-                              p.clientHasDownloaded &&
-                              !p.editorPaid,
-                          ),
-                      ).length === 0 && (
-                        <div className="enterprise-card p-8 text-center flex flex-col items-center justify-center border-dashed border-2 border-border opacity-60">
-                          <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-widest">
-                            All editor payouts settled
-                          </h3>
-                        </div>
+                        })
                       )}
                     </div>
                   </div>
@@ -4633,7 +4655,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
           <div className="space-y-1.5">
             <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest ml-1">
-              Editor Revenue (₹)
+              Editor Revenue (â‚¹)
             </label>
             <input
               type="number"
@@ -4761,7 +4783,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
         <div className="space-y-6 mt-8">
           <div className="space-y-2">
             <Label className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground ml-1">
-              Project Price (₹)
+              Project Price (â‚¹)
             </Label>
             <input
               className="w-full h-12 bg-muted/50 border border-border rounded-lg px-4 text-foreground focus:outline-none focus:border-primary/50 transition-all font-bold text-lg tabular-nums"
@@ -4795,9 +4817,11 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
               <option value="approved" className="bg-background">
                 STATE: DELIVERABLE_AUTHORIZED
               </option>
-              <option value="completed" className="bg-background">
-                STATE: COMPLETED
-              </option>
+              {selectedProject?.status === "completed" && (
+                <option value="completed" className="bg-background">
+                  STATE: COMPLETED
+                </option>
+              )}
             </select>
           </div>
 
@@ -4953,7 +4977,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                             <div className="flex flex-col">
                               <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Lifetime Investment</span>
                               <span className="text-2xl font-black text-foreground tracking-tighter">
-                                ₹{(selectedUserDetail.lifetimeTotal || 0).toLocaleString()}
+                                â‚¹{(selectedUserDetail.lifetimeTotal || 0).toLocaleString()}
                               </span>
                             </div>
                             <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center text-emerald-500">
@@ -4964,7 +4988,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                             <div className="flex flex-col">
                               <span className="text-[9px] font-black text-muted-foreground uppercase tracking-widest">Outstanding Liability</span>
                               <span className="text-2xl font-black text-red-500 tracking-tighter">
-                                ₹{(selectedUserDetail.pendingOutstanding || 0).toLocaleString()}
+                                â‚¹{(selectedUserDetail.pendingOutstanding || 0).toLocaleString()}
                               </span>
                             </div>
                             <div className="h-10 w-10 rounded-xl bg-red-500/10 flex items-center justify-center text-red-500">
@@ -4984,7 +5008,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                             <div className="flex items-center justify-between">
                               <span className="text-[9px] font-bold text-muted-foreground uppercase">Credit Ceiling</span>
                               <span className="text-[10px] font-black text-primary">
-                                ₹{(selectedUserDetail.creditLimit || 5000).toLocaleString()}
+                                â‚¹{(selectedUserDetail.creditLimit || 5000).toLocaleString()}
                               </span>
                             </div>
                             <input
@@ -5059,7 +5083,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                           key={`${formatKey}-${idx}`}
                                           className="text-[9px] font-bold px-2 py-0.5 rounded-md border border-primary/20 bg-primary/10 text-primary"
                                         >
-                                          {tier?.label || `Tier ${idx + 1}`}: ₹{(tier?.price || 0).toLocaleString()}
+                                          {tier?.label || `Tier ${idx + 1}`}: â‚¹{(tier?.price || 0).toLocaleString()}
                                         </span>
                                       ))}
                                     </div>
@@ -5073,7 +5097,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                     <p className="text-[10px] font-black text-foreground uppercase tracking-wider">
                                       {formatKey.replace(/_/g, " ")}
                                     </p>
-                                    <p className="text-[10px] font-black text-emerald-500">₹{Number(price || 0).toLocaleString()}</p>
+                                    <p className="text-[10px] font-black text-emerald-500">â‚¹{Number(price || 0).toLocaleString()}</p>
                                   </div>
                                 ))}
                               </div>
@@ -5155,7 +5179,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                   }
                                   const newSE = users.find(u => u.uid === newSEId);
                                   setSelectedUserDetail({ ...selectedUserDetail, createdBy: newSEId, managedBy: newSEId } as any);
-                                  toast.success(`SE → ${newSE?.displayName || "Updated"}${clientProjs.length > 0 ? ` · ${clientProjs.length} project(s) updated` : ""}`);
+                                  toast.success(`SE â†’ ${newSE?.displayName || "Updated"}${clientProjs.length > 0 ? ` Â· ${clientProjs.length} project(s) updated` : ""}`);
                                 } catch (e: any) { toast.error(e.message || "Failed"); }
                               }}
                               className="h-9 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest bg-amber-500/10 border border-amber-500/20 text-amber-500 hover:bg-amber-500/20 transition-all whitespace-nowrap"
@@ -5177,7 +5201,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                             {(() => {
                               const pm = users.find(u => u.uid === selectedUserDetail.assignedManagerId);
                               return pm ? (
-                                <span className="font-semibold text-foreground">{pm.displayName} <span className="text-muted-foreground font-normal">· {projects.filter(p => p.clientId === selectedUserDetail.uid && p.assignedPMId === pm.uid).length} projects</span></span>
+                                <span className="font-semibold text-foreground">{pm.displayName} <span className="text-muted-foreground font-normal">Â· {projects.filter(p => p.clientId === selectedUserDetail.uid && p.assignedPMId === pm.uid).length} projects</span></span>
                               ) : (
                                 <span className="text-amber-400 font-semibold">Not Assigned</span>
                               );
@@ -5218,7 +5242,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                   }
                                   const newPM = users.find(u => u.uid === newPMId);
                                   setSelectedUserDetail({ ...selectedUserDetail, assignedManagerId: newPMId });
-                                  toast.success(`PM → ${newPM?.displayName || "Updated"}. ${clientProjects.length} projects transferred.`);
+                                  toast.success(`PM â†’ ${newPM?.displayName || "Updated"}. ${clientProjects.length} projects transferred.`);
                                 } catch (e: any) { toast.error(e.message || "Failed"); }
                               }}
                               className="h-9 px-3 rounded-lg text-[10px] font-black uppercase tracking-widest bg-blue-500/10 border border-blue-500/20 text-blue-500 hover:bg-blue-500/20 transition-all whitespace-nowrap"
@@ -5251,7 +5275,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         </div>
                         <div className="p-4 bg-card border border-border rounded-xl text-center">
                           <div className="text-xl font-black text-emerald-500">
-                            ₹
+                            â‚¹
                             {(
                               (selectedUserDetail as any).totalEarned || 0
                             ).toLocaleString()}
@@ -5262,7 +5286,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         </div>
                         <div className="p-4 bg-card border border-border rounded-xl text-center">
                           <div className="text-xl font-black text-red-500">
-                            ₹
+                            â‚¹
                             {(
                               (selectedUserDetail as any).pendingDues || 0
                             ).toLocaleString()}
@@ -5305,7 +5329,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                 {skill}
                               </span>
                               <span className="text-xs font-black text-foreground">
-                                ₹
+                                â‚¹
                                 {(
                                   (selectedUserDetail as any).skillPrices?.[
                                     skill
@@ -5346,7 +5370,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         </div>
                         <div className="p-4 bg-card border border-border rounded-xl text-center">
                           <div className="text-xl font-black text-emerald-500 truncate">
-                            ₹
+                            â‚¹
                             {projects
                               .filter(
                                 (p) =>
@@ -5413,7 +5437,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                       </div>
                       <div className="p-5 bg-card border border-border rounded-xl">
                         <div className="text-3xl font-black text-emerald-500">
-                          ₹
+                          â‚¹
                           {projects
                             .filter((p) =>
                               users.some(
@@ -5525,7 +5549,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                   <td className="py-2 px-2 text-xs text-muted-foreground">
                                     {startDate
                                       ? new Date(startDate).toLocaleDateString()
-                                      : "—"}
+                                      : "â€”"}
                                   </td>
                                   <td className="py-2 px-2 text-xs text-muted-foreground">
                                     {endDate
@@ -6082,7 +6106,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         Global Order Value
                       </span>
                       <div className="text-3xl font-black text-foreground tabular-nums tracking-tighter mt-1">
-                        ₹{inspectProject.totalCost?.toLocaleString()}
+                        â‚¹{inspectProject.totalCost?.toLocaleString()}
                       </div>
                     </div>
 
@@ -6093,7 +6117,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                             Editor Revenue
                           </span>
                           <span className="text-lg font-black text-emerald-500 tabular-nums">
-                            ₹
+                            â‚¹
                             {inspectProject.editorPrice?.toLocaleString() ||
                               "0"}
                           </span>
@@ -6106,7 +6130,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                             Platform Margin
                           </span>
                           <span className="text-lg font-black text-primary tabular-nums">
-                            ₹
+                            â‚¹
                             {(
                               (inspectProject.totalCost || 0) -
                               (inspectProject.editorPrice || 0)
@@ -6412,7 +6436,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         <div className="pl-6">
                           <input
                             type="text"
-                            placeholder="Price (e.g. ₹500 - ₹1000)"
+                            placeholder="Price (e.g. â‚¹500 - â‚¹1000)"
                             value={newEditor.skillPrices[skill] || ""}
                             onChange={(e) =>
                               setNewEditor({
@@ -6461,7 +6485,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
           <div className="flex flex-col items-center justify-center p-4 space-y-6">
             <div className="text-center space-y-1">
                 <p className="text-sm text-muted-foreground font-bold uppercase tracking-widest">Amount to Pay</p>
-                <p className="text-3xl font-black text-foreground tabular-nums">₹{qrPaymentModal.amount.toLocaleString()}</p>
+                <p className="text-3xl font-black text-foreground tabular-nums">â‚¹{qrPaymentModal.amount.toLocaleString()}</p>
             </div>
             
             <div className="bg-white p-4 rounded-xl border border-border shadow-sm flex items-center justify-center overflow-hidden w-[200px] h-[200px]">
@@ -6479,7 +6503,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
 
             <button
               onClick={() => {
-                  handleMarkEditorManualPaid(qrPaymentModal.editorId);
+                  handleConfirmQrEditorPaid(qrPaymentModal.editorId);
                   setQrPaymentModal(null);
               }}
               className="w-full h-12 bg-emerald-500 text-white font-black uppercase text-xs tracking-widest rounded-xl hover:bg-emerald-600 transition-all flex items-center justify-center gap-2 shadow-[0_0_15px_rgba(16,185,129,0.3)]"

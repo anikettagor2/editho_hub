@@ -57,7 +57,6 @@ export async function POST(request: Request) {
             updateData.status = 'pending_assignment';
             updateData.paymentStatus = 'half_paid';
         } else if (paymentType === 'final') {
-            updateData.status = 'completed';
             updateData.paymentStatus = 'full_paid';
         }
 

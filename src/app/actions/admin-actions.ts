@@ -94,6 +94,13 @@ export async function deleteProject(projectId: string) {
  */
 export async function updateProject(projectId: string, data: any) {
     try {
+        if (data.status === 'completed') {
+            const projectSnap = await adminDb.collection('projects').doc(projectId).get();
+            if (!projectSnap.exists || !projectSnap.data()?.editorPaid) {
+                return { success: false, error: 'Complete the admin QR editor payout before marking this project complete.' };
+            }
+        }
+
         await adminDb.collection('projects').doc(projectId).update({
             ...data,
             updatedAt: Date.now()
@@ -1659,24 +1666,121 @@ export async function saveClientEditorPriority(
 }
 
 /**
+ * Normalizes legacy delivered projects to the editor-payment completion rule.
+ * Only projects with recorded client download activity are rewritten automatically.
+ */
+export async function repairLegacyEditorCompletionStatuses(adminUserId: string) {
+    try {
+        const adminSnap = await adminDb.collection('users').doc(adminUserId).get();
+        if (!adminSnap.exists || adminSnap.data()?.role !== 'admin') {
+            return { success: false, error: 'Only admins can repair legacy completion statuses.' };
+        }
+
+        const projectsSnap = await adminDb.collection('projects').get();
+        const now = Date.now();
+        let updatedToPending = 0;
+        let updatedToCompleted = 0;
+        let skippedWithoutDeliveryEvidence = 0;
+        let queuedWrites = 0;
+        let batch = adminDb.batch();
+
+        const commitBatch = async () => {
+            if (queuedWrites === 0) return;
+            await batch.commit();
+            batch = adminDb.batch();
+            queuedWrites = 0;
+        };
+
+        for (const projectDoc of projectsSnap.docs) {
+            const project = projectDoc.data();
+            const hasEditorShare = Boolean(project.assignedEditorId) && Number(project.editorPrice || 0) > 0;
+            const hasRecordedDelivery = project.clientHasDownloaded === true;
+
+            if (!hasEditorShare) continue;
+
+            if (project.status === 'completed' && !project.editorPaid && !hasRecordedDelivery) {
+                skippedWithoutDeliveryEvidence += 1;
+                continue;
+            }
+
+            let status: 'completed' | 'completed_pending_payment' | null = null;
+            if (hasRecordedDelivery && project.status === 'completed' && !project.editorPaid) {
+                status = 'completed_pending_payment';
+                updatedToPending += 1;
+            } else if (hasRecordedDelivery && project.status === 'completed_pending_payment' && project.editorPaid) {
+                status = 'completed';
+                updatedToCompleted += 1;
+            }
+
+            if (!status) continue;
+
+            batch.update(projectDoc.ref, {
+                status,
+                ...(status === 'completed' ? { completedAt: project.completedAt || now } : {}),
+                updatedAt: now,
+                logs: admin.firestore.FieldValue.arrayUnion({
+                    event: 'LEGACY_STATUS_REPAIRED',
+                    user: adminUserId,
+                    userName: adminSnap.data()?.displayName || 'Admin',
+                    designation: 'Admin',
+                    timestamp: now,
+                    details: status === 'completed'
+                        ? 'Legacy status repaired: editor payout was already marked paid; project completed.'
+                        : 'Legacy status repaired: delivered project is awaiting editor payout.',
+                }),
+            });
+            queuedWrites += 1;
+
+            if (queuedWrites === 400) {
+                await commitBatch();
+            }
+        }
+
+        await commitBatch();
+        revalidatePath('/dashboard');
+        return {
+            success: true,
+            updatedToPending,
+            updatedToCompleted,
+            skippedWithoutDeliveryEvidence,
+        };
+    } catch (error: any) {
+        console.error('[repairLegacyEditorCompletionStatuses]', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Marks an editor's payment as settled for a specific project.
  * Uses Admin SDK — bypasses Firestore rules.
  * The editor dashboard reflects this automatically via real-time listener on projects.
  */
 export async function settleEditorPayment(
     projectId: string,
-    user: { uid: string; displayName: string; designation?: string }
+    user: { uid: string; displayName: string; designation?: string },
+    paymentMethod?: 'qr'
 ) {
     try {
+        if (paymentMethod !== 'qr' || user.designation?.toLowerCase() !== 'admin') {
+            return { success: false, error: 'Only admin QR payment confirmation can complete a project.' };
+        }
+
         const projectRef = adminDb.collection('projects').doc(projectId);
         const projectSnap = await projectRef.get();
         if (!projectSnap.exists) {
             return { success: false, error: 'Project not found' };
         }
+        const project = projectSnap.data();
+        if (!project?.assignedEditorId || !project?.clientHasDownloaded) {
+            return { success: false, error: 'Editor payment can be confirmed only after final delivery is downloaded.' };
+        }
+
         const now = Date.now();
         await projectRef.update({
             editorPaid: true,
             editorPaidAt: now,
+            status: 'completed',
+            completedAt: now,
             updatedAt: now,
             logs: admin.firestore.FieldValue.arrayUnion({
                 event: 'EDITOR_PAYMENT_SETTLED',
@@ -1684,9 +1788,11 @@ export async function settleEditorPayment(
                 userName: user.displayName,
                 designation: user.designation || 'Admin',
                 timestamp: now,
-                details: `Editor payment manually marked as settled by ${user.displayName}.`,
+                details: `Editor payment confirmed via QR settlement by ${user.displayName}; project completed.`,
             }),
         });
+        const { finalizePaidDeliveredProject } = await import('./project-actions');
+        await finalizePaidDeliveredProject(projectId);
         revalidatePath('/dashboard');
         return { success: true };
     } catch (error: any) {

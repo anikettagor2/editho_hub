@@ -173,6 +173,7 @@ export interface Project {
     }[];
     revisionsCount?: number; // Total revisions handled
     completedAt?: number; // When the project was marked as completed/approved
+    completionNotifiedAt?: number; // Completion notification sent after delivery and editor payout
 
     // Retention lifecycle
     downloadRetentionStartedAt?: number; // first successful client download timestamp

@@ -74,6 +74,12 @@ service cloud.firestore {
         (resource.data.members is list && request.auth.uid in resource.data.members) ||
         resource.data.clientId == request.auth.uid ||
         resource.data.ownerId == request.auth.uid
+      ) &&
+      !request.resource.data.diff(resource.data).affectedKeys()
+        .hasAny(['editorPaid', 'editorPaidAt', 'completedAt']) &&
+      (
+        request.resource.data.status == resource.data.status ||
+        request.resource.data.status != 'completed'
       );
       
       allow delete: if isAdmin() || hasRole(['project_manager']);

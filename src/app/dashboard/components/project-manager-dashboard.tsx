@@ -102,7 +102,7 @@ function StatusBadge({ status, size = "sm" }: { status: string; size?: "sm" | "m
         in_production: { label: "Editing", className: "bg-blue-500/10 text-blue-600 border-blue-500/20" },
         review: { label: "Review", className: "bg-purple-500/10 text-purple-600 border-purple-500/20" },
         completed: { label: "Completed", className: "bg-emerald-500/10 text-emerald-600 border-emerald-500/20" },
-        completed_pending_payment: { label: "Completed (Due)", className: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
+        completed_pending_payment: { label: "Delivered - Admin Payout Due", className: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
         // Legacy/Fallback
         pending_assignment: { label: "Pending", className: "bg-amber-500/10 text-amber-600 border-amber-500/20" },
         active: { label: "In Progress", className: "bg-blue-500/10 text-blue-600 border-blue-500/20" },
@@ -722,8 +722,10 @@ export function ProjectManagerDashboard({ preselectedProjectId }: { preselectedP
                                                     <option value="editor_assigned">Assigned</option>
                                                     <option value="in_production">Editing</option>
                                                     <option value="review">Review</option>
-                                                    <option value="completed">Completed</option>
-                                                    <option value="completed_pending_payment">Completed (Due)</option>
+                                                    <option value="completed_pending_payment">Delivered - Awaiting Admin Payout</option>
+                                                    {project.status === 'completed' && (
+                                                        <option value="completed">Completed</option>
+                                                    )}
                                                     {/* Legacy mappings for safety */}
                                                     {['pending_assignment', 'active', 'in_review', 'approved'].includes(project.status) && (
                                                         <optgroup label="Legacy">
