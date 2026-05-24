@@ -100,14 +100,14 @@ function StatusBadge({ status, editorPaid }: { status: string; editorPaid?: bool
         in_review: "bg-amber-500/10 text-amber-500 border-amber-500/20",
         completed: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
         approved: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
-        completed_pending_payment: "bg-amber-500/10 text-amber-500 border-amber-500/20",
+        completed_pending_payment: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20",
         editor_assigned: "bg-sky-500/10 text-sky-500 border-sky-500/20",
         editor_not_assigned: "bg-rose-500/10 text-rose-500 border-rose-500/20",
     } as any;
 
     const resolvedStatus = getEditorDisplayStatus(status, editorPaid);
     const label = resolvedStatus === "completed_pending_payment"
-        ? "Completed (Payment Pending)"
+        ? "Completed"
         : resolvedStatus.split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
     
     return (
@@ -592,7 +592,6 @@ export function EditorDashboardV2({ preselectedProjectId }: { preselectedProject
                                     <option value="in_review" className="bg-card text-foreground">In Review</option>
                                     <option value="pending" className="bg-card text-foreground">Pending</option>
                                     <option value="completed" className="bg-card text-foreground">Completed</option>
-                                    <option value="pay_later" className="bg-card text-foreground">Pay Later</option>
                                     <option value="payment_due" className="bg-card text-foreground">Completed (Payment Pending)</option>
                                 </select>
                                 <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 flex items-center text-muted-foreground">
@@ -685,12 +684,12 @@ export function EditorDashboardV2({ preselectedProjectId }: { preselectedProject
                                     </div>
                                 </div>
                                 
-                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                    {financeProjects.map((p) => (
-                                        <FinanceCard key={p.id} project={p} />
+                                <div className="flex flex-col gap-3.5">
+                                    {financeProjects.map((p, index) => (
+                                        <FinanceRow key={p.id} project={p} index={index} />
                                     ))}
                                     {financeProjects.length === 0 && (
-                                        <div className="col-span-full py-20 text-center space-y-6 bg-muted/10 rounded-[32px] border border-dashed border-border/50">
+                                        <div className="py-20 text-center space-y-6 bg-muted/10 rounded-[32px] border border-dashed border-border/50">
                                             <div className="h-20 w-20 bg-muted/20 rounded-2xl flex items-center justify-center mx-auto text-muted-foreground">
                                                 <Banknote size={32} />
                                             </div>
@@ -1503,29 +1502,78 @@ function AssetModal({ project, onClose, onRespond, isResponding }: any) {
     );
 }
 
-function FinanceCard({ project }: any) {
+function FinanceRow({ project, index }: { project: Project; index: number }) {
+    const formattedDate = project.updatedAt
+        ? new Date(project.updatedAt).toLocaleDateString("en-IN", {
+            day: "2-digit",
+            month: "short",
+            year: "numeric",
+        })
+        : "N/A";
+
     return (
-        <div className="bg-card border border-border/50 rounded-xl p-6 flex flex-col gap-4 shadow-sm hover:shadow-md transition-all">
-            <div className="flex items-center justify-between">
-                <div className="h-12 w-12 rounded-2xl bg-primary/10 flex items-center justify-center text-primary">
-                    <Banknote size={24} />
+        <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.35, delay: index * 0.02, ease: "easeOut" }}
+            className="group flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl border border-border/50 bg-card hover:bg-muted/10 transition-all hover:border-primary/30 hover:shadow-lg hover:shadow-black/5 hover:-translate-y-0.5"
+        >
+            <div className="flex items-center gap-4 min-w-0">
+                {/* Status Indicator Icon */}
+                <div className={cn(
+                    "h-12 w-12 rounded-xl flex items-center justify-center shrink-0 shadow-sm transition-all group-hover:scale-105",
+                    project.editorPaid 
+                        ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" 
+                        : "bg-amber-500/10 text-amber-500 border border-amber-500/20"
+                )}>
+                    {project.editorPaid ? <CheckCircle2 size={22} /> : <Banknote size={22} />}
                 </div>
-                <div className="text-right">
-                    <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">Earnings</p>
-                    <p className="text-xl font-black text-foreground">{formatCurrency(project.editorPrice)}</p>
+
+                {/* Project Info */}
+                <div className="min-w-0 space-y-1">
+                    <h4 className="text-sm sm:text-base font-bold text-foreground leading-tight group-hover:text-primary transition-colors truncate">
+                        {project.name}
+                    </h4>
+                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground opacity-75">
+                        <span className="flex items-center gap-1">
+                            <Clock size={11} /> 
+                            {project.editorPaid ? "Completed" : "Delivered"} {formattedDate}
+                        </span>
+                        {project.videoFormat && (
+                            <span className="hidden xs:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/50 border border-border/30 font-bold">
+                                {project.videoFormat}
+                            </span>
+                        )}
+                        {project.category && (
+                            <span className="hidden xs:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/50 border border-border/30 font-bold">
+                                {project.category}
+                            </span>
+                        )}
+                    </div>
                 </div>
             </div>
-            <div className="space-y-1">
-                <h4 className="font-bold text-foreground truncate">{project.name}</h4>
-                <p className="text-xs text-muted-foreground">{project.editorPaid ? "Completed" : "Delivered"} on {new Date(project.updatedAt).toLocaleDateString()}</p>
+
+            {/* Price & Status Badge */}
+            <div className="flex items-center justify-between sm:justify-end gap-6 border-t border-border/30 pt-3 sm:pt-0 sm:border-t-0">
+                <div className="sm:text-right">
+                    <p className="text-[9px] font-black text-muted-foreground uppercase tracking-widest opacity-60 sm:hidden">Earnings</p>
+                    <p className="text-base sm:text-lg font-black text-primary tracking-tighter">
+                        {formatCurrency(project.editorPrice)}
+                    </p>
+                </div>
+                
+                <div className="flex items-center gap-2">
+                    <span className={cn(
+                        "px-3 py-1.5 rounded-full text-[10px] font-black uppercase tracking-widest border shadow-sm transition-all",
+                        project.editorPaid 
+                            ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" 
+                            : "bg-amber-500/10 text-amber-500 border-amber-500/20"
+                    )}>
+                        {project.editorPaid ? "Paid by Admin" : "Not Paid"}
+                    </span>
+                </div>
             </div>
-            <div className="pt-2 border-t border-border/30 flex items-center justify-between">
-                <span className={cn("text-[10px] font-bold uppercase", project.editorPaid ? "text-emerald-500" : "text-amber-500")}>
-                    {project.editorPaid ? "Paid by Admin" : "Not Paid"}
-                </span>
-                <span className="text-[10px] font-bold text-muted-foreground uppercase">{project.category}</span>
-            </div>
-        </div>
+        </motion.div>
     );
 }
 

@@ -27,48 +27,44 @@ export function IndicatorCard({
 }: IndicatorCardProps) {
     return (
         <motion.div 
-            initial={{ opacity: 0, y: 15 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            whileHover={{ y: -4, transition: { duration: 0.2 } }}
+            whileHover={{ y: -3, transition: { duration: 0.2 } }}
             className={cn(
-                "group relative enterprise-card p-3 sm:p-6 md:p-8 transition-all duration-300",
-                alert && "after:absolute after:inset-0 after:rounded-xl after:ring-1 after:ring-primary/40 after:animate-pulse",
+                "group relative bg-card border border-border/50 rounded-xl p-3 sm:p-4 transition-all duration-300 shadow-md shadow-black/5 overflow-hidden flex items-center justify-between gap-4",
+                alert && "after:absolute after:inset-0 after:rounded-xl after:ring-1 after:ring-primary/30 after:animate-pulse",
                 className
             )}
         >
-            <div className="flex justify-between items-start mb-2 md:mb-6">
-                <div className="h-8 w-8 md:h-10 md:w-10 bg-muted/50 border border-border rounded-lg flex items-center justify-center text-muted-foreground group-hover:text-primary group-hover:border-primary/30 transition-all duration-300 [&>svg]:h-4 [&>svg]:w-4 md:[&>svg]:h-5 md:[&>svg]:w-5">
+            <div className="flex items-center gap-3 min-w-0">
+                {/* Icon Container */}
+                <div className={cn(
+                    "h-8 w-8 sm:h-9 sm:w-9 rounded-lg bg-muted/40 border border-border/50 flex items-center justify-center text-muted-foreground group-hover:text-primary group-hover:border-primary/20 transition-all duration-300 [&>svg]:h-4 [&>svg]:w-4 sm:[&>svg]:h-[18px] sm:[&>svg]:w-[18px] shrink-0",
+                    alert && "bg-primary/5 border-primary/20 text-primary"
+                )}>
                     {icon}
                 </div>
-                {alert && <div className="h-2 w-2 rounded-full bg-primary animate-pulse shadow-[0_0_10px_rgba(var(--primary),0.8)]" />}
-            </div>
-            
-            <div className="space-y-1 md:space-y-1.5">
-                <span className="text-[9px] md:text-[11px] uppercase font-bold tracking-widest text-muted-foreground group-hover:text-muted-foreground transition-colors truncate block">
-                    {label}
-                </span>
-                <div className="flex items-end gap-3">
-                    <span className="text-xl sm:text-2xl md:text-3xl font-black tracking-tight text-foreground font-heading tabular-nums truncate block">
-                        {value}
+
+                {/* Text Labels */}
+                <div className="min-w-0">
+                    <span className="text-[9px] sm:text-[10px] uppercase font-black tracking-widest text-muted-foreground group-hover:text-foreground transition-colors truncate block">
+                        {label}
                     </span>
+                    {(subtext || trend) && (
+                        <span className="text-muted-foreground/60 text-[8px] sm:text-[9px] font-bold uppercase tracking-wider truncate block mt-0.5">
+                            {trend ? `${trend} • ` : ""}{subtext}
+                        </span>
+                    )}
                 </div>
-                
-                {(subtext || trend) && (
-                    <div className="flex items-center gap-1.5 md:gap-3 pt-1.5 md:pt-4 border-t border-border mt-1.5 md:mt-4">
-                        {trend && (
-                            <span className={cn(
-                                "flex items-center gap-1 px-1 py-0.5 rounded text-[8px] md:text-[9px] font-bold uppercase tracking-widest whitespace-nowrap", 
-                                trendUp ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" : "bg-card text-muted-foreground border border-border"
-                            )}>
-                                {trend}
-                            </span>
-                        )}
-                        {subtext && (
-                            <span className="text-muted-foreground text-[8px] md:text-[10px] font-bold uppercase tracking-wider truncate block">
-                                {subtext}
-                            </span>
-                        )}
-                    </div>
+            </div>
+
+            {/* Numeric Value & Alert Ping */}
+            <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xl sm:text-2xl font-bold tracking-tight text-foreground font-heading tabular-nums">
+                    {value}
+                </span>
+                {alert && (
+                    <div className="h-2 w-2 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(var(--primary),0.8)]" />
                 )}
             </div>
         </motion.div>

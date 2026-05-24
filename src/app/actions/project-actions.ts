@@ -86,7 +86,7 @@ async function deleteStorageFileByUrl(url?: string): Promise<void> {
     }
 }
 
-async function purgeProjectAssets(projectId: string, projectData: any): Promise<void> {
+export async function purgeProjectAssets(projectId: string, projectData: any): Promise<void> {
     const rawUrls = (projectData.rawFiles || []).map((f: any) => f?.url).filter(Boolean);
     const referenceUrls = (projectData.referenceFiles || []).map((f: any) => f?.url).filter(Boolean);
     const scriptUrls = (projectData.scripts || []).map((f: any) => f?.url).filter(Boolean);
@@ -120,10 +120,6 @@ export async function finalizePaidDeliveredProject(projectId: string) {
         return { success: false, error: "Project is not ready for paid completion" };
     }
 
-    if (!projectData.assetsPurgedAt) {
-        await purgeProjectAssets(projectId, projectData);
-    }
-
     if (!projectData.completionNotifiedAt) {
         const { handleProjectCompleted } = await import("./notification-actions");
         await handleProjectCompleted(projectId);
@@ -136,7 +132,7 @@ export async function finalizePaidDeliveredProject(projectId: string) {
     return { success: true };
 }
 
-async function purgeProjectRevisionVideos(projectId: string): Promise<void> {
+export async function purgeProjectRevisionVideos(projectId: string): Promise<void> {
     const revisionsSnap = await adminDb
         .collection("revisions")
         .where("projectId", "==", projectId)
@@ -151,11 +147,43 @@ async function purgeProjectRevisionVideos(projectId: string): Promise<void> {
             await deleteStorageFileByUrl(revision.videoUrl);
         }
 
+        // Delete thumbnail from GCS if it exists
+        if (revision.thumbnailUrl) {
+            try {
+                await deleteStorageFileByUrl(revision.thumbnailUrl);
+            } catch (thumbErr) {
+                console.error(`[purgeProjectRevisionVideos] Failed to delete thumbnail for revision ${revisionDoc.id}:`, thumbErr);
+            }
+        }
+
+        // Delete HLS folder from GCS if it exists
+        try {
+            const hlsPrefix = `projects/${projectId}/hls/${revisionDoc.id}/`;
+            console.log(`[purgeProjectRevisionVideos] Deleting GCS HLS folder: ${hlsPrefix}`);
+            await adminStorage.bucket().deleteFiles({ prefix: hlsPrefix });
+        } catch (hlsErr) {
+            console.error(`[purgeProjectRevisionVideos] Failed to delete HLS folder for revision ${revisionDoc.id}:`, hlsErr);
+        }
+
+        // Hard-delete the asset from Mux storage if assetId exists
+        if (revision.assetId) {
+            try {
+                console.log(`[purgeProjectRevisionVideos] Deleting Mux asset ${revision.assetId} for revision ${revisionDoc.id}`);
+                await video.assets.delete(revision.assetId);
+            } catch (muxErr: any) {
+                console.error(`[purgeProjectRevisionVideos] Failed to delete Mux asset ${revision.assetId}:`, muxErr);
+            }
+        }
+
         batch.update(revisionDoc.ref, {
             videoUrl: "",
+            thumbnailUrl: "",
+            playbackId: "",
+            hlsUrl: "",
+            assetId: "",
             videoDeletedAt: now,
             status: "archived",
-            description: `${revision.description || ""} [Auto Purged After Download Limit]`.trim(),
+            description: `${revision.description || ""} [Auto Purged 24h After Download]`.trim(),
             updatedAt: now,
         });
     }

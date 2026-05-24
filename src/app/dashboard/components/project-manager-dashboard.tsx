@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/context/auth-context";
 import { 
     Loader2, 
@@ -173,6 +173,16 @@ export function ProjectManagerDashboard({ preselectedProjectId }: { preselectedP
     const [isEditorModalOpen, setIsEditorModalOpen] = useState(false);
     const [loading, setLoading] = useState(true);
     const [searchQuery, setSearchQuery] = useState("");
+
+    // Top scrollbar refs & state
+    const tableContainerRef = useRef<HTMLDivElement>(null);
+    const topScrollRef = useRef<HTMLDivElement>(null);
+    const [tableWidth, setTableWidth] = useState(0);
+
+    // Rows per page & pagination states
+    const [rowsPerPage, setRowsPerPage] = useState(10);
+    const [currentPage, setCurrentPage] = useState(1);
+    const [statusFilter, setStatusFilter] = useState("all");
     
     // Modals
     const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -236,6 +246,49 @@ export function ProjectManagerDashboard({ preselectedProjectId }: { preselectedP
 
         preloadVideosIntoMemory(urls, 30);
     }, [projects]);
+
+    // Reset pagination to first page when query, status or rows limit changes
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchQuery, rowsPerPage, statusFilter]);
+
+    // Top scroll bar synchronization effect
+    useEffect(() => {
+        const tableContainer = tableContainerRef.current;
+        const topScroll = topScrollRef.current;
+        if (!tableContainer || !topScroll) return;
+
+        const syncFromTable = () => {
+            if (topScroll.scrollLeft !== tableContainer.scrollLeft) {
+                topScroll.scrollLeft = tableContainer.scrollLeft;
+            }
+        };
+
+        const syncFromTop = () => {
+            if (tableContainer.scrollLeft !== topScroll.scrollLeft) {
+                tableContainer.scrollLeft = topScroll.scrollLeft;
+            }
+        };
+
+        tableContainer.addEventListener("scroll", syncFromTable);
+        topScroll.addEventListener("scroll", syncFromTop);
+
+        const observer = new ResizeObserver((entries) => {
+            for (const entry of entries) {
+                setTableWidth(entry.target.scrollWidth);
+            }
+        });
+
+        observer.observe(tableContainer);
+        setTableWidth(tableContainer.scrollWidth);
+        syncFromTable();
+
+        return () => {
+            tableContainer.removeEventListener("scroll", syncFromTable);
+            topScroll.removeEventListener("scroll", syncFromTop);
+            observer.disconnect();
+        };
+    }, [projects, searchQuery, rowsPerPage, currentPage]);
 
     const handleAssignEditor = async (editorId: string) => {
         if (!selectedProject) return;
@@ -520,12 +573,23 @@ export function ProjectManagerDashboard({ preselectedProjectId }: { preselectedP
         }
     };
 
-    // Filter projects by search
-    const filteredProjects = projects.filter(p => 
-        !searchQuery || 
-        p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-        p.clientName?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
+    // Filter projects by search and status
+    const filteredProjects = projects.filter(p => {
+        const matchesSearch = !searchQuery || 
+            p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            p.clientName?.toLowerCase().includes(searchQuery.toLowerCase());
+            
+        const matchesStatus = statusFilter === "all" || p.status === statusFilter ||
+            (statusFilter === "review" && p.status === "in_review") || 
+            (statusFilter === "in_production" && p.status === "active") ||
+            (statusFilter === "completed_pending_payment" && p.status === "delivered");
+            
+        return matchesSearch && matchesStatus;
+    });
+
+    // Calculate total pages and sliced list for paginated rendering
+    const totalProjectPages = Math.max(1, Math.ceil(filteredProjects.length / rowsPerPage));
+    const paginatedProjects = filteredProjects.slice((currentPage - 1) * rowsPerPage, currentPage * rowsPerPage);
 
     return (
         <div className="space-y-8 pb-16">
@@ -620,30 +684,104 @@ export function ProjectManagerDashboard({ preselectedProjectId }: { preselectedP
                 className="bg-card border border-border rounded-xl overflow-hidden"
             >
                 {/* Table Header */}
-                <div className="p-4 md:p-5 border-b border-border flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    <div className="flex items-center gap-3">
-                        <h2 className="text-lg font-semibold text-foreground">All Projects</h2>
-                        <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">
-                            {filteredProjects.length} total
-                        </span>
+                <div className="p-4 md:p-5 border-b border-border flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                    <div className="flex items-center justify-between lg:justify-start gap-4">
+                        <div className="flex items-center gap-3">
+                            <h2 className="text-lg font-semibold text-foreground">All Projects</h2>
+                            <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full font-bold">
+                                {filteredProjects.length} total
+                            </span>
+                        </div>
                     </div>
                     
-                    <div className="flex items-center gap-3">
-                        <div className="relative flex-1 md:w-72">
+                    <div className="flex flex-col sm:flex-row sm:items-center gap-3 w-full lg:w-auto lg:justify-end">
+                        {/* Search Input */}
+                        <div className="relative flex-1 sm:flex-none sm:w-64">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                             <input 
                                 type="text" 
                                 placeholder="Search projects or clients..." 
-                                className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-4 text-sm focus:border-primary/50 focus:outline-none transition-colors"
+                                className="h-9 w-full rounded-lg border border-border bg-background pl-9 pr-4 text-xs focus:border-primary/50 focus:outline-none transition-colors"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                             />
                         </div>
+
+                        {/* Status Filter */}
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span className="font-semibold whitespace-nowrap">Status</span>
+                            <select
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value)}
+                                className="h-9 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground outline-none cursor-pointer hover:bg-muted/40 transition-colors"
+                                style={{ colorScheme: "dark" }}
+                            >
+                                <option value="all" className="bg-card text-foreground">All Statuses</option>
+                                <option value="project_created" className="bg-card text-foreground">Created</option>
+                                <option value="editor_not_assigned" className="bg-card text-foreground">No Editor</option>
+                                <option value="editor_assigned" className="bg-card text-foreground">Assigned</option>
+                                <option value="in_production" className="bg-card text-foreground">Editing</option>
+                                <option value="review" className="bg-card text-foreground">Review</option>
+                                <option value="completed_pending_payment" className="bg-card text-foreground">Delivered - Payout Due</option>
+                                <option value="completed" className="bg-card text-foreground">Completed</option>
+                            </select>
+                        </div>
+
+                        {/* Rows Per Page Dropdown */}
+                        <div className="flex items-center justify-between sm:justify-end gap-3">
+                            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <span className="font-semibold whitespace-nowrap">Rows</span>
+                                <select
+                                    value={rowsPerPage}
+                                    onChange={(e) => setRowsPerPage(Number(e.target.value))}
+                                    className="h-9 rounded-lg border border-border bg-background px-2.5 text-xs font-semibold text-foreground outline-none cursor-pointer hover:bg-muted/40 transition-colors"
+                                    style={{ colorScheme: "dark" }}
+                                >
+                                    {[10, 20, 30, 50, 100].map((option) => (
+                                        <option key={option} value={option} className="bg-card text-foreground">
+                                            {option}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+
+                            {/* Pagination Controls */}
+                            {totalProjectPages > 1 && (
+                                <div className="flex items-center gap-1">
+                                    <button
+                                        onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                                        disabled={currentPage === 1}
+                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-foreground transition-all hover:bg-muted disabled:opacity-40 disabled:hover:bg-background cursor-pointer active:scale-95 shrink-0"
+                                    >
+                                        <ChevronRight className="h-4 w-4 rotate-180" />
+                                    </button>
+                                    <span className="text-xs font-bold text-foreground px-2 min-w-[76px] text-center whitespace-nowrap">
+                                        {currentPage} / {totalProjectPages}
+                                    </span>
+                                    <button
+                                        onClick={() => setCurrentPage((page) => Math.min(totalProjectPages, page + 1))}
+                                        disabled={currentPage === totalProjectPages}
+                                        className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-background text-foreground transition-all hover:bg-muted disabled:opacity-40 disabled:hover:bg-background cursor-pointer active:scale-95 shrink-0"
+                                    >
+                                        <ChevronRight className="h-4 w-4" />
+                                    </button>
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 
+                {/* Top Scrollbar Synchronizer */}
+                <div
+                    ref={topScrollRef}
+                    className="overflow-x-auto overflow-y-hidden h-[6px] w-full transition-opacity duration-300 border-b border-border/20"
+                    style={{ opacity: tableWidth > (tableContainerRef.current?.offsetWidth || 0) ? 1 : 0 }}
+                >
+                    <div style={{ width: tableWidth, height: "1px" }} />
+                </div>
+
                 {/* Table */}
-                <div className="overflow-x-auto">
+                <div ref={tableContainerRef} className="overflow-x-auto">
                     <table className="w-full">
                         <thead>
                             <tr className="bg-muted/50 border-b border-border">
@@ -673,7 +811,7 @@ export function ProjectManagerDashboard({ preselectedProjectId }: { preselectedP
                                     </td>
                                 </tr>
                             ) : (
-                                filteredProjects.map((project, idx) => {
+                                paginatedProjects.map((project, idx) => {
                                     const assignedEditor = editors.find(e => e.uid === project.assignedEditorId);
                                     
                                     return (
@@ -1092,10 +1230,28 @@ export function ProjectManagerDashboard({ preselectedProjectId }: { preselectedP
                 </div>
                 
                 {/* Table Footer */}
-                <div className="px-4 py-3 border-t border-border bg-muted/30 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">
-                        Showing {filteredProjects.length} of {projects.length} projects
+                <div className="px-4 py-3 border-t border-border bg-muted/30 flex items-center justify-between flex-wrap gap-2 text-xs">
+                    <span className="text-muted-foreground font-medium">
+                        Showing {filteredProjects.length > 0 ? (currentPage - 1) * rowsPerPage + 1 : 0} to {Math.min(currentPage * rowsPerPage, filteredProjects.length)} of {filteredProjects.length} projects
                     </span>
+                    {totalProjectPages > 1 && (
+                        <div className="flex items-center gap-2">
+                            <button
+                                onClick={() => setCurrentPage(1)}
+                                disabled={currentPage === 1}
+                                className="px-2.5 py-1 rounded border border-border bg-background text-foreground hover:bg-muted disabled:opacity-40 text-xs font-semibold cursor-pointer active:scale-95 transition-all"
+                            >
+                                First
+                            </button>
+                            <button
+                                onClick={() => setCurrentPage(totalProjectPages)}
+                                disabled={currentPage === totalProjectPages}
+                                className="px-2.5 py-1 rounded border border-border bg-background text-foreground hover:bg-muted disabled:opacity-40 text-xs font-semibold cursor-pointer active:scale-95 transition-all"
+                            >
+                                Last
+                            </button>
+                        </div>
+                    )}
                 </div>
             </motion.div>
 
