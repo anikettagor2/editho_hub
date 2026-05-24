@@ -1544,9 +1544,9 @@ function FinanceRow({ project, index }: { project: Project; index: number }) {
                                 {project.videoFormat}
                             </span>
                         )}
-                        {project.category && (
+                        {project.videoType && (
                             <span className="hidden xs:inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-muted/50 border border-border/30 font-bold">
-                                {project.category}
+                                {project.videoType}
                             </span>
                         )}
                     </div>

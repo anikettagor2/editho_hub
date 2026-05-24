@@ -581,8 +581,7 @@ export function ProjectManagerDashboard({ preselectedProjectId }: { preselectedP
             
         const matchesStatus = statusFilter === "all" || p.status === statusFilter ||
             (statusFilter === "review" && p.status === "in_review") || 
-            (statusFilter === "in_production" && p.status === "active") ||
-            (statusFilter === "completed_pending_payment" && p.status === "delivered");
+            (statusFilter === "in_production" && p.status === "active");
             
         return matchesSearch && matchesStatus;
     });
