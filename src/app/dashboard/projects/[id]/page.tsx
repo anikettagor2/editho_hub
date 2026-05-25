@@ -919,7 +919,7 @@ export default function ProjectDetailsPage() {
 
                             <div className="space-y-3">
                                 {invoices.map((invoice) => (
-                                    <Link key={invoice.id} href={`/dashboard/invoices/${invoice.id}`}>
+                                    <Link key={invoice.id} href={`/invoices/${invoice.id}`}>
                                         <motion.div
                                             whileHover={{ scale: 1.01 }}
                                             className="flex items-center justify-between p-4 rounded-xl bg-background border border-border hover:border-emerald-500/30 hover:bg-emerald-500/5 transition-all group cursor-pointer"

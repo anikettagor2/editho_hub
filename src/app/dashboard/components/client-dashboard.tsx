@@ -507,6 +507,7 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                                 ? allUsers.find((u) => u.uid === project.assignedPMId)?.displayName || "PM"
                                                 : assignedPM?.displayName || "—";
                                             const hasDraft = draftProjectIds.includes(project.id || "");
+                                            const projectInvoices = invoices.filter((inv) => inv.projectId === project.id);
                                             return (
                                                 <motion.tr key={project.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                                     transition={{ delay: idx * 0.02 }}
@@ -557,10 +558,20 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                                                     <FileVideo className="h-3.5 w-3.5" /> Review
                                                                 </button>
                                                             )}
-                                                            <button onClick={() => { setSelectedProject(project); setIsProjectModalOpen(true); }}
-                                                                className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors">
-                                                                <Eye className="h-3.5 w-3.5" /> Details
-                                                            </button>
+                                                            {!project.clientHasDownloaded ? (
+                                                                <button onClick={() => { setSelectedProject(project); setIsProjectModalOpen(true); }}
+                                                                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors">
+                                                                    <Eye className="h-3.5 w-3.5" /> Details
+                                                                </button>
+                                                            ) : (
+                                                                isPaid && projectInvoices.length > 0 && (
+                                                                    <Link href={`/invoices/${projectInvoices[0].id}`}>
+                                                                        <button className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors">
+                                                                            <Receipt className="h-3.5 w-3.5" /> Invoice
+                                                                        </button>
+                                                                    </Link>
+                                                                )
+                                                            )}
                                                         </div>
                                                     </td>
                                                 </motion.tr>
@@ -605,6 +616,7 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                         ? allUsers.find((u) => u.uid === project.assignedPMId)?.displayName || "PM"
                                         : assignedPM?.displayName || "—";
                                     const hasDraft = draftProjectIds.includes(project.id || "");
+                                    const projectInvoices = invoices.filter((inv) => inv.projectId === project.id);
                                     
                                     return (
                                         <div key={project.id} className="bg-muted/15 border border-border rounded-xl p-2.5 space-y-2.5">
@@ -625,10 +637,20 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                                             <FileVideo className="h-3 w-3" /> Review
                                                         </button>
                                                     )}
-                                                    <button onClick={() => { setSelectedProject(project); setIsProjectModalOpen(true); }}
-                                                        className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-bold hover:bg-primary/20 transition-colors">
-                                                        <Eye className="h-3 w-3" /> Details
-                                                    </button>
+                                                    {!project.clientHasDownloaded ? (
+                                                        <button onClick={() => { setSelectedProject(project); setIsProjectModalOpen(true); }}
+                                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-bold hover:bg-primary/20 transition-colors">
+                                                            <Eye className="h-3 w-3" /> Details
+                                                        </button>
+                                                    ) : (
+                                                        isPaid && projectInvoices.length > 0 && (
+                                                            <Link href={`/invoices/${projectInvoices[0].id}`}>
+                                                                <button className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-bold hover:bg-primary/20 transition-colors">
+                                                                    <Receipt className="h-3 w-3" /> Invoice
+                                                                </button>
+                                                            </Link>
+                                                        )
+                                                    )}
                                                 </div>
                                             </div>
 
@@ -789,7 +811,7 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                                             />
                                                         )}
                                                         {projectInvoices.length > 0 && (
-                                                            <Link href={`/dashboard/invoices/${projectInvoices[0].id}`}>
+                                                            <Link href={`/invoices/${projectInvoices[0].id}`}>
                                                                 <button className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 text-primary text-xs font-medium hover:bg-primary/20 transition-colors">
                                                                     <Receipt className="h-3.5 w-3.5" /> Invoice
                                                                 </button>
@@ -866,7 +888,7 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                                             />
                                                         )}
                                                         {projectInvoices.length > 0 && (
-                                                            <Link href={`/dashboard/invoices/${projectInvoices[0].id}`}>
+                                                            <Link href={`/invoices/${projectInvoices[0].id}`}>
                                                                 <button className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-bold hover:bg-primary/20 transition-colors border border-primary/20">
                                                                     <Receipt className="h-3 w-3" /> Invoice
                                                                 </button>
@@ -940,7 +962,7 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                                     {invoice.status.charAt(0).toUpperCase() + invoice.status.slice(1)}
                                                 </span>
                                             </div>
-                                            <Link href={`/dashboard/invoices/${invoice.id}`}>
+                                            <Link href={`/invoices/${invoice.id}`}>
                                                 <button className="h-8 w-8 rounded-lg bg-muted hover:bg-primary/20 hover:text-primary text-muted-foreground flex items-center justify-center transition-all">
                                                     <Download className="h-3.5 w-3.5" />
                                                 </button>
@@ -1087,7 +1109,7 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                         {invoices.filter((inv) => inv.projectId === selectedProject.id).length > 0 ? (
                                             <div className="space-y-2">
                                                 {invoices.filter((inv) => inv.projectId === selectedProject.id).map((invoice) => (
-                                                    <Link key={invoice.id} href={`/dashboard/invoices/${invoice.id}`}>
+                                                    <Link key={invoice.id} href={`/invoices/${invoice.id}`}>
                                                         <motion.button whileHover={{ scale: 1.02 }} className="w-full flex items-center justify-between p-2.5 rounded-lg bg-emerald-500/5 border border-emerald-500/20 hover:bg-emerald-500/10 transition-all group">
                                                             <div className="flex items-center gap-2 min-w-0">
                                                                 <FileText className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
