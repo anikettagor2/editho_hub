@@ -93,7 +93,7 @@ function StatusBadge({ status }: { status: string }) {
         completed:                { label: "Completed",              className: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
         approved:                 { label: "Completed",              className: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
         delivered:                { label: "Delivered",              className: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
-        completed_pending_payment:{ label: "Delivered (Editor Payout Pending)",className: "bg-orange-500/10 text-orange-500 border-orange-500/20" },
+        completed_pending_payment:{ label: "Completed", className: "bg-emerald-500/10 text-emerald-500 border-emerald-500/20" },
     };
     const cfg = configs[status] || { label: status.replace(/_/g, " "), className: "bg-zinc-500/10 text-zinc-400 border-zinc-500/20" };
     return (
