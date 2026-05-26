@@ -75,9 +75,22 @@ export async function POST(request: Request) {
                 const clientData = clientSnap.data();
 
                 const invoiceNumber = `INV-${Date.now().toString().slice(-6)}-${Math.floor(Math.random() * 100)}`;
-                const description = paymentType === 'initial'
-                    ? `Upfront Payment for Project: ${projectData.name}`
-                    : `Final Balance for Project: ${projectData.name}`;
+                const isFinal = paymentType === 'final';
+                
+                const projectTotalCost = projectData.totalCost ? Number(projectData.totalCost) : 0;
+
+                // Use totalCost for the final invoice (GST-exclusive base), fall back to numericAccountingAmount if missing
+                const invoiceSubtotal = isFinal && projectTotalCost
+                    ? projectTotalCost
+                    : numericAccountingAmount;
+                    
+                const invoiceTotal = isFinal && projectTotalCost
+                    ? projectTotalCost * (1 + numericTaxRate / 100)
+                    : numericAmount;
+
+                const description = isFinal
+                    ? `Total Cost for Project: ${projectData.name}`
+                    : `Upfront Payment for Project: ${projectData.name}`;
 
                 const invoiceData = {
                     invoiceNumber,
@@ -89,12 +102,12 @@ export async function POST(request: Request) {
                     items: [{
                         description,
                         quantity: 1,
-                        rate: numericAccountingAmount,
-                        amount: numericAccountingAmount
+                        rate: invoiceSubtotal,
+                        amount: invoiceSubtotal
                     }],
-                    subtotal: numericAccountingAmount,
+                    subtotal: invoiceSubtotal,
                     tax: numericTaxRate,
-                    total: numericAmount,
+                    total: invoiceTotal,
                     status: 'paid', // Automatically marked as paid
                     issueDate: Date.now(),
                     dueDate: Date.now(),

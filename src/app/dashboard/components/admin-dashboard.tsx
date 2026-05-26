@@ -2298,7 +2298,9 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                   : "bg-amber-500/10 text-amber-500 border-amber-500/20",
                           )}
                         >
-                          {project.status.replace("_", " ")}
+                          {project.status === "completed_pending_payment"
+                            ? "completed"
+                            : project.status.replace("_", " ")}
                         </span>
                       </td>
                       <td
