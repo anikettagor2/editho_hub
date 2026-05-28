@@ -1137,6 +1137,9 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                         {previewFile && (
                             <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4" onClick={() => setPreviewFile(null)}>
                                 <div className="relative max-w-3xl w-full max-h-[80vh] bg-black rounded-xl overflow-hidden shadow-2xl flex items-center justify-center" onClick={(e) => e.stopPropagation()}>
+                                    <button onClick={() => triggerDirectDownload(previewFile.url, previewFile.name)} className="absolute top-4 left-4 h-10 px-4 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center gap-2 backdrop-blur-md z-10 transition-all text-xs font-bold">
+                                        <Download className="h-3.5 w-3.5" /> Download
+                                    </button>
                                     <button onClick={() => setPreviewFile(null)} className="absolute top-4 right-4 h-10 w-10 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md z-10 transition-all">
                                         <X className="h-5 w-5" />
                                     </button>
