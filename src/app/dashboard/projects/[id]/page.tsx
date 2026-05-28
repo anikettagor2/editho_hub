@@ -28,6 +28,7 @@ import {
     Lock,
     Unlock,
     X,
+    ChevronLeft,
     ChevronRight,
     MessageSquare,
     Eye,
@@ -96,6 +97,8 @@ export default function ProjectDetailsPage() {
     const { user, loading: authLoading } = useAuth();
     const [project, setProject] = useState<ExtendedProject | null>(null);
     const [revisions, setRevisions] = useState<Revision[]>([]);
+    const [selectedRevisionIdx, setSelectedRevisionIdx] = useState(0);
+    const [activeSection, setActiveSection] = useState<'details' | 'assets'>('details');
     const [loading, setLoading] = useState(true);
     
     // Admin Assignment State
@@ -503,7 +506,7 @@ export default function ProjectDetailsPage() {
 
     if (!project) return null;
 
-    const latestRevision = revisions[0];
+    const latestRevision = revisions[selectedRevisionIdx] || revisions[0];
     const isClient = user?.role === 'client' || project.ownerId === user?.uid;
     const hasRemainingBalance = (project?.totalCost || 0) > (project?.amountPaid || 0);
     const needsPayment = (project?.paymentStatus !== 'full_paid' || hasRemainingBalance) && !project?.downloadsUnlocked;
@@ -814,7 +817,7 @@ export default function ProjectDetailsPage() {
     }
 
     return (
-        <div className="max-w-[1600px] mx-auto pb-20 space-y-10">
+        <div className="max-w-[1600px] mx-auto pb-10 space-y-6">
             <ProjectChat 
                 projectId={id as string}
                 currentUser={user}
@@ -823,7 +826,7 @@ export default function ProjectDetailsPage() {
             />
             
             {/* Header Section */}
-            <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between pb-8 border-b border-border">
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between pb-4 border-b border-border">
                 <div className="space-y-4">
                     <Link href="/dashboard" className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-lg bg-muted/50 border border-border text-muted-foreground hover:text-foreground text-[10px] font-bold uppercase tracking-widest transition-all hover:bg-muted/50">
                          <ArrowLeft className="h-3.5 w-3.5" />
@@ -965,7 +968,7 @@ export default function ProjectDetailsPage() {
                     )}
                 </div>
             ) : (
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
                 
                 {/* Left: Content & Versions */}
                 <div className="lg:col-span-8 space-y-8">
@@ -1008,14 +1011,42 @@ export default function ProjectDetailsPage() {
                                 )}
 
                                 {/* Video Metadata Overlays */}
-                                <div className="absolute top-6 left-6 flex items-center gap-2.5 z-10">
-                                    <div className="px-3 py-1.5 bg-background/80 backdrop-blur-lg rounded-lg border border-border flex items-center gap-2">
-                                        <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(99,102,241,1)]" />
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Current Version</span>
+                                <div className="absolute top-6 left-6 flex items-center justify-between right-6 z-10">
+                                    <div className="flex items-center gap-2.5">
+                                        <div className="px-3 py-1.5 bg-background/80 backdrop-blur-lg rounded-lg border border-border flex items-center gap-2">
+                                            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(99,102,241,1)]" />
+                                            <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">
+                                                {selectedRevisionIdx === 0 ? "Current Version" : `Version v${latestRevision.version}`}
+                                            </span>
+                                        </div>
+                                        <div className="px-3 py-1.5 bg-background/80 backdrop-blur-lg rounded-lg border border-border">
+                                            <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">v{latestRevision.version}</span>
+                                        </div>
                                     </div>
-                                    <div className="px-3 py-1.5 bg-background/80 backdrop-blur-lg rounded-lg border border-border">
-                                        <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest">v{latestRevision.version}</span>
-                                    </div>
+                                    
+                                    {revisions.length > 1 && (
+                                        <div className="flex items-center gap-1.5 bg-background/80 backdrop-blur-lg p-1 rounded-lg border border-border">
+                                            <button 
+                                                disabled={selectedRevisionIdx === revisions.length - 1}
+                                                onClick={() => setSelectedRevisionIdx(prev => prev + 1)}
+                                                className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
+                                                title="Previous Version"
+                                            >
+                                                <ChevronLeft className="h-4 w-4" />
+                                            </button>
+                                            <span className="text-[10px] font-black uppercase tracking-wider px-2 text-foreground/80">
+                                                v{latestRevision.version}
+                                            </span>
+                                            <button 
+                                                disabled={selectedRevisionIdx === 0}
+                                                onClick={() => setSelectedRevisionIdx(prev => prev - 1)}
+                                                className="h-7 w-7 rounded flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-muted/50 disabled:opacity-30 disabled:hover:bg-transparent transition-all"
+                                                title="Next Version"
+                                            >
+                                                <ChevronRight className="h-4 w-4" />
+                                            </button>
+                                        </div>
+                                    )}
                                 </div>
                             </motion.div>
 
@@ -1091,740 +1122,579 @@ export default function ProjectDetailsPage() {
                         </div>
                     )}
 
-                    {/* History */}
-                    {revisions.length > 1 && (
-                        <div className="space-y-4">
-                            <h3 className="text-[10px] font-bold text-muted-foreground uppercase tracking-[0.25em] ml-1">Previous Versions</h3>
-                            <div className="grid gap-3">
-                                {revisions.slice(1).map((rev, idx) => (
-                                    <Link href={`/dashboard/projects/${id}/review/${rev.id}`} key={rev.id}>
-                                        <motion.div 
-                                            initial={{ opacity: 0, x: -10 }}
-                                            animate={{ opacity: 1, x: 0 }}
-                                            transition={{ delay: idx * 0.05 }}
-                                            className="flex items-center justify-between p-4 px-6 rounded-xl bg-muted/50 border border-border hover:bg-muted/50 hover:border-border transition-all group lg:hover:pl-8 origin-left"
-                                        >
-                                            <div className="flex items-center gap-4">
-                                                <div className="h-10 w-10 bg-muted/50 rounded-lg flex items-center justify-center border border-border group-hover:border-primary/40 group-hover:text-primary transition-all duration-300">
-                                                    <FileVideo className="h-4.5 w-4.5" />
-                                                </div>
-                                                <div className="space-y-0.5">
-                                                    <p className="text-sm font-bold text-muted-foreground group-hover:text-foreground transition-colors tracking-tight">Version {rev.version}</p>
-                                                    <p className="text-[10px] text-muted-foreground font-bold uppercase tracking-widest" suppressHydrationWarning>{new Date(rev.createdAt).toLocaleDateString(undefined, { day: '2-digit', month: 'short', year: 'numeric' })}</p>
-                                                </div>
-                                            </div>
-                                            <div className="h-8 w-8 flex items-center justify-center rounded-lg bg-muted/50 border border-border text-muted-foreground group-hover:text-foreground group-hover:bg-primary/20 group-hover:border-primary/30 transition-all">
-                                                <ChevronRight className="h-4 w-4" />
-                                            </div>
-                                        </motion.div>
-                                    </Link>
-                                ))}
-                            </div>
-                        </div>
-                    )}
+
                 </div>
 
                 {/* Right: Metadata & Management */}
-                <div className="lg:col-span-4 space-y-6">
+                <div className="lg:col-span-4 space-y-4">
                     
-                    {/* Management Module (Admin/PM) */}
+                    {/* Management Module - Minimal Editor Assignment (Admin/PM) */}
                     {canManage && (
-                        <div className="space-y-6">
-                            <div className="enterprise-card bg-primary/[0.03] border-primary/20 p-6 md:p-8 space-y-6 relative overflow-hidden group/manage">
-                                <div className="absolute top-0 right-0 p-6 opacity-10 pointer-events-none group-hover/manage:opacity-20 transition-opacity">
-                                    <ShieldCheck className="h-16 w-16 text-primary" />
-                                </div>
-                                <div className="flex justify-between items-center relative z-10">
-                                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-primary flex items-center gap-2">
-                                        Editor Assignment
-                                    </h3>
-                                    {canAssignEditor && (
+                        <div className="enterprise-card p-4 space-y-3 relative overflow-hidden group/manage">
+                            <div className="flex justify-between items-center relative z-10">
+                                <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Primary Editor</span>
+                                {canAssignEditor && (
+                                    <button 
+                                        onClick={() => setIsAssignModalOpen(true)}
+                                        className="text-[9px] font-bold text-primary hover:underline uppercase tracking-widest"
+                                    >
+                                        Change
+                                    </button>
+                                )}
+                            </div>
+                            
+                            <div className="relative z-10">
+                                {project.assignedEditorId ? (
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-8 w-8 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center font-bold text-xs text-primary overflow-hidden flex-shrink-0">
+                                            {editors.find(e => e.uid === project.assignedEditorId)?.photoURL ? (
+                                                <Image src={editors.find(e => e.uid === project.assignedEditorId)?.photoURL!} alt="Editor" width={32} height={32} className="w-full h-full object-cover rounded-full" />
+                                            ) : (
+                                                editors.find(e => e.uid === project.assignedEditorId)?.displayName?.[0].toUpperCase() || "E"
+                                            )}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="text-xs font-bold text-foreground truncate">
+                                                {editors.find(e => e.uid === project.assignedEditorId)?.displayName || "Active Node"}
+                                            </p>
+                                        </div>
+                                        <span className={cn(
+                                            "text-[7px] uppercase font-black px-1.5 py-0.5 rounded border leading-none tracking-widest flex-shrink-0",
+                                            project.assignmentStatus === 'pending' ? "bg-amber-500/5 text-amber-500 border-amber-500/20" :
+                                            project.assignmentStatus === 'accepted' ? "bg-emerald-500/5 text-emerald-500 border-emerald-500/20" :
+                                            "bg-red-500/5 text-red-500 border-red-500/20"
+                                        )}>
+                                            {project.assignmentStatus || 'Assigned'}
+                                        </span>
+                                    </div>
+                                ) : (
+                                    <div className="text-center py-4 border border-dashed border-border rounded-xl bg-muted/30">
+                                        <p className="text-muted-foreground text-[9px] font-bold uppercase tracking-widest">Awaiting Assignment</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Editor Select Modal */}
+                            <Modal
+                                isOpen={isAssignModalOpen}
+                                onClose={() => setIsAssignModalOpen(false)}
+                                title="Assign Editor"
+                            >
+                                <div className="space-y-6">
+                                    <div className="space-y-2 max-h-[350px] overflow-y-auto pr-2 scrollbar-thin">
+                                        {editors.map((editor) => {
+                                            const isSelected = selectedEditorId === editor.uid;
+                                            return (
+                                                <div 
+                                                    key={editor.uid}
+                                                    onClick={() => setSelectedEditorId(editor.uid)}
+                                                    className={cn(
+                                                        "flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer",
+                                                        isSelected ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(99,102,241,0.1)]" : "bg-muted/50 border-border hover:bg-muted/50"
+                                                    )}
+                                                >
+                                                    <div className={cn(
+                                                        "h-10 w-10 rounded-lg flex items-center justify-center font-bold text-sm overflow-hidden",
+                                                        isSelected ? "bg-primary text-foreground border border-primary/30" : "bg-muted text-muted-foreground border border-border"
+                                                    )}>
+                                                        {editor.photoURL ? (
+                                                            <Image src={editor.photoURL} alt={editor.displayName || "Editor"} width={40} height={40} className="w-full h-full object-cover" />
+                                                        ) : (
+                                                            editor.displayName?.[0].toUpperCase() || "E"
+                                                        )}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                        <p className={cn("text-sm font-bold truncate", isSelected ? "text-foreground" : "text-muted-foreground")}>
+                                                            {editor.displayName || "Unknown"}
+                                                        </p>
+                                                        <p className="text-[10px] text-muted-foreground font-medium truncate">{editor.email}</p>
+                                                    </div>
+                                                    {isSelected && <CheckCircle2 className="h-4 w-4 text-primary" />}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+
+                                    <div className="space-y-4">
+                                        <div className="space-y-1.5">
+                                            <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest ml-1">Editor Revenue Share (₹)</label>
+                                            <input 
+                                                type="number"
+                                                value={editorRevenueShare}
+                                                onChange={(e) => setEditorRevenueShare(e.target.value)}
+                                                placeholder="e.g. 5000"
+                                                className="w-full h-11 bg-black/5 dark:bg-black/40 border border-border rounded-lg px-4 text-sm text-foreground focus:outline-none focus:border-primary/50 transition-colors"
+                                            />
+                                        </div>
                                         <button 
-                                            onClick={() => setIsAssignModalOpen(true)}
-                                            className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground hover:text-foreground transition-colors"
+                                            onClick={async () => {
+                                                if (!selectedEditorId || !editorRevenueShare) {
+                                                    toast.error("Please select an editor and enter revenue share");
+                                                    return;
+                                                }
+                                                
+                                                const shareAmount = parseFloat(editorRevenueShare);
+                                                if (shareAmount > (project.totalCost || 0)) {
+                                                    toast.error(`Editor revenue cannot exceed project cost (₹${project.totalCost || 0}). Negative platform margin is not allowed.`);
+                                                    return;
+                                                }
+
+                                                setAssigning(true);
+                                                try {
+                                                    await assignEditor(id as string, selectedEditorId, shareAmount, undefined, 'project_manager');
+                                                    setProject(prev => prev ? ({ ...prev, assignedEditorId: selectedEditorId, editorPrice: shareAmount, assignmentStatus: 'pending', status: 'pending_assignment' }) : null);
+                                                    toast.success("Editor assigned. Pending their acceptance.");
+                                                    setIsAssignModalOpen(false);
+                                                } catch (err) {
+                                                    toast.error("Process failed.");
+                                                } finally {
+                                                    setAssigning(false);
+                                                }
+                                            }}
+                                            disabled={assigning || !selectedEditorId || !editorRevenueShare}
+                                            className="w-full h-12 rounded-lg bg-primary  text-primary-foreground text-[11px] font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all active:scale-[0.98] disabled:opacity-50"
                                         >
-                                            Modify
+                                            {assigning ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Confirm Assignment"}
                                         </button>
-                                    )}
+                                    </div>
                                 </div>
-                                
-                                <div className="relative z-10">
-                                    {project.assignedEditorId ? (
-                                        <div className="flex items-center gap-4 p-4 rounded-xl bg-background/80 border border-border backdrop-blur-sm">
-                                            <div className="h-11 w-11 rounded-lg bg-primary/20 flex items-center justify-center text-primary font-bold border border-primary/30 overflow-hidden">
-                                                {editors.find(e => e.uid === project.assignedEditorId)?.photoURL ? (
-                                                    <Image src={editors.find(e => e.uid === project.assignedEditorId)?.photoURL!} alt="Editor" width={44} height={44} className="w-full h-full object-cover" />
-                                                ) : (
-                                                    editors.find(e => e.uid === project.assignedEditorId)?.displayName?.[0].toUpperCase() || "E"
+                            </Modal>
+                        </div>
+                    )}
+
+                    {/* Collapsible Accordion Group - Only one is open at a time */}
+                    <div className="space-y-3">
+                        {/* 1. Project Details Accordion */}
+                        <div className="enterprise-card overflow-hidden">
+                            <button
+                                onClick={() => setActiveSection(activeSection === 'details' ? 'assets' : 'details')}
+                                className="w-full p-4 flex items-center justify-between text-left hover:bg-muted/10 transition-colors"
+                            >
+                                <div className="flex items-center gap-2.5 text-muted-foreground">
+                                    <LinkIcon className="h-3.5 w-3.5" /> 
+                                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-foreground">Project Details</h3>
+                                </div>
+                                <ChevronRight className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-200", activeSection === 'details' ? "rotate-90" : "rotate-0")} />
+                            </button>
+                            
+                            <AnimatePresence initial={false}>
+                                {activeSection === 'details' && (
+                                    <motion.div
+                                        key="details"
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: "auto", opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        transition={{ duration: 0.2 }}
+                                    >
+                                        <div className="p-4 pt-0 border-t border-border/20 space-y-3.5">
+                                            <DetailRow label="Client Account" value={project.brand || project.clientName || 'N/A'} />
+                                            {assignedPM && <DetailRow label="Project Manager" value={assignedPM.displayName || "Assigned PM"} />}
+                                            {assignedSE && <DetailRow label="Sales Executive" value={assignedSE.displayName || "Assigned SE"} />}
+                                            {assignedEditor && <DetailRow label="Primary Editor" value={assignedEditor.displayName || "Assigned Editor"} />}
+                                            {(project as any).videoFormat && <DetailRow label="Video Format" value={(project as any).videoFormat} />}
+                                            {(project as any).aspectRatio && <DetailRow label="Aspect Ratio" value={(project as any).aspectRatio} />}
+                                            <DetailRow label="Estimated Duration" value={`${project.duration || 0}m`} />
+                                            <DetailRow label="Target Delivery" value={project.deadline ? project.deadline : "TBD"} />
+                                            <div className="pt-4 border-t border-border space-y-2">
+                                                <label className="text-[8px] text-muted-foreground uppercase font-black tracking-widest block">Project Intent</label>
+                                                <p className="text-xs text-muted-foreground leading-relaxed font-medium italic">
+                                                    "{project.description || "No description provided."}"
+                                                </p>
+                                            </div>
+
+                                            {(isClient || project.ownerId === user?.uid) && (assignedPM || assignedSE) && (
+                                                <div className="pt-3 border-t border-border/20 flex justify-end">
+                                                    <button
+                                                        onClick={() => setIsChatOpen(true)}
+                                                        className="h-8 px-3 rounded bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-all flex items-center gap-1.5"
+                                                    >
+                                                        <MessageSquare className="h-3.5 w-3.5" /> Open Chat
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
+                        </div>
+
+                        {/* 2. Project Assets Accordion */}
+                        <div className="enterprise-card overflow-hidden">
+                            <button
+                                onClick={() => setActiveSection(activeSection === 'assets' ? 'details' : 'assets')}
+                                className="w-full p-4 flex items-center justify-between text-left hover:bg-muted/10 transition-colors"
+                            >
+                                <div className="flex items-center gap-2.5 text-muted-foreground">
+                                    <Briefcase className="h-3.5 w-3.5" /> 
+                                    <h3 className="text-[10px] font-bold uppercase tracking-widest text-foreground">Project Assets</h3>
+                                </div>
+                                <ChevronRight className={cn("h-3.5 w-3.5 text-muted-foreground transition-transform duration-200", activeSection === 'assets' ? "rotate-90" : "rotate-0")} />
+                            </button>
+
+                            <AnimatePresence initial={false}>
+                                {activeSection === 'assets' && (
+                                    <motion.div
+                                        key="assets"
+                                        initial={{ height: 0, opacity: 0 }}
+                                        animate={{ height: "auto", opacity: 1 }}
+                                        exit={{ height: 0, opacity: 0 }}
+                                        transition={{ duration: 0.2 }}
+                                    >
+                                        <div className="p-4 pt-0 border-t border-border/20 space-y-4">
+                                            {/* Editor Not Accepted Warning */}
+                                            {project.assignmentStatus === 'pending' && !isClient && (
+                                                <div className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-3 flex items-start gap-2.5">
+                                                    <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                                                    <div>
+                                                        <p className="text-xs font-semibold text-amber-600 dark:text-amber-400">Project Pending Review</p>
+                                                        <p className="text-[10px] text-amber-600/80 dark:text-amber-400/80 mt-1">Accept this project to access assets</p>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            <div className="grid gap-4">
+                                                {/* 1. Google Drive Link */}
+                                                <div className="space-y-2">
+                                                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">📎 Google Drive Link</span>
+                                                    {project.footageLink ? (
+                                                        <a 
+                                                            href={project.footageLink.startsWith('http') ? project.footageLink : `https://${project.footageLink}`} 
+                                                            target="_blank"
+                                                            className="flex items-center gap-2 p-2 rounded-lg bg-primary/5 border border-primary/20 hover:border-primary/40 hover:bg-primary/10 transition-all group"
+                                                        >
+                                                            <ExternalLink className="h-3 w-3 text-primary flex-shrink-0" />
+                                                            <span className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">Access Google Drive</span>
+                                                        </a>
+                                                    ) : (
+                                                        <div className="p-2 rounded-lg border border-border/30 bg-muted/20">
+                                                            <p className="text-[10px] text-muted-foreground">Not uploaded yet</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* 2. Raw Video Files */}
+                                                <div className="space-y-2 pt-2 border-t border-border/30">
+                                                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">🎬 Raw Video Files</span>
+                                                    {project.rawFiles && project.rawFiles.length > 0 ? (
+                                                        <div className="grid gap-1.5 max-h-[180px] overflow-y-auto pr-1 scrollbar-thin">
+                                                            {project.rawFiles.map((file, idx) => (
+                                                                <div key={idx} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
+                                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                        {file.name.match(/\.(zip|rar|7z)$/i) || file.type?.includes('zip') ? <Archive className="h-3.5 w-3.5 text-purple-500 flex-shrink-0" /> : <FileVideo className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />}
+                                                                        <div className="min-w-0">
+                                                                            <p className="text-[11px] font-semibold text-foreground truncate">{file.name}</p>
+                                                                            {file.size && <p className="text-[8px] text-muted-foreground">{(file.size / (1024*1024)).toFixed(1)} MB</p>}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                                        {!(file.name.match(/\.(zip|rar|7z)$/i) || file.type?.includes('zip')) && (
+                                                                            <button 
+                                                                                onClick={() => setPreviewFile({ url: file.url, type: file.type || 'video/mp4', name: file.name, playbackId: (file as any).playbackId })} 
+                                                                                className="h-6 px-1.5 rounded text-[9px] font-bold uppercase tracking-widest bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all disabled:opacity-50"
+                                                                                disabled={project.assignmentStatus === 'pending' && !isClient}
+                                                                            >
+                                                                                Preview
+                                                                            </button>
+                                                                        )}
+                                                                        <button
+                                                                            onClick={() => handleFileDownload(file.url, file.name)}
+                                                                            className="h-6 w-6 rounded bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all disabled:opacity-50"
+                                                                            disabled={project.assignmentStatus === 'pending' && !isClient}
+                                                                        >
+                                                                            <Download className="h-3 w-3" />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="p-2 rounded-lg border border-border/30 bg-muted/20">
+                                                            <p className="text-[10px] text-muted-foreground">Not uploaded yet</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* 3. Scripts & Directions */}
+                                                <div className="space-y-2 pt-2 border-t border-border/30">
+                                                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">📝 Scripts & Directions</span>
+                                                    
+                                                    {project.scripts && project.scripts.length > 0 && (
+                                                        <div className="grid gap-1.5">
+                                                            {project.scripts.slice(0, 2).map((script, idx) => (
+                                                                <div key={idx} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
+                                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                        <FileText className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                                                        <p className="text-[11px] font-semibold text-foreground truncate">{script.name}</p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                                        <button 
+                                                                            onClick={() => setPreviewFile({ url: script.url, type: script.type || 'text/plain', name: script.name })}
+                                                                            className="h-6 px-1.5 rounded text-[9px] font-bold uppercase tracking-widest bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all disabled:opacity-50"
+                                                                            disabled={project.assignmentStatus === 'pending' && !isClient}
+                                                                        >
+                                                                            Preview
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={() => handleFileDownload(script.url, script.name)}
+                                                                            className="h-6 w-6 rounded bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all disabled:opacity-50"
+                                                                            disabled={project.assignmentStatus === 'pending' && !isClient}
+                                                                        >
+                                                                            <Download className="h-3 w-3" />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {(project as any).scriptText && (
+                                                        <div className="p-3 rounded-lg bg-primary/5 border border-primary/20 space-y-2">
+                                                            <div className="flex items-center justify-between gap-2">
+                                                                <p className="text-[9px] font-bold uppercase tracking-widest text-primary">✍️ Pasted Script</p>
+                                                                <button 
+                                                                    onClick={() => {
+                                                                        navigator.clipboard.writeText((project as any).scriptText);
+                                                                        toast.success("Script copied");
+                                                                    }}
+                                                                    className="h-6 px-1.5 rounded text-[9px] font-bold uppercase tracking-widest bg-primary/10 hover:bg-primary/20 text-primary transition-all flex items-center gap-1"
+                                                                >
+                                                                    <Copy className="h-2.5 w-2.5" /> Copy
+                                                                </button>
+                                                            </div>
+                                                            <p className="text-[11px] text-foreground leading-relaxed whitespace-pre-wrap font-medium max-h-[100px] overflow-y-auto">
+                                                                {(project as any).scriptText}
+                                                            </p>
+                                                        </div>
+                                                    )}
+
+                                                    {!((project as any).scriptText) && (!project.scripts || project.scripts.length === 0) && (
+                                                        <div className="p-2 rounded-lg border border-border/30 bg-muted/20">
+                                                            <p className="text-[10px] text-muted-foreground">Not uploaded yet</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* 4. Audio Files */}
+                                                <div className="space-y-2 pt-2 border-t border-border/30">
+                                                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">🎧 Audio Files</span>
+                                                    {project.audioFiles && project.audioFiles.length > 0 ? (
+                                                        <div className="grid gap-2 max-h-[180px] overflow-y-auto pr-1 scrollbar-thin">
+                                                            {project.audioFiles.map((file, idx) => (
+                                                                <div key={idx} className="p-2 rounded-lg border border-border/30 hover:bg-muted/30 transition-all space-y-1.5">
+                                                                    <div className="flex items-center justify-between gap-2 min-w-0">
+                                                                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                            <FileText className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                                                            <p className="text-[11px] font-semibold text-foreground truncate min-w-0 block">{file.name}</p>
+                                                                        </div>
+                                                                        <button
+                                                                            onClick={() => handleDirectDownload(file.url, file.name)}
+                                                                            className="h-6 w-6 rounded bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all shrink-0"
+                                                                        >
+                                                                            <Download className="h-3 w-3" />
+                                                                        </button>
+                                                                    </div>
+                                                                    <audio controls className="w-full max-w-full h-7 text-xs" src={file.url} preload="metadata" />
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="p-2 rounded-lg border border-border/30 bg-muted/20">
+                                                            <p className="text-[10px] text-muted-foreground">Not uploaded yet</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* 5. B-Roll Assets */}
+                                                <div className="space-y-2 pt-2 border-t border-border/30">
+                                                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">🎞️ B-Roll Assets</span>
+                                                    {(project as any).bRoleFiles && (project as any).bRoleFiles.length > 0 ? (
+                                                        <div className="grid gap-1.5 max-h-[180px] overflow-y-auto pr-1 scrollbar-thin">
+                                                            {(project as any).bRoleFiles.map((file: any, idx: number) => (
+                                                                <div key={idx} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
+                                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                        {file.name.match(/\.(zip|rar|7z)$/i) || file.type?.includes('zip') ? <Archive className="h-3.5 w-3.5 text-purple-500 flex-shrink-0" /> : file.type?.includes('image') ? (
+                                                                            <ImageIcon className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                                                        ) : (
+                                                                            <FileVideo className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                                                        )}
+                                                                        <p className="text-[11px] font-semibold text-foreground truncate">{file.name}</p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                                        {!(file.name.match(/\.(zip|rar|7z)$/i) || file.type?.includes('zip')) && (
+                                                                            <button 
+                                                                                onClick={() => setPreviewFile({ url: file.url, type: file.type || 'video/mp4', name: file.name, playbackId: (file as any).playbackId })}
+                                                                                className="h-6 px-1.5 rounded text-[9px] font-bold uppercase tracking-widest bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all disabled:opacity-50"
+                                                                                disabled={project.assignmentStatus === 'pending' && !isClient}
+                                                                            >
+                                                                                Preview
+                                                                            </button>
+                                                                        )}
+                                                                        <button 
+                                                                            onClick={() => handleDirectDownload(file.url, file.name)}
+                                                                            className="h-6 w-6 rounded bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all disabled:opacity-50"
+                                                                            disabled={project.assignmentStatus === 'pending' && !isClient}
+                                                                        >
+                                                                            <Download className="h-3 w-3" />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="p-2 rounded-lg border border-border/30 bg-muted/20">
+                                                            <p className="text-[10px] text-muted-foreground">Not uploaded yet</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* 6. Style References */}
+                                                <div className="space-y-2 pt-2 border-t border-border/30">
+                                                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">✨ Style References</span>
+                                                    {(project as any).referenceLink && (
+                                                        <a 
+                                                            href={(project as any).referenceLink.startsWith('http') ? (project as any).referenceLink : `https://${(project as any).referenceLink}`}
+                                                            target="_blank"
+                                                            className="flex items-center gap-2 p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/20 hover:border-emerald-500/40 hover:bg-emerald-500/10 transition-all group"
+                                                        >
+                                                            <LinkIcon className="h-3.5 w-3.5 text-emerald-600 flex-shrink-0" />
+                                                            <span className="text-xs font-semibold text-foreground group-hover:text-emerald-600 transition-colors">Open Style Reference</span>
+                                                        </a>
+                                                    )}
+
+                                                    {projectStyleReferenceFiles.length > 0 && (
+                                                        <div className="grid gap-1.5 max-h-[180px] overflow-y-auto pr-1 scrollbar-thin">
+                                                            {projectStyleReferenceFiles.map((file: any, idx: number) => (
+                                                                <div key={idx} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
+                                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                        {file.type?.includes('image') ? (
+                                                                            <ImageIcon className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                                                        ) : (
+                                                                            <FileVideo className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                                                        )}
+                                                                        <p className="text-[11px] font-semibold text-foreground truncate">{file.name}</p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                                        <button 
+                                                                            onClick={() => setPreviewFile({ url: file.url, type: file.type || 'image', name: file.name, playbackId: (file as any).playbackId })}
+                                                                            className="h-6 px-1.5 rounded text-[9px] font-bold uppercase tracking-widest bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all disabled:opacity-50"
+                                                                            disabled={project.assignmentStatus === 'pending' && !isClient}
+                                                                        >
+                                                                            Preview
+                                                                        </button>
+                                                                        <button 
+                                                                            onClick={() => handleDirectDownload(file.url, file.name)}
+                                                                            className="h-6 w-6 rounded bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all disabled:opacity-50"
+                                                                            disabled={project.assignmentStatus === 'pending' && !isClient}
+                                                                        >
+                                                                            <Download className="h-3 w-3" />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+
+                                                    {!(project as any).referenceLink && projectStyleReferenceFiles.length === 0 && (
+                                                        <div className="p-2 rounded-lg border border-border/30 bg-muted/20">
+                                                            <p className="text-[10px] text-muted-foreground">Not uploaded yet</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* 7. PM Uploaded Files */}
+                                                <div className="space-y-2 pt-2 border-t border-border/30">
+                                                    <span className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground">📤 PM Uploaded Files</span>
+                                                    {projectPmFiles.length > 0 ? (
+                                                        <div className="grid gap-1.5 max-h-[180px] overflow-y-auto pr-1 scrollbar-thin">
+                                                            {projectPmFiles.map((file: any, idx: number) => (
+                                                                <div key={idx} className="flex items-center justify-between gap-2 p-2 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
+                                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                        {file.type?.includes('image') ? (
+                                                                            <ImageIcon className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                                                        ) : (
+                                                                            <FileVideo className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                                                        )}
+                                                                        <p className="text-[11px] font-semibold text-foreground truncate">{file.name}</p>
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                                                                        <button
+                                                                            onClick={() => setPreviewFile({ url: file.url, type: file.type || 'application/octet-stream', name: file.name, playbackId: (file as any).playbackId })}
+                                                                            className="h-6 px-1.5 rounded text-[9px] font-bold uppercase tracking-widest bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all"
+                                                                        >
+                                                                            Preview
+                                                                        </button>
+                                                                        <button
+                                                                            onClick={() => handleDirectDownload(file.url, file.name)}
+                                                                            className="h-6 w-6 rounded bg-muted group-hover:bg-primary/20 group-hover:text-primary text-muted-foreground flex items-center justify-center transition-all flex-shrink-0"
+                                                                        >
+                                                                            <Download className="h-3 w-3" />
+                                                                        </button>
+                                                                    </div>
+                                                                </div>
+                                                            ))}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="p-2 rounded-lg border border-border/30 bg-muted/20">
+                                                            <p className="text-[10px] text-muted-foreground">No PM uploads yet</p>
+                                                        </div>
+                                                    )}
+                                                </div>
+
+                                                {/* Client Upload Area */}
+                                                {isClient && (
+                                                    <div className="pt-2 border-t border-border">
+                                                        {isUploadingAsset ? (
+                                                            <div className="w-full bg-muted/50 rounded-xl border border-border px-3 py-2 space-y-2">
+                                                                <div className="flex items-center gap-2 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">
+                                                                    <Loader2 className="h-3 animate-spin text-primary" />
+                                                                    Uploading Raw Asset
+                                                                </div>
+                                                                <div className="h-1 w-full bg-muted rounded-full overflow-hidden">
+                                                                    <motion.div
+                                                                        initial={{ width: 0 }}
+                                                                        animate={{ width: `${uploadAssetProgress}%` }}
+                                                                        className="h-full bg-primary shadow-[0_0_10px_rgba(99,102,241,0.6)]"
+                                                                    />
+                                                                </div>
+                                                                <div className="grid grid-cols-3 gap-1 text-[8px] text-muted-foreground">
+                                                                    <div>Progress: <span className="text-foreground font-bold">{uploadAssetProgress.toFixed(1)}%</span></div>
+                                                                    <div>Speed: <span className="text-foreground font-bold">{formatBytes(uploadAssetSpeedBps)}/s</span></div>
+                                                                    <div>ETA: <span className="text-foreground font-bold">{formatEta(uploadAssetEtaSeconds)}</span></div>
+                                                                </div>
+                                                            </div>
+                                                        ) : (
+                                                            <label className="flex items-center justify-center w-full h-20 rounded-xl border border-dashed border-border hover:border-primary/50 hover:bg-muted/50 transition-all cursor-pointer group">
+                                                                <div className="text-center">
+                                                                    <Upload className="h-5 w-5 mx-auto text-muted-foreground group-hover:text-primary transition-colors mb-0.5" />
+                                                                    <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground group-hover:text-primary transition-colors">Upload Raw Files</p>
+                                                                </div>
+                                                                <input 
+                                                                    type="file"
+                                                                    onChange={handleAssetUpload}
+                                                                    disabled={isUploadingAsset}
+                                                                    className="hidden"
+                                                                    accept="video/*"
+                                                                />
+                                                            </label>
+                                                        )}
+                                                    </div>
                                                 )}
                                             </div>
-                                            <div className="flex-1 min-w-0">
-                                                <p className="text-sm font-bold text-foreground truncate">
-                                                    {editors.find(e => e.uid === project.assignedEditorId)?.displayName || "Active Node"}
-                                                </p>
-                                                <div className="flex items-center gap-2 mt-1">
-                                                    <span className={cn(
-                                                        "text-[8px] uppercase font-black px-1.5 py-0.5 rounded border leading-none",
-                                                        project.assignmentStatus === 'pending' ? "bg-amber-500/5 text-amber-500 border-amber-500/20" :
-                                                        project.assignmentStatus === 'accepted' ? "bg-emerald-500/5 text-emerald-500 border-emerald-500/20" :
-                                                        "bg-red-500/5 text-red-500 border-red-500/20"
-                                                    )}>
-                                                        {project.assignmentStatus || 'Assigned'}
-                                                    </span>
-                                                </div>
-                                            </div>
                                         </div>
-                                    ) : (
-                                        <div className="text-center py-8 border border-dashed border-border rounded-xl bg-muted/50">
-                                            <p className="text-muted-foreground text-[10px] font-bold uppercase tracking-widest">Awaiting Assignment</p>
-                                        </div>
-                                    )}
-                                </div>
-
-                                {/* Editor Select Modal */}
-                                <Modal
-                                    isOpen={isAssignModalOpen}
-                                    onClose={() => setIsAssignModalOpen(false)}
-                                    title="Assign Editor"
-                                >
-                                    <div className="space-y-6">
-                                        <div className="space-y-2 max-h-[350px] overflow-y-auto pr-2 scrollbar-thin">
-                                            {editors.map((editor) => {
-                                                const isSelected = selectedEditorId === editor.uid;
-                                                return (
-                                                    <div 
-                                                        key={editor.uid}
-                                                        onClick={() => setSelectedEditorId(editor.uid)}
-                                                        className={cn(
-                                                            "flex items-center gap-4 p-4 rounded-xl border transition-all cursor-pointer",
-                                                            isSelected ? "bg-primary/10 border-primary shadow-[0_0_15px_rgba(99,102,241,0.1)]" : "bg-muted/50 border-border hover:bg-muted/50"
-                                                        )}
-                                                    >
-                                                        <div className={cn(
-                                                            "h-10 w-10 rounded-lg flex items-center justify-center font-bold text-sm overflow-hidden",
-                                                            isSelected ? "bg-primary text-foreground border border-primary/30" : "bg-muted text-muted-foreground border border-border"
-                                                        )}>
-                                                            {editor.photoURL ? (
-                                                                <Image src={editor.photoURL} alt={editor.displayName || "Editor"} width={40} height={40} className="w-full h-full object-cover" />
-                                                            ) : (
-                                                                editor.displayName?.[0].toUpperCase() || "E"
-                                                            )}
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className={cn("text-sm font-bold truncate", isSelected ? "text-foreground" : "text-muted-foreground")}>
-                                                                {editor.displayName || "Unknown"}
-                                                            </p>
-                                                            <p className="text-[10px] text-muted-foreground font-medium truncate">{editor.email}</p>
-                                                        </div>
-                                                        {isSelected && <CheckCircle2 className="h-4 w-4 text-primary" />}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-
-                                        <div className="space-y-4">
-                                            <div className="space-y-1.5">
-                                                <label className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest ml-1">Editor Revenue Share (₹)</label>
-                                                <input 
-                                                    type="number"
-                                                    value={editorRevenueShare}
-                                                    onChange={(e) => setEditorRevenueShare(e.target.value)}
-                                                    placeholder="e.g. 5000"
-                                                    className="w-full h-11 bg-black/5 dark:bg-black/40 border border-border rounded-lg px-4 text-sm text-foreground focus:outline-none focus:border-primary/50 transition-colors"
-                                                />
-                                            </div>
-                                            <button 
-                                                onClick={async () => {
-                                                    if (!selectedEditorId || !editorRevenueShare) {
-                                                        toast.error("Please select an editor and enter revenue share");
-                                                        return;
-                                                    }
-                                                    
-                                                    const shareAmount = parseFloat(editorRevenueShare);
-                                                    if (shareAmount > (project.totalCost || 0)) {
-                                                        toast.error(`Editor revenue cannot exceed project cost (₹${project.totalCost || 0}). Negative platform margin is not allowed.`);
-                                                        return;
-                                                    }
-
-                                                    setAssigning(true);
-                                                    try {
-                                                        await assignEditor(id as string, selectedEditorId, shareAmount, undefined, 'project_manager');
-                                                        setProject(prev => prev ? ({ ...prev, assignedEditorId: selectedEditorId, editorPrice: shareAmount, assignmentStatus: 'pending', status: 'pending_assignment' }) : null);
-                                                        toast.success("Editor assigned. Pending their acceptance.");
-                                                        setIsAssignModalOpen(false);
-                                                    } catch (err) {
-                                                        toast.error("Process failed.");
-                                                    } finally {
-                                                        setAssigning(false);
-                                                    }
-                                                }}
-                                                disabled={assigning || !selectedEditorId || !editorRevenueShare}
-                                                className="w-full h-12 rounded-lg bg-primary  text-primary-foreground text-[11px] font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all active:scale-[0.98] disabled:opacity-50"
-                                            >
-                                                {assigning ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Confirm Assignment"}
-                                            </button>
-                                        </div>
-                                    </div>
-                                </Modal>
-                            </div>
-
-                            {/* Admin Controls */}
-                            {project.paymentStatus !== 'full_paid' && (
-                                <div className={cn(
-                                     "enterprise-card p-6 space-y-5",
-                                     project.downloadsUnlocked 
-                                         ? "border-red-500/10 bg-red-500/[0.01]" 
-                                         : "border-emerald-500/10 bg-emerald-500/[0.01]"
-                                 )}>
-                                     <div className={cn("flex items-center gap-2", project.downloadsUnlocked ? "text-red-500" : "text-emerald-500")}>
-                                         <ShieldCheck className="h-4 w-4" />
-                                         <h3 className="text-[10px] font-bold uppercase tracking-widest">Override Options</h3>
-                                     </div>
-                                     <p className="text-xs text-muted-foreground leading-relaxed font-medium">
-                                         {project.downloadsUnlocked 
-                                             ? "Downloads are currently unlocked manually. Relocking will enforce standard billing checkouts for this project."
-                                             : "Manual authorization can override billing gates for direct partner accounts."}
-                                     </p>
-                                     <button 
-                                        onClick={async () => {
-                                            if (!user) return;
-                                            try {
-                                                if (project.downloadsUnlocked) {
-                                                    const res = await lockProjectDownloads(id as string, user.uid);
-                                                    if (res.success) {
-                                                        toast.success("Gates locked.");
-                                                        setProject(prev => prev ? ({ ...prev, downloadsUnlocked: false }) : null);
-                                                    } else {
-                                                        toast.error(res.error);
-                                                    }
-                                                } else {
-                                                    const res = await unlockProjectDownloads(id as string, user.uid);
-                                                    if (res.success) {
-                                                        toast.success("Gates authorized.");
-                                                        setProject(prev => prev ? ({ ...prev, downloadsUnlocked: true, downloadUnlockRequested: false }) : null);
-                                                    } else {
-                                                        toast.error(res.error);
-                                                    }
-                                                }
-                                            } catch (e) {
-                                                toast.error("Override failed.");
-                                            }
-                                        }}
-                                        className={cn(
-                                            "w-full h-11 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all active:scale-[0.98] border",
-                                            project.downloadsUnlocked
-                                                ? "bg-red-500/10 border-red-500/30 text-red-500 hover:bg-red-500 hover:text-white"
-                                                : "bg-emerald-500/10 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500 hover:text-primary-foreground"
-                                        )}
-                                     >
-                                        {project.downloadsUnlocked ? "Lock Assets" : "Unlock Assets"}
-                                     </button>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* Metadata Section */}
-                    <div className="enterprise-card p-6 md:p-8 space-y-8">
-                        <div className="flex items-center gap-3 text-muted-foreground">
-                            <LinkIcon className="h-4 w-4" /> 
-                            <h3 className="text-[10px] font-bold uppercase tracking-widest">Project Details</h3>
-                        </div>
-                        
-                        <div className="space-y-4">
-                            <DetailRow label="Client Account" value={project.brand || project.clientName || 'N/A'} />
-                            {assignedPM && <DetailRow label="Project Manager" value={assignedPM.displayName || "Assigned PM"} />}
-                            {assignedSE && <DetailRow label="Sales Executive" value={assignedSE.displayName || "Assigned SE"} />}
-                            {assignedSE && <DetailRow label="Sales Executive" value={assignedSE.displayName || "Assigned SE"} />}
-                            {assignedEditor && <DetailRow label="Primary Editor" value={assignedEditor.displayName || "Assigned Editor"} />}
-                            {(project as any).videoFormat && <DetailRow label="Video Format" value={(project as any).videoFormat} />}
-                            {(project as any).aspectRatio && <DetailRow label="Aspect Ratio" value={(project as any).aspectRatio} />}
-                            <DetailRow label="Estimated Duration" value={`${project.duration || 0}m`} />
-                            <DetailRow label="Target Delivery" value={project.deadline ? project.deadline : "TBD"} />
-                            <div className="pt-6 border-t border-border space-y-3">
-                                <label className="text-[9px] text-muted-foreground uppercase font-black tracking-widest block">Project Intent</label>
-                                <p className="text-sm text-muted-foreground leading-relaxed font-medium italic">
-                                    "{project.description || "No description provided."}"
-                                </p>
-                            </div>
+                                    </motion.div>
+                                )}
+                            </AnimatePresence>
                         </div>
                     </div>
 
-                    {(isClient || project.ownerId === user?.uid) && (assignedPM || assignedSE) && (
-                        <div className="enterprise-card p-6 md:p-8 space-y-6">
-                            <div className="flex items-center justify-between">
-                                <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Project Team</h3>
-                                <button
-                                    onClick={() => setIsChatOpen(true)}
-                                    className="h-9 px-3 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500/20 transition-all"
-                                >
-                                    Open Chat
-                                </button>
-                            </div>
-
-                            <div className="space-y-3">
-                                {assignedPM && (
-                                    <div className="flex items-center justify-between rounded-xl border border-border bg-muted/30 p-4">
-                                        <div className="min-w-0">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Project Manager</p>
-                                            <p className="text-sm font-bold text-foreground truncate mt-1">{assignedPM.displayName || 'Assigned PM'}</p>
-                                            {assignedPM.email && <p className="text-xs text-muted-foreground truncate">{assignedPM.email}</p>}
-                                        </div>
-                                        <button
-                                            onClick={() => setIsChatOpen(true)}
-                                            className="h-9 px-3 rounded-lg bg-muted border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all text-[10px] font-bold uppercase tracking-widest"
-                                        >
-                                            Chat PM
-                                        </button>
-                                    </div>
-                                )}
-
-                                {assignedSE && (
-                                    <div className="flex items-center justify-between rounded-xl border border-border bg-muted/30 p-4">
-                                        <div className="min-w-0">
-                                            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Sales Executive</p>
-                                            <p className="text-sm font-bold text-foreground truncate mt-1">{assignedSE.displayName || 'Assigned SE'}</p>
-                                            {assignedSE.email && <p className="text-xs text-muted-foreground truncate">{assignedSE.email}</p>}
-                                        </div>
-                                        <button
-                                            onClick={() => setIsChatOpen(true)}
-                                            className="h-9 px-3 rounded-lg bg-muted border border-border text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all text-[10px] font-bold uppercase tracking-widest"
-                                        >
-                                            Chat SE
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* ===== PROFESSIONAL PROJECT ASSET DETAILS PANEL ===== */}
-                    {/* Visible to ALL users: Editors, PMs, Admins, Clients */}
-                    <div className="enterprise-card p-6 md:p-8 space-y-6">
-                        <div className="flex items-center gap-2">
-                            <div className="h-8 w-8 rounded-lg bg-primary/10 border border-primary/20 flex items-center justify-center">
-                                <Briefcase className="h-4 w-4 text-primary" />
-                            </div>
-                            <h3 className="text-sm font-bold uppercase tracking-widest text-foreground">Project Assets</h3>
-                        </div>
-
-                        {/* Editor Not Accepted Warning */}
-                        {project.assignmentStatus === 'pending' && !isClient && (
-                            <motion.div 
-                                initial={{ opacity: 0, y: 10 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                className="bg-amber-500/10 border border-amber-500/20 rounded-xl p-4 flex items-start gap-3"
-                            >
-                                <AlertCircle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-                                <div>
-                                    <p className="text-sm font-semibold text-amber-600 dark:text-amber-400">Project Pending Review</p>
-                                    <p className="text-xs text-amber-600/80 dark:text-amber-400/80 mt-1">Accept this project to access detailed assets and enable downloads</p>
-                                </div>
-                            </motion.div>
-                        )}
-
-                        <div className="grid gap-6">
-                            {/* 1. Google Drive Link */}
-                            <div className="space-y-3">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">📎 Google Drive Link</span>
-                                </div>
-                                {project.footageLink ? (
-                                    <a 
-                                        href={project.footageLink.startsWith('http') ? project.footageLink : `https://${project.footageLink}`} 
-                                        target="_blank"
-                                        className="flex items-center gap-3 p-3 rounded-lg bg-primary/5 border border-primary/20 hover:border-primary/40 hover:bg-primary/10 transition-all group"
-                                    >
-                                        <ExternalLink className="h-4 w-4 text-primary flex-shrink-0" />
-                                        <span className="text-sm font-semibold text-foreground group-hover:text-primary transition-colors">Access Google Drive</span>
-                                    </a>
-                                ) : (
-                                    <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                        <p className="text-xs text-muted-foreground">Not uploaded yet</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* 2. Raw Video Files */}
-                            <div className="space-y-3 pt-3 border-t border-border/30">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">🎬 Raw Video Files</span>
-                                </div>
-                                {project.rawFiles && project.rawFiles.length > 0 ? (
-                                    <div className="grid gap-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                                        {project.rawFiles.map((file, idx) => (
-                                            <div key={idx} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
-                                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                    {file.name.match(/\.(zip|rar|7z)$/i) || file.type?.includes('zip') ? <Archive className="h-4 w-4 text-purple-500 flex-shrink-0" /> : <FileVideo className="h-4 w-4 text-muted-foreground flex-shrink-0" />}
-                                                    <div className="min-w-0">
-                                                        <p className="text-xs font-semibold text-foreground truncate">{file.name}</p>
-                                                        {file.size && <p className="text-[9px] text-muted-foreground">{(file.size / (1024*1024)).toFixed(1)} MB</p>}
-                                                    </div>
-                                                </div>
-                                                <div className="flex items-center gap-2 flex-shrink-0">
-                                                    {!(file.name.match(/\.(zip|rar|7z)$/i) || file.type?.includes('zip')) && (
-                                                        <button 
-                                                            onClick={() => setPreviewFile({ url: file.url, type: file.type || 'video/mp4', name: file.name, playbackId: (file as any).playbackId })} 
-                                                            className="h-8 px-2.5 rounded text-xs font-bold uppercase tracking-widest bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                                            disabled={project.assignmentStatus === 'pending' && !isClient}
-                                                            title={project.assignmentStatus === 'pending' && !isClient ? "Accept project to preview" : ""}
-                                                        >
-                                                            Preview
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        onClick={() => handleFileDownload(file.url, file.name)}
-                                                        className="h-8 w-8 rounded-lg bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        disabled={project.assignmentStatus === 'pending' && !isClient}
-                                                        title={project.assignmentStatus === 'pending' && !isClient ? "Accept project to download" : ""}
-                                                    >
-                                                        <Download className="h-3.5 w-3.5" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                        <p className="text-xs text-muted-foreground">Not uploaded yet</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* 3. Scripts & Directions */}
-                            <div className="space-y-3 pt-3 border-t border-border/30">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">📝 Scripts & Directions</span>
-                                </div>
-
-                                {/* Uploaded Script Files */}
-                                {project.scripts && project.scripts.length > 0 && (
-                                    <div className="grid gap-2">
-                                        {project.scripts.slice(0, 2).map((script, idx) => (
-                                            <div key={idx} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
-                                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                    <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                    <p className="text-xs font-semibold text-foreground truncate">{script.name}</p>
-                                                </div>
-                                                <div className="flex items-center gap-2 flex-shrink-0">
-                                                    <button 
-                                                        onClick={() => setPreviewFile({ url: script.url, type: script.type || 'text/plain', name: script.name })}
-                                                        className="h-8 px-2.5 rounded text-xs font-bold uppercase tracking-widest bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        disabled={project.assignmentStatus === 'pending' && !isClient}
-                                                        title={project.assignmentStatus === 'pending' && !isClient ? "Accept project to preview" : ""}
-                                                    >
-                                                        Preview
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleFileDownload(script.url, script.name)}
-                                                        className="h-8 w-8 rounded-lg bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        disabled={project.assignmentStatus === 'pending' && !isClient}
-                                                        title={project.assignmentStatus === 'pending' && !isClient ? "Accept project to download" : ""}
-                                                    >
-                                                        <Download className="h-3.5 w-3.5" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Pasted Script Text */}
-                                {(project as any).scriptText && (
-                                    <div className="p-4 rounded-lg bg-primary/5 border border-primary/20">
-                                        <div className="flex items-center justify-between gap-2 mb-3">
-                                            <p className="text-[10px] font-bold uppercase tracking-widest text-primary">✍️ Pasted Script</p>
-                                            <button 
-                                                onClick={() => {
-                                                    navigator.clipboard.writeText((project as any).scriptText);
-                                                    toast.success("Script copied to clipboard");
-                                                }}
-                                                className="h-7 px-2.5 rounded text-[9px] font-bold uppercase tracking-widest bg-primary/10 hover:bg-primary/20 text-primary transition-all flex items-center gap-1.5"
-                                            >
-                                                <Copy className="h-3 w-3" /> Copy
-                                            </button>
-                                        </div>
-                                        <p className="text-xs text-foreground leading-relaxed whitespace-pre-wrap font-medium max-h-[120px] overflow-y-auto">
-                                            {(project as any).scriptText}
-                                        </p>
-                                    </div>
-                                )}
-
-                                {/* Empty State */}
-                                {!((project as any).scriptText) && (!project.scripts || project.scripts.length === 0) && (
-                                    <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                        <p className="text-xs text-muted-foreground">Not uploaded yet</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* 4. Audio Files */}
-                            <div className="space-y-3 pt-3 border-t border-border/30">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">🎧 Audio Files</span>
-                                </div>
-                                {project.audioFiles && project.audioFiles.length > 0 ? (
-                                    <div className="grid gap-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                                        {project.audioFiles.map((file, idx) => (
-                                            <div key={`${file.url}-${idx}`} className="p-3 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group space-y-2 overflow-hidden">
-                                                <div className="flex items-center justify-between gap-3 min-w-0">
-                                                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                        <FileText className="h-4 w-4 text-muted-foreground shrink-0" />
-                                                        <p className="text-xs font-semibold text-foreground truncate min-w-0 block">{file.name}</p>
-                                                    </div>
-                                                    <button
-                                                        onClick={() => handleDirectDownload(file.url, file.name)}
-                                                        className="h-8 w-8 rounded-lg bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all shrink-0"
-                                                    >
-                                                        <Download className="h-3.5 w-3.5" />
-                                                    </button>
-                                                </div>
-                                                <audio controls className="w-full max-w-full h-8" src={file.url} preload="metadata" />
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                        <p className="text-xs text-muted-foreground">Not uploaded yet</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* 5. B-Roll Assets */}
-                            <div className="space-y-3 pt-3 border-t border-border/30">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">🎞️ B-Roll Assets</span>
-                                </div>
-                                {(project as any).bRoleFiles && (project as any).bRoleFiles.length > 0 ? (
-                                    <div className="grid gap-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                                        {(project as any).bRoleFiles.map((file: any, idx: number) => (
-                                            <div key={idx} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
-                                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                    {file.name.match(/\.(zip|rar|7z)$/i) || file.type?.includes('zip') ? <Archive className="h-4 w-4 text-purple-500 flex-shrink-0" /> : file.type?.includes('image') ? (
-                                                        <ImageIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                    ) : (
-                                                        <FileVideo className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                    )}
-                                                    <p className="text-xs font-semibold text-foreground truncate">{file.name}</p>
-                                                </div>
-                                                <div className="flex items-center gap-2 flex-shrink-0">
-                                                    {!(file.name.match(/\.(zip|rar|7z)$/i) || file.type?.includes('zip')) && (
-                                                        <button 
-                                                            onClick={() => setPreviewFile({ url: file.url, type: file.type || 'video/mp4', name: file.name, playbackId: (file as any).playbackId })}
-                                                            className="h-8 px-2.5 rounded text-xs font-bold uppercase tracking-widest bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                                            disabled={project.assignmentStatus === 'pending' && !isClient}
-                                                            title={project.assignmentStatus === 'pending' && !isClient ? "Accept project to preview" : ""}
-                                                        >
-                                                            Preview
-                                                        </button>
-                                                    )}
-                                                    <button 
-                                                        onClick={() => handleDirectDownload(file.url, file.name)}
-                                                        className="h-8 w-8 rounded-lg bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        disabled={project.assignmentStatus === 'pending' && !isClient}
-                                                        title={project.assignmentStatus === 'pending' && !isClient ? "Accept project to download" : ""}
-                                                    >
-                                                        <Download className="h-3.5 w-3.5" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                        <p className="text-xs text-muted-foreground">Not uploaded yet</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* 5. Style References */}
-                            <div className="space-y-3 pt-3 border-t border-border/30">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">✨ Style References</span>
-                                </div>
-
-                                {/* Reference Link */}
-                                {(project as any).referenceLink && (
-                                    <a 
-                                        href={(project as any).referenceLink.startsWith('http') ? (project as any).referenceLink : `https://${(project as any).referenceLink}`}
-                                        target="_blank"
-                                        className="flex items-center gap-3 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20 hover:border-emerald-500/40 hover:bg-emerald-500/10 transition-all group"
-                                    >
-                                        <LinkIcon className="h-4 w-4 text-emerald-600 flex-shrink-0" />
-                                        <span className="text-sm font-semibold text-foreground group-hover:text-emerald-600 transition-colors">Open Style Reference</span>
-                                    </a>
-                                )}
-
-                                {/* Reference Files */}
-                                {projectStyleReferenceFiles.length > 0 && (
-                                    <div className="grid gap-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                                        {projectStyleReferenceFiles.map((file: any, idx: number) => (
-                                            <div key={idx} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
-                                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                    {file.type?.includes('image') ? (
-                                                        <ImageIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                    ) : (
-                                                        <FileVideo className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                    )}
-                                                    <p className="text-xs font-semibold text-foreground truncate">{file.name}</p>
-                                                </div>
-                                                <div className="flex items-center gap-2 flex-shrink-0">
-                                                    <button 
-                                                        onClick={() => setPreviewFile({ url: file.url, type: file.type || 'image', name: file.name, playbackId: (file as any).playbackId })}
-                                                        className="h-8 px-2.5 rounded text-xs font-bold uppercase tracking-widest bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        disabled={project.assignmentStatus === 'pending' && !isClient}
-                                                        title={project.assignmentStatus === 'pending' && !isClient ? "Accept project to preview" : ""}
-                                                    >
-                                                        Preview
-                                                    </button>
-                                                    <button 
-                                                        onClick={() => handleDirectDownload(file.url, file.name)}
-                                                        className="h-8 w-8 rounded-lg bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-                                                        disabled={project.assignmentStatus === 'pending' && !isClient}
-                                                        title={project.assignmentStatus === 'pending' && !isClient ? "Accept project to download" : ""}
-                                                    >
-                                                        <Download className="h-3.5 w-3.5" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                )}
-
-                                {/* Empty State */}
-                                {!(project as any).referenceLink && projectStyleReferenceFiles.length === 0 && (
-                                    <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                        <p className="text-xs text-muted-foreground">Not uploaded yet</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* 6. PM Uploaded Files */}
-                            <div className="space-y-3 pt-3 border-t border-border/30">
-                                <div className="flex items-center gap-2">
-                                    <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">📤 PM Uploaded Files</span>
-                                </div>
-                                {projectPmFiles.length > 0 ? (
-                                    <div className="grid gap-2 max-h-[250px] overflow-y-auto pr-2 custom-scrollbar">
-                                        {projectPmFiles.map((file: any, idx: number) => (
-                                            <div key={`${file.url}-${idx}`} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-border/30 hover:bg-muted/30 transition-all group">
-                                                <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                    {file.type?.includes('image') ? (
-                                                        <ImageIcon className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                    ) : (
-                                                        <FileVideo className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                                    )}
-                                                    <p className="text-xs font-semibold text-foreground truncate">{file.name}</p>
-                                                </div>
-                                                <div className="flex items-center gap-2 flex-shrink-0">
-                                                    <button
-                                                        onClick={() => setPreviewFile({ url: file.url, type: file.type || 'application/octet-stream', name: file.name, playbackId: (file as any).playbackId })}
-                                                        className="h-8 px-2.5 rounded text-xs font-bold uppercase tracking-widest bg-muted/50 hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all"
-                                                    >
-                                                        Preview
-                                                    </button>
-                                                    <button
-                                                        onClick={() => handleDirectDownload(file.url, file.name)}
-                                                        className="h-8 w-8 rounded-lg bg-muted/50 group-hover:bg-primary/20 group-hover:text-primary text-muted-foreground flex items-center justify-center transition-all flex-shrink-0"
-                                                    >
-                                                        <Download className="h-3.5 w-3.5" />
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="p-3 rounded-lg border border-border/30 bg-muted/20">
-                                        <p className="text-xs text-muted-foreground">No PM uploads yet</p>
-                                    </div>
-                                )}
-                            </div>
-
-                            {previewFile && (
-                                <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4" onClick={() => setPreviewFile(null)}>
-                                    <div className="relative max-w-5xl w-full max-h-[90vh] bg-black rounded-3xl overflow-hidden shadow-[0_0_100px_rgba(var(--primary),0.2)] flex items-center justify-center" onClick={e => e.stopPropagation()}>
-                                        <button onClick={() => setPreviewFile(null)} className="absolute top-6 right-6 h-12 w-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md z-10 transition-all">
-                                            <X className="h-6 w-6" />
-                                        </button>
-                                        
-                                        {/* Image Preview */}
-                                        {previewFile.type === 'image' || previewFile.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(previewFile.name) ? (
-                                            <img src={previewFile.url} alt={previewFile.name} className="max-w-full max-h-full object-contain" />
-                                        ) : previewFile.type === 'video' || previewFile.type.startsWith('video/') || /\.(mp4|webm|mov|avi|mkv)$/i.test(previewFile.name) ? (
-                                            <VideoPlayer videoPath={previewFile.url} playbackId={previewFile.playbackId} title={previewFile.name} className="w-full h-full" />
-                                        ) : previewFile.type === 'pdf' || previewFile.type === 'application/pdf' || previewFile.name.toLowerCase().endsWith('.pdf') ? (
-                                            <iframe src={previewFile.url} className="w-full h-screen border-none" />
-                                        ) : (
-                                            <div className="flex flex-col items-center gap-6 p-12 text-center">
-                                                <div className="h-20 w-20 bg-muted/20 rounded-2xl flex items-center justify-center border border-border">
-                                                    <FileText className="h-10 w-10 text-muted-foreground" />
-                                                </div>
-                                                <div className="space-y-2">
-                                                    <h3 className="text-xl font-bold text-white tracking-tight">{previewFile.name}</h3>
-                                                    <p className="text-muted-foreground text-sm uppercase tracking-widest font-bold">Preview not available for this file type</p>
-                                                </div>
-                                                <button 
-                                                    onClick={() => handleDirectDownload(previewFile.url, previewFile.name)}
-                                                    className="h-12 px-8 rounded-xl bg-primary text-primary-foreground text-[11px] font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all flex items-center gap-3"
-                                                >
-                                                    <Download className="h-4 w-4" /> Download to View
-                                                </button>
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            )}
-
-                            {/* Client Upload */}
-                            {isClient && (
-                                <div className="pt-4 border-t border-border">
-                                    {isUploadingAsset ? (
-                                        <div className="w-full bg-muted/50 rounded-xl border border-border px-4 py-3 space-y-2.5">
-                                            <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                                                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-                                                Uploading Raw Asset
-                                            </div>
-                                            <div className="h-1.5 w-full bg-muted rounded-full overflow-hidden">
-                                                <motion.div
-                                                    initial={{ width: 0 }}
-                                                    animate={{ width: `${uploadAssetProgress}%` }}
-                                                    className="h-full bg-primary shadow-[0_0_10px_rgba(99,102,241,0.6)]"
-                                                />
-                                            </div>
-                                            <div className="grid grid-cols-1 xs:grid-cols-2 md:grid-cols-3 gap-2 text-[10px] text-muted-foreground">
-                                                <div>Progress: <span className="text-foreground font-bold">{uploadAssetProgress.toFixed(1)}%</span></div>
-                                                <div>Speed: <span className="text-foreground font-bold">{formatBytes(uploadAssetSpeedBps)}/s</span></div>
-                                                <div>ETA: <span className="text-foreground font-bold">{formatEta(uploadAssetEtaSeconds)}</span></div>
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <label className="flex items-center justify-center w-full h-24 rounded-xl border-2 border-dashed border-border hover:border-primary/50 hover:bg-muted/50 transition-all cursor-pointer group">
-                                            <div className="text-center">
-                                                <Upload className="h-6 w-6 mx-auto text-muted-foreground group-hover:text-primary transition-colors mb-1" />
-                                                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground group-hover:text-primary transition-colors">Upload Raw Files</p>
-                                            </div>
-                                            <input 
-                                                type="file"
-                                                onChange={handleAssetUpload}
-                                                disabled={isUploadingAsset}
-                                                className="hidden"
-                                                accept="video/*"
-                                            />
-                                        </label>
-                                    )}
-                                </div>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* Operational Progress */}
-                    <div className="enterprise-card p-6 md:p-8 space-y-8">
+                    {/* Operational Progress / Timeline - Ultra-minimal */}
+                    <div className="enterprise-card p-4 space-y-4">
                         <div className="flex justify-between items-center">
-                            <h3 className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Project Timeline</h3>
+                            <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest">Project Timeline</span>
                             <Activity className="h-3 w-3 text-muted-foreground" />
                         </div>
-                        <div className="space-y-8 relative px-2">
-                            <div className="absolute left-[13px] top-4 bottom-4 w-[1px] bg-muted/50" />
+                        <div className="space-y-4 relative px-1">
+                            <div className="absolute left-[9px] top-3 bottom-3 w-[1px] bg-muted/50" />
                             <Milestone label="Project Started" date="Validated" active />
                             <Milestone label="Editing" date={revisions.length > 0 ? "Active" : "Pending"} active={revisions.length > 0} />
                             <Milestone label="Client Review" date="Scheduled" active={revisions.length > 0} />
@@ -1832,6 +1702,40 @@ export default function ProjectDetailsPage() {
                         </div>
                     </div>
 
+                    {/* Preview Modal Portal (renders as absolute overlay) */}
+                    {previewFile && (
+                        <div className="fixed inset-0 z-[100] bg-black/90 backdrop-blur-xl flex items-center justify-center p-4" onClick={() => setPreviewFile(null)}>
+                            <div className="relative max-w-5xl w-full max-h-[90vh] bg-black rounded-3xl overflow-hidden shadow-[0_0_100px_rgba(var(--primary),0.2)] flex items-center justify-center" onClick={e => e.stopPropagation()}>
+                                <button onClick={() => setPreviewFile(null)} className="absolute top-6 right-6 h-12 w-12 bg-white/10 hover:bg-white/20 text-white rounded-full flex items-center justify-center backdrop-blur-md z-10 transition-all">
+                                    <X className="h-6 w-6" />
+                                </button>
+                                
+                                {previewFile.type === 'image' || previewFile.type.startsWith('image/') || /\.(jpg|jpeg|png|gif|webp|svg)$/i.test(previewFile.name) ? (
+                                    <img src={previewFile.url} alt={previewFile.name} className="max-w-full max-h-full object-contain" />
+                                ) : previewFile.type === 'video' || previewFile.type.startsWith('video/') || /\.(mp4|webm|mov|avi|mkv)$/i.test(previewFile.name) ? (
+                                    <VideoPlayer videoPath={previewFile.url} playbackId={previewFile.playbackId} title={previewFile.name} className="w-full h-full" />
+                                ) : previewFile.type === 'pdf' || previewFile.type === 'application/pdf' || previewFile.name.toLowerCase().endsWith('.pdf') ? (
+                                    <iframe src={previewFile.url} className="w-full h-screen border-none" />
+                                ) : (
+                                    <div className="flex flex-col items-center gap-6 p-12 text-center">
+                                        <div className="h-20 w-20 bg-muted/20 rounded-2xl flex items-center justify-center border border-border">
+                                            <FileText className="h-10 w-10 text-muted-foreground" />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <h3 className="text-xl font-bold text-white tracking-tight">{previewFile.name}</h3>
+                                            <p className="text-muted-foreground text-sm uppercase tracking-widest font-bold">Preview not available for this file type</p>
+                                        </div>
+                                        <button 
+                                            onClick={() => handleDirectDownload(previewFile.url, previewFile.name)}
+                                            className="h-12 px-8 rounded-xl bg-primary text-primary-foreground text-[11px] font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all flex items-center gap-3"
+                                        >
+                                            <Download className="h-4 w-4" /> Download to View
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                 </div>
             </div>
