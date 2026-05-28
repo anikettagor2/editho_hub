@@ -28,6 +28,7 @@ import { IndicatorCard } from "@/components/ui/indicator-card";
 import { VideoPlayer } from "@/components/video-player";
 import { handleFileDownload } from "@/lib/download-utils";
 import { PaymentButton } from "@/components/payment-button";
+import { UploadService } from "@/lib/services/upload-service";
 
 
 const CLIENT_VIDEO_TYPE_ALIASES: Record<string, string[]> = {
@@ -299,9 +300,12 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
         
         try {
             for (const file of newFiles) {
-                const fileRef = ref(storage, `projects/${selectedProject.id}/client_uploads/${Date.now()}_${file.name}`);
-                const uploadTask = await uploadBytesResumable(fileRef, file);
-                const downloadURL = await getDownloadURL(uploadTask.ref);
+                // Use high-speed parallel multipart chunk upload for videos, fallback to Firebase for assets
+                const downloadURL = await UploadService.uploadFileUnified(file, {
+                    projectId: selectedProject.id,
+                    type: 'raw',
+                });
+                
                 uploadedFileLinks.push({
                     name: file.name,
                     url: downloadURL,
@@ -1138,10 +1142,9 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                     </button>
                                     {previewFile.type.startsWith("image/") || /\.(jpg|jpeg|png|gif|webp)$/i.test(previewFile.name) ? (
                                         <img src={previewFile.url} alt={previewFile.name} className="max-w-full max-h-full object-contain" />
-                                    ) : previewFile.type.startsWith("video/") || /\.(mp4|webm|mov)$/i.test(previewFile.name) ? (
-                                        <div className="flex flex-col items-center justify-center h-64 w-full text-white/50 gap-3">
-                                            <FileVideo className="h-10 w-10 opacity-20" />
-                                            <span className="text-sm">Video Preview Removed</span>
+                                    ) : previewFile.type.startsWith("video/") || /\.(mp4|webm|mov|avi|mkv)$/i.test(previewFile.name) ? (
+                                        <div className="w-full aspect-video max-h-[60vh] bg-black">
+                                            <VideoPlayer videoPath={previewFile.url} title={previewFile.name} className="w-full h-full" />
                                         </div>
                                     ) : (
                                         <div className="text-center text-white">

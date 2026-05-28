@@ -55,6 +55,12 @@ export class UploadService {
       return this.uploadToAwsS3Mux(file, options);
     }
 
+    const isVideo = file.type.startsWith('video/') || /\.(mp4|mov|avi|mkv|webm|m4v|3gp|flv|wmv)$/i.test(file.name);
+    if (isVideo && (options.type === 'raw' || options.type === 'asset')) {
+      console.log(`[UploadService] Routing high-speed parallel video upload (${options.type}) to AWS S3 Multipart for project ${options.projectId}`);
+      return this.uploadToAwsS3Mux(file, options);
+    }
+
     console.log(`[UploadService] Routing ${options.type} upload to Firebase Storage for project ${options.projectId}`);
     return this.uploadToFirebase(file, options);
   }
@@ -205,6 +211,11 @@ export class UploadService {
           });
           const { location, key: s3Key } = await response.json();
           
+          if (options.type !== 'revision') {
+            console.log(`[UploadService] Client S3 Multipart upload complete, bypassing Mux. URL: ${location}`);
+            return { location };
+          }
+          
           // CRITICAL: Persist the s3Key to Firestore IMMEDIATELY.
           // Don't wait for Mux webhook as the passthrough has a 100-character limit
           // and might fail if filenames are long.
@@ -295,15 +306,22 @@ export class UploadService {
             percent: 100, transferred: file.size, total: file.size, status: 'complete'
           });
         }
-        console.log(`[UploadService] AWS S3/Mux upload complete: ${file.name}`);
-        // Save the mux asset id in format mux://assetId so UI understands it
-        const muxId = response.body?.location;
-        if (!muxId) {
+        console.log(`[UploadService] AWS S3 upload complete: ${file.name}`);
+        
+        const returnedLocation = response.body?.location;
+        if (!returnedLocation) {
           console.error('[UploadService] Upload success but location missing in response body');
           reject(new Error('Upload failed: Location missing in response'));
           return;
         }
-        resolve(`mux://${muxId}`);
+        
+        if (options.type === 'revision') {
+          // Save the mux asset id in format mux://assetId so UI understands it
+          resolve(`mux://${returnedLocation}`);
+        } else {
+          // For client assets, return the direct S3 URL
+          resolve(returnedLocation);
+        }
       });
 
       uppy.on('upload-error', (f, error) => {

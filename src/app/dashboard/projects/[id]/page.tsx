@@ -125,7 +125,6 @@ export default function ProjectDetailsPage() {
                 type: 'raw',
                 onProgress: (p) => {
                     setUploadAssetProgress(p.percent);
-                    // Minimal stats since chunks are handled differently by Mux
                     if (p.speedBps) setUploadAssetSpeedBps(p.speedBps);
                     if (p.eta) setUploadAssetEtaSeconds(p.eta);
                 }
@@ -133,14 +132,32 @@ export default function ProjectDetailsPage() {
 
             console.log("Upload registered:", result);
 
-            toast.success("Upload started! Processing will continue in background.");
-            
-            // Re-fetch project to see the new asset in pending state
+            // Update project doc in Firestore with the new S3 asset URL
             const docRef = doc(db, "projects", id as string);
             const docSnap = await getDoc(docRef);
             if (docSnap.exists()) {
-                setProject(docSnap.data() as Project);
+                const projectData = docSnap.data();
+                const currentRawFiles = projectData.rawFiles || [];
+                const newAsset = {
+                    name: file.name,
+                    url: result,
+                    type: file.type || 'application/octet-stream',
+                    uploadedAt: Date.now()
+                };
+                const updatedRawFiles = [...currentRawFiles, newAsset];
+                
+                await updateDoc(docRef, {
+                    rawFiles: updatedRawFiles
+                });
+                
+                setProject({
+                    ...projectData,
+                    id: docSnap.id,
+                    rawFiles: updatedRawFiles
+                } as ExtendedProject);
             }
+
+            toast.success("Upload completed successfully!");
 
         } catch (error: any) {
             console.error("Asset upload error:", error);
