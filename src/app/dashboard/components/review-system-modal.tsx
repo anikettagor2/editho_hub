@@ -1062,7 +1062,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         >
                             <Share2 size={18} />
                         </button>
-                        {(!guestPreview || project?.isPayLaterRequest || project?.paymentStatus === "pay_later") && (
+                        {!guestPreview && (
                             <button
                                 onClick={handleDownloadClick}
                                 disabled={!selectedRevisionId || isDownloading}
@@ -1087,7 +1087,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         >
                             <Share2 size={15} />
                         </button>
-                        {(!guestPreview || project?.isPayLaterRequest || project?.paymentStatus === "pay_later") && (
+                        {!guestPreview && (
                             <button
                                 onClick={handleDownloadClick}
                                 disabled={!selectedRevisionId || isDownloading}
