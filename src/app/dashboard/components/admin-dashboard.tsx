@@ -700,7 +700,9 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
       // Transfer all projects assigned to this client to the new PM
       const clientProjects = projects.filter(
         (p) =>
-          p.clientId === selectedClient.uid && p.assignedPMId !== selectedNewPM,
+          p.clientId === selectedClient.uid &&
+          p.assignedPMId !== selectedNewPM &&
+          !["completed", "approved", "archived", "delivered", "completed_pending_payment"].includes(p.status),
       );
 
       if (clientProjects.length > 0) {
@@ -755,7 +757,11 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
 
       // Propagate assignedSEId to all projects belonging to this client so that
       // PM Team Management and project records are kept in sync
-      const clientProjects = projects.filter((p) => p.clientId === selectedClient.uid);
+      const clientProjects = projects.filter(
+        (p) =>
+          p.clientId === selectedClient.uid &&
+          !["completed", "approved", "archived", "delivered", "completed_pending_payment"].includes(p.status),
+      );
       if (clientProjects.length > 0) {
         const batch = writeBatch(db);
         for (const p of clientProjects) {
@@ -5159,7 +5165,10 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                     updatedAt: now,
                                   });
                                   // Propagate assignedSEId to all this client's projects
-                                  const clientProjs = projects.filter(p => p.clientId === selectedUserDetail.uid);
+                                  const clientProjs = projects.filter(p => 
+                                    p.clientId === selectedUserDetail.uid &&
+                                    !["completed", "approved", "archived", "delivered", "completed_pending_payment"].includes(p.status)
+                                  );
                                   if (clientProjs.length > 0) {
                                     const seBatch = writeBatch(db);
                                     for (const p of clientProjs) {
@@ -5222,7 +5231,11 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                     displayName: currentUser!.displayName || "Admin",
                                   });
                                   if (!assignResult.success) { toast.error(assignResult.error || "Failed"); return; }
-                                  const clientProjects = projects.filter(p => p.clientId === selectedUserDetail.uid && p.assignedPMId !== newPMId);
+                                  const clientProjects = projects.filter(p => 
+                                    p.clientId === selectedUserDetail.uid && 
+                                    p.assignedPMId !== newPMId &&
+                                    !["completed", "approved", "archived", "delivered", "completed_pending_payment"].includes(p.status)
+                                  );
                                   for (const project of clientProjects) {
                                     await assignProjectManager(project.id, newPMId, {
                                       uid: currentUser!.uid,
