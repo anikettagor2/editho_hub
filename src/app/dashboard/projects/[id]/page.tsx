@@ -63,6 +63,7 @@ interface ExtendedProject extends Project {
     deadline?: string;
     totalCost?: number;
     amountPaid?: number;
+    upfrontAmount?: number;
     footageLink?: string;
     assignmentStatus?: ProjectAssignmentStatus;
 }
@@ -1852,12 +1853,12 @@ export default function ProjectDetailsPage() {
                                 email: user?.email || ""
                             }}
                             onSuccess={async () => {
-                                const finalAmount = (project?.totalCost || 0) - (project?.amountPaid || 0);
+                                const upfrontLiability = project?.upfrontAmount || ((project?.totalCost || 0) / 2);
                                 if ((project as any).isPayLaterRequest) {
                                     // Settle pending dues for pay later
                                     const userRef = doc(db, "users", user!.uid);
                                     await updateDoc(userRef, {
-                                        pendingDues: increment(-finalAmount)
+                                        pendingDues: increment(-upfrontLiability)
                                     });
                                 }
                                 

@@ -1388,12 +1388,8 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
   const clientsOverLimit = users
     .filter((u) => u.role === "client" && u.payLater)
     .filter((u) => {
-      const uProjects = projects.filter((p) => p.clientId === u.uid);
-      const uPending = uProjects.reduce(
-        (acc, p) => acc + ((p.totalCost || 0) - (p.amountPaid || 0)),
-        0,
-      );
-      return uPending >= (u.creditLimit || 5000);
+      const uPending = u.pendingDues || 0;
+      return uPending >= (u.creditLimit !== undefined ? u.creditLimit : 5000);
     });
   const adminTransactions = projects
     .flatMap((project) => (project.logs || []).map((log) => ({ project, log })))
@@ -2598,17 +2594,8 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                               {u.role === "client" &&
                                 u.payLater &&
                                 (() => {
-                                  const uProjects = projects.filter(
-                                    (p) => p.clientId === u.uid,
-                                  );
-                                  const uPending = uProjects.reduce(
-                                    (acc, p) =>
-                                      acc +
-                                      ((p.totalCost || 0) -
-                                        (p.amountPaid || 0)),
-                                    0,
-                                  );
-                                  if (uPending >= (u.creditLimit || 5000)) {
+                                  const uPending = u.pendingDues || 0;
+                                  if (uPending >= (u.creditLimit !== undefined ? u.creditLimit : 5000)) {
                                     return (
                                       <span className="flex items-center gap-1 text-[8px] bg-red-500 text-white px-1.5 py-0.5 rounded font-black uppercase lg:animate-pulse">
                                         Limit Exceeded
@@ -5024,6 +5011,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                     creditLimit: val,
                                     updatedAt: Date.now(),
                                   });
+                                  setSelectedUserDetail({ ...selectedUserDetail, creditLimit: val });
                                   toast.success("Limit Updated");
                                 } catch (err) {
                                   toast.error("Failed");

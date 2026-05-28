@@ -185,7 +185,7 @@ export default function NewProjectPage() {
     const [uploadToken] = useState(() => `req_${Math.random().toString(36).substring(2, 15)}_${Date.now()}`);
     
     // Pay Later limit check
-    const creditLimit = user?.creditLimit || 0;
+    const creditLimit = user?.creditLimit !== undefined ? user.creditLimit : 5000;
     const pendingDues = user?.pendingDues || 0;
     const canUsePayLater = canPayLater && (pendingDues + upfrontPaymentWithoutGst <= creditLimit);
     const remainingCredit = Math.max(0, creditLimit - pendingDues);

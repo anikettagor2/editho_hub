@@ -279,8 +279,8 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
     const completedCount = projects.filter((p) => p.status === "completed").length;
     const pendingPaymentCount = projects.filter((p) => (p.amountPaid || 0) < (p.totalCost || 0) && ["completed", "completed_pending_payment", "approved"].includes(p.status)).length;
 
-    const creditLimit = user?.creditLimit || 5000;
-    const isOverLimit = pendingBase > 0 && withGst(pendingBase) >= creditLimit && (user?.payLater || false);
+    const creditLimit = user?.creditLimit !== undefined ? user.creditLimit : 5000;
+    const isOverLimit = (user?.pendingDues || 0) >= creditLimit && (user?.payLater || false);
 
     // Helper
     const triggerDirectDownload = async (url: string, fileName?: string) => {
@@ -359,7 +359,7 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                         </div>
                         <div>
                             <p className="text-sm font-semibold text-red-500">Payment Required</p>
-                            <p className="text-xs text-red-400/80">Outstanding balance ({formatInrWithGst(pendingBase)}) exceeds your credit limit. Please clear dues to continue.</p>
+                            <p className="text-xs text-red-400/80">Outstanding balance ({formatInrWithGst(user?.pendingDues || 0)}) exceeds your credit limit. Please clear dues to continue.</p>
                         </div>
                     </div>
                     <button onClick={() => setActiveTab("finance")}
