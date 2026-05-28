@@ -441,6 +441,39 @@ export async function unlockProjectDownloads(projectId: string, userId: string) 
 }
 
 /**
+ * Locks project downloads manually (Admin/PM override).
+ */
+export async function lockProjectDownloads(projectId: string, userId: string) {
+    try {
+        // Verify user has permission
+        const userDoc = await adminDb.collection('users').doc(userId).get();
+        if (!userDoc.exists) {
+            return { success: false, error: "User not found" };
+        }
+
+        const userData = userDoc.data();
+        const allowedRoles = ['admin', 'project_manager'];
+
+        if (!allowedRoles.includes(userData?.role)) {
+            return { success: false, error: "Unauthorized: Only Admins or Project Managers can lock downloads." };
+        }
+
+        await adminDb.collection('projects').doc(projectId).update({
+            downloadsUnlocked: false,
+            notes: FieldValue.arrayUnion(`Downloads locked by ${userData?.email} (${userData?.role}) at ${new Date().toISOString()}`)
+        });
+
+        const { addProjectLog } = await import("./admin-actions");
+        await addProjectLog(projectId, 'LOCKED', { uid: userId, displayName: userData?.displayName || 'PM/Admin' }, 'Downloads locked by Admin/PM override.');
+
+        revalidatePath(`/dashboard/projects/${projectId}`);
+        return { success: true };
+    } catch (error: any) {
+        return { success: false, error: error.message };
+    }
+}
+
+/**
  * Called by a Pay Later client to request download unlock from their PM.
  * Sets downloadUnlockRequested = true on the project document.
  */

@@ -44,7 +44,7 @@ import { cn, safeJsonParse } from "@/lib/utils";
 import { toast } from "sonner";
 import { assignEditor, getAllUsers, respondToAssignment } from "@/app/actions/admin-actions";
 import { handleFileDownload } from "@/lib/download-utils";
-import { unlockProjectDownloads, requestDownloadUnlock, registerDownload, submitEditorRating, getSignedDownloadUrl } from "@/app/actions/project-actions";
+import { unlockProjectDownloads, lockProjectDownloads, requestDownloadUnlock, registerDownload, submitEditorRating, getSignedDownloadUrl } from "@/app/actions/project-actions";
 import { handleProjectCompleted, handleEditorRatingSubmitted } from "@/app/actions/notification-actions";
 import { User, ProjectAssignmentStatus } from "@/types/schema";
 import { Modal } from "@/components/ui/modal";
@@ -505,6 +505,8 @@ export default function ProjectDetailsPage() {
 
     const latestRevision = revisions[0];
     const isClient = user?.role === 'client' || project.ownerId === user?.uid;
+    const hasRemainingBalance = (project?.totalCost || 0) > (project?.amountPaid || 0);
+    const needsPayment = (project?.paymentStatus !== 'full_paid' || hasRemainingBalance) && !project?.downloadsUnlocked;
     const isAdmin = user?.role === 'admin';
     const isPM = user?.role === 'project_manager';
     const canManage = isAdmin || isPM;
@@ -976,26 +978,37 @@ export default function ProjectDetailsPage() {
                             <motion.div 
                                 initial={{ opacity: 0, scale: 0.98 }}
                                 animate={{ opacity: 1, scale: 1 }}
-                                className="group relative aspect-video enterprise-card rounded-2xl overflow-hidden border-border"
+                                className="group relative aspect-video enterprise-card rounded-2xl overflow-hidden border-border flex items-center justify-center bg-black"
                             >
-                                <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 to-transparent pointer-events-none" />
-                                <div className="absolute inset-0 flex items-center justify-center opacity-10">
-                                    <FileVideo className="h-24 w-24 text-foreground" />
-                                </div>
-                                
-                                <div className="absolute inset-0 flex items-center justify-center bg-black/5 dark:bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-500 backdrop-blur-sm">
-                                    <div className="flex flex-col items-center gap-4">
-                                        <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center border border-border opacity-50">
-                                            <Lock className="h-6 w-6 text-muted-foreground" />
+                                {(!isClient || !needsPayment) ? (
+                                    <VideoPlayer 
+                                        videoPath={latestRevision.videoUrl} 
+                                        playbackId={latestRevision.playbackId} 
+                                        title={`v${latestRevision.version} Preview`} 
+                                        className="w-full h-full" 
+                                    />
+                                ) : (
+                                    <>
+                                        <div className="absolute inset-0 bg-gradient-to-tr from-primary/5 to-transparent pointer-events-none" />
+                                        <div className="absolute inset-0 flex items-center justify-center opacity-10">
+                                            <FileVideo className="h-24 w-24 text-foreground" />
                                         </div>
-                                        <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-4 py-2 bg-black/5 dark:bg-black/40 border border-border rounded-lg">
-                                            Awaiting Next Steps
-                                        </span>
-                                    </div>
-                                </div>
+                                        
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/5 dark:bg-black/40 opacity-0 group-hover:opacity-100 transition-all duration-500 backdrop-blur-sm">
+                                            <div className="flex flex-col items-center gap-4">
+                                                <div className="h-16 w-16 bg-muted rounded-full flex items-center justify-center border border-border opacity-50">
+                                                    <Lock className="h-6 w-6 text-muted-foreground" />
+                                                </div>
+                                                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground px-4 py-2 bg-black/5 dark:bg-black/40 border border-border rounded-lg">
+                                                    Awaiting Next Steps
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </>
+                                )}
 
                                 {/* Video Metadata Overlays */}
-                                <div className="absolute top-6 left-6 flex items-center gap-2.5">
+                                <div className="absolute top-6 left-6 flex items-center gap-2.5 z-10">
                                     <div className="px-3 py-1.5 bg-background/80 backdrop-blur-lg rounded-lg border border-border flex items-center gap-2">
                                         <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse shadow-[0_0_8px_rgba(99,102,241,1)]" />
                                         <span className="text-[10px] font-bold uppercase tracking-widest text-foreground">Current Version</span>
@@ -1022,8 +1035,7 @@ export default function ProjectDetailsPage() {
                                     )}
                                     {isClient ? (
                                         (() => {
-                                            const hasRemainingBalance = (project?.totalCost || 0) > (project?.amountPaid || 0);
-                                            const needsPayment = (project?.paymentStatus !== 'full_paid' || hasRemainingBalance) && !project?.downloadsUnlocked;
+
                                             
                                             return (
                                                 <button
@@ -1258,32 +1270,54 @@ export default function ProjectDetailsPage() {
 
                             {/* Admin Controls */}
                             {project.paymentStatus !== 'full_paid' && (
-                                <div className="enterprise-card border-emerald-500/10 bg-emerald-500/[0.01] p-6 space-y-5">
-                                     <div className="flex items-center gap-2 text-emerald-500">
+                                <div className={cn(
+                                     "enterprise-card p-6 space-y-5",
+                                     project.downloadsUnlocked 
+                                         ? "border-red-500/10 bg-red-500/[0.01]" 
+                                         : "border-emerald-500/10 bg-emerald-500/[0.01]"
+                                 )}>
+                                     <div className={cn("flex items-center gap-2", project.downloadsUnlocked ? "text-red-500" : "text-emerald-500")}>
                                          <ShieldCheck className="h-4 w-4" />
                                          <h3 className="text-[10px] font-bold uppercase tracking-widest">Override Options</h3>
                                      </div>
                                      <p className="text-xs text-muted-foreground leading-relaxed font-medium">
-                                         Manual authorization can override billing gates for direct partner accounts.
+                                         {project.downloadsUnlocked 
+                                             ? "Downloads are currently unlocked manually. Relocking will enforce standard billing checkouts for this project."
+                                             : "Manual authorization can override billing gates for direct partner accounts."}
                                      </p>
                                      <button 
                                         onClick={async () => {
                                             if (!user) return;
                                             try {
-                                                const res = await unlockProjectDownloads(id as string, user.uid);
-                                                if (res.success) {
-                                                    toast.success("Gates authorized.");
-                                                    setProject(prev => prev ? ({ ...prev, downloadsUnlocked: true, downloadUnlockRequested: false }) : null);
+                                                if (project.downloadsUnlocked) {
+                                                    const res = await lockProjectDownloads(id as string, user.uid);
+                                                    if (res.success) {
+                                                        toast.success("Gates locked.");
+                                                        setProject(prev => prev ? ({ ...prev, downloadsUnlocked: false }) : null);
+                                                    } else {
+                                                        toast.error(res.error);
+                                                    }
                                                 } else {
-                                                    toast.error(res.error);
+                                                    const res = await unlockProjectDownloads(id as string, user.uid);
+                                                    if (res.success) {
+                                                        toast.success("Gates authorized.");
+                                                        setProject(prev => prev ? ({ ...prev, downloadsUnlocked: true, downloadUnlockRequested: false }) : null);
+                                                    } else {
+                                                        toast.error(res.error);
+                                                    }
                                                 }
                                             } catch (e) {
                                                 toast.error("Override failed.");
                                             }
                                         }}
-                                        className="w-full h-11 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-[10px] font-bold uppercase tracking-widest hover:bg-emerald-500 hover:text-primary-foreground transition-all active:scale-[0.98]"
+                                        className={cn(
+                                            "w-full h-11 rounded-lg text-[10px] font-bold uppercase tracking-widest transition-all active:scale-[0.98] border",
+                                            project.downloadsUnlocked
+                                                ? "bg-red-500/10 border-red-500/30 text-red-500 hover:bg-red-500 hover:text-white"
+                                                : "bg-emerald-500/10 border-emerald-500/30 text-emerald-500 hover:bg-emerald-500 hover:text-primary-foreground"
+                                        )}
                                      >
-                                        Unlock Assets
+                                        {project.downloadsUnlocked ? "Lock Assets" : "Unlock Assets"}
                                      </button>
                                 </div>
                             )}
