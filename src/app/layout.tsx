@@ -41,6 +41,7 @@ import { Toaster } from "sonner";
 import { GlobalVideoWatermark } from "@/components/global-video-watermark";
 import { GlobalVideoOptimizer } from "@/components/global-video-optimizer";
 import { CacheConsentPopup } from "@/components/cache-consent";
+import { Analytics } from "@vercel/analytics/next";
 
 export default function RootLayout({
   children,
@@ -66,6 +67,7 @@ export default function RootLayout({
              <ContactModal />
              <Toaster position="top-center" richColors />
              <CacheConsentPopup />
+             <Analytics />
              {children}
           </ContactProvider>
         </Providers>
