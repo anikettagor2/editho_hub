@@ -14,7 +14,7 @@ import { adminDb } from "@/lib/firebase/admin";
 import { revalidatePath } from "next/cache";
 
 const DEFAULT_SHORT_LINK_BASE_URL = "https://previewvideo.online";
-const DEFAULT_APP_BASE_URL = "https://editohub.com";
+const DEFAULT_APP_BASE_URL = "https://www.editohub.com";
 
 function normalizeBaseUrl(url: string) {
     return url.replace(/\/+$/, "");

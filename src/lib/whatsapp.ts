@@ -21,7 +21,7 @@ const ALLOWED_CAMPAIGNS = new Set<string>([
     'second_draft_uploaded_client',
     'first_draft_uploaded_client',
     'project_manager_msg',
-    'project_submitted_client',
+    'project_submitted_client01',
     'editor_assigned',
     'pro_delay',
     'pr_accept_editor',
@@ -29,7 +29,7 @@ const ALLOWED_CAMPAIGNS = new Set<string>([
 ]);
 
 const CAMPAIGN_BY_NOTIFICATION: Partial<Record<NotificationType, string>> = {
-    client_project_created: 'project_submitted_client',
+    client_project_created: 'project_submitted_client01',
     client_draft_submitted: 'first_draft_uploaded_client',
     client_new_comment: 'comment',
     editor_new_comment: 'comment',
@@ -436,7 +436,7 @@ export async function notifyClient(
         let params: string[];
 
         if (notificationType === 'client_project_created') {
-            // Template: project_submitted_client
+            // Template: project_submitted_client01
             // {{1}} client name, {{2}} project name, {{3}} submitted date
             params = [
                 client.displayName || 'Client',
@@ -507,7 +507,7 @@ export async function notifyClient(
 
         const forcedCommentCampaign = notificationType === 'client_new_comment' ? 'comment' : undefined;
         const rawCampaignName = forcedCommentCampaign || notifSettings?.campaignName || templateCampaignName || settings?.campaigns?.client || CAMPAIGNS.CLIENT;
-        const campaignName = sanitizeCampaignName(rawCampaignName, notificationType === 'client_new_comment' ? 'comment' : 'project_submitted_client');
+        const campaignName = sanitizeCampaignName(rawCampaignName, notificationType === 'client_new_comment' ? 'comment' : 'project_submitted_client01');
         const fallbackCampaignName =
             notifSettings?.fallbackCampaignName ||
             settings?.campaigns?.clientFallback ||
@@ -993,6 +993,6 @@ function formatInrAmount(value?: number): string {
 }
 
 function normalizeAppBaseUrl(): string {
-    const raw = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://editohub.com';
+    const raw = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || 'https://www.editohub.com';
     return raw.replace(/\/+$/, '');
 }

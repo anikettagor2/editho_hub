@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
                                 const finalProjectId = revisionData?.projectId;
 
                                 if (finalProjectId) {
-                                    const DEFAULT_APP_BASE_URL = "https://editohub.com";
+                                    const DEFAULT_APP_BASE_URL = "https://www.editohub.com";
                                     const appBaseUrl = (
                                         process.env.NEXT_PUBLIC_APP_URL ||
                                         process.env.APP_URL ||
