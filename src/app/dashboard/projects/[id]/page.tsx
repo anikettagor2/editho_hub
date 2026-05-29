@@ -179,10 +179,41 @@ export default function ProjectDetailsPage() {
      * This solves CORS issues and browser download blocking.
      */
     const handleDirectDownload = async (url: string, filename: string) => {
+        const downloadToastId = toast.loading(`Preparing secure download: ${filename}...`);
         try {
-            await handleFileDownload(url, filename);
+            let downloadUrl = url;
+            if (url.includes('amazonaws.com') || url.includes('.s3.') || url.includes('firebasestorage.googleapis.com')) {
+                const res = await getSignedDownloadUrl(url, filename);
+                if (res.success && res.url) {
+                    downloadUrl = res.url;
+                }
+            }
+            toast.dismiss(downloadToastId);
+            await handleFileDownload(downloadUrl, filename);
         } catch (error: any) {
+            toast.dismiss(downloadToastId);
             toast.error(error.message || 'Download initialization failed.');
+        }
+    };
+
+    const handlePreviewFile = async (file: { url: string; type: string; name: string; playbackId?: string }) => {
+        const previewToastId = toast.loading(`Preparing secure preview: ${file.name}...`);
+        try {
+            let previewUrl = file.url;
+            if (file.url.includes('amazonaws.com') || file.url.includes('.s3.') || file.url.includes('firebasestorage.googleapis.com')) {
+                const res = await getSignedDownloadUrl(file.url, file.name);
+                if (res.success && res.url) {
+                    previewUrl = res.url;
+                }
+            }
+            toast.dismiss(previewToastId);
+            setPreviewFile({
+                ...file,
+                url: previewUrl
+            });
+        } catch (error) {
+            toast.dismiss(previewToastId);
+            setPreviewFile(file);
         }
     };
 
@@ -1389,7 +1420,7 @@ export default function ProjectDetailsPage() {
                                                                     <div className="flex items-center gap-1.5 flex-shrink-0">
                                                                         {!(file.name.match(/\.(zip|rar|7z)$/i) || file.type?.includes('zip')) && (
                                                                             <button 
-                                                                                onClick={() => setPreviewFile({ url: file.url, type: file.type || 'video/mp4', name: file.name, playbackId: (file as any).playbackId })} 
+                                                                                onClick={() => handlePreviewFile({ url: file.url, type: file.type || 'video/mp4', name: file.name, playbackId: (file as any).playbackId })} 
                                                                                 className="h-6 px-1.5 rounded text-[9px] font-bold uppercase tracking-widest bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all disabled:opacity-50"
                                                                                 disabled={project.assignmentStatus === 'pending' && !isClient}
                                                                             >
@@ -1397,7 +1428,7 @@ export default function ProjectDetailsPage() {
                                                                             </button>
                                                                         )}
                                                                         <button
-                                                                            onClick={() => handleFileDownload(file.url, file.name)}
+                                                                            onClick={() => handleDirectDownload(file.url, file.name)}
                                                                             className="h-6 w-6 rounded bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all disabled:opacity-50"
                                                                             disabled={project.assignmentStatus === 'pending' && !isClient}
                                                                         >
@@ -1428,14 +1459,14 @@ export default function ProjectDetailsPage() {
                                                                     </div>
                                                                     <div className="flex items-center gap-1.5 flex-shrink-0">
                                                                         <button 
-                                                                            onClick={() => setPreviewFile({ url: script.url, type: script.type || 'text/plain', name: script.name })}
+                                                                            onClick={() => handlePreviewFile({ url: script.url, type: script.type || 'text/plain', name: script.name })}
                                                                             className="h-6 px-1.5 rounded text-[9px] font-bold uppercase tracking-widest bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all disabled:opacity-50"
                                                                             disabled={project.assignmentStatus === 'pending' && !isClient}
                                                                         >
                                                                             Preview
                                                                         </button>
                                                                         <button 
-                                                                            onClick={() => handleFileDownload(script.url, script.name)}
+                                                                            onClick={() => handleDirectDownload(script.url, script.name)}
                                                                             className="h-6 w-6 rounded bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary flex items-center justify-center transition-all disabled:opacity-50"
                                                                             disabled={project.assignmentStatus === 'pending' && !isClient}
                                                                         >
@@ -1522,7 +1553,7 @@ export default function ProjectDetailsPage() {
                                                                     <div className="flex items-center gap-1.5 flex-shrink-0">
                                                                         {!(file.name.match(/\.(zip|rar|7z)$/i) || file.type?.includes('zip')) && (
                                                                             <button 
-                                                                                onClick={() => setPreviewFile({ url: file.url, type: file.type || 'video/mp4', name: file.name, playbackId: (file as any).playbackId })}
+                                                                                onClick={() => handlePreviewFile({ url: file.url, type: file.type || 'video/mp4', name: file.name, playbackId: (file as any).playbackId })}
                                                                                 className="h-6 px-1.5 rounded text-[9px] font-bold uppercase tracking-widest bg-muted hover:bg-primary/20 text-muted-foreground hover:text-primary transition-all disabled:opacity-50"
                                                                                 disabled={project.assignmentStatus === 'pending' && !isClient}
                                                                             >

@@ -527,32 +527,54 @@ export async function submitEditorRating(projectId: string, rating: number, revi
 export async function getSignedDownloadUrl(downloadUrl: string, fileName?: string) {
     try {
         if (!downloadUrl) return { success: false, error: "No URL provided" };
-        if (!downloadUrl.includes('firebasestorage.googleapis.com')) {
-           return { success: true, url: downloadUrl };
-        }
 
-        const pathParts = downloadUrl.split('/o/');
-        if (pathParts.length > 1) {
-            const encodedPath = pathParts[1].split('?')[0];
-            const fullPath = decodeURIComponent(encodedPath);
-
-            const bucket = adminStorage.bucket();
-            const file = bucket.file(fullPath);
-            const safeFileName = fileName ? fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'download';
-
-            const signedUrlResponse = await file.getSignedUrl({
-                version: 'v4',
-                action: 'read',
-                expires: Date.now() + 60 * 60 * 1000, // 1 hour
-                promptSaveAs: safeFileName,
-                responseDisposition: `attachment; filename="${safeFileName}"`
-            });
-
-            if (Array.isArray(signedUrlResponse) && signedUrlResponse.length > 0) {
-                return { success: true, url: signedUrlResponse[0] };
+        // 1. Handle AWS S3 URLs
+        const s3Key = extractS3KeyFromUrl(downloadUrl, BUCKET_NAME);
+        if (s3Key && BUCKET_NAME) {
+            try {
+                const safeFileName = fileName ? fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'download';
+                const getCommand = new GetObjectCommand({
+                    Bucket: BUCKET_NAME,
+                    Key: s3Key,
+                    ResponseContentDisposition: `attachment; filename="${safeFileName}"`
+                });
+                const signedS3Url = await getSignedUrl(s3, getCommand, { expiresIn: 3600 });
+                return { success: true, url: signedS3Url };
+            } catch (s3Err: any) {
+                console.error("[getSignedDownloadUrl] Error generating signed S3 URL:", s3Err);
+                // Fallback to original URL if signing fails
+                return { success: true, url: downloadUrl };
             }
         }
-        return { success: false, error: "Failed to generate signed URL from path" };
+
+        // 2. Handle Firebase Storage URLs
+        if (downloadUrl.includes('firebasestorage.googleapis.com')) {
+            const pathParts = downloadUrl.split('/o/');
+            if (pathParts.length > 1) {
+                const encodedPath = pathParts[1].split('?')[0];
+                const fullPath = decodeURIComponent(encodedPath);
+
+                const bucket = adminStorage.bucket();
+                const file = bucket.file(fullPath);
+                const safeFileName = fileName ? fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'download';
+
+                const signedUrlResponse = await file.getSignedUrl({
+                    version: 'v4',
+                    action: 'read',
+                    expires: Date.now() + 60 * 60 * 1000, // 1 hour
+                    promptSaveAs: safeFileName,
+                    responseDisposition: `attachment; filename="${safeFileName}"`
+                });
+
+                if (Array.isArray(signedUrlResponse) && signedUrlResponse.length > 0) {
+                    return { success: true, url: signedUrlResponse[0] };
+                }
+            }
+            return { success: false, error: "Failed to generate signed URL from path" };
+        }
+
+        // 3. Fallback for other URLs
+        return { success: true, url: downloadUrl };
     } catch (err: any) {
         console.error("Failed to generate signed URL:", err);
         return { success: false, error: err.message };
