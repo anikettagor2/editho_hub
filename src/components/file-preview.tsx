@@ -20,6 +20,7 @@ import { useIntersectionObserver } from "@/hooks/use-intersection-observer";
 import { useVideoTranscodeStatus } from "@/hooks/use-video-transcode-status";
 import { VideoPlayer } from "@/components/video-player";
 import { handleFileDownload } from "@/lib/download-utils";
+import { getSignedDownloadUrl } from "@/app/actions/project-actions";
 
 interface FilePreviewProps {
   file: {
@@ -36,6 +37,25 @@ interface FilePreviewProps {
 export function FilePreview({ file, onDownload }: FilePreviewProps) {
   const [showPreview, setShowPreview] = useState(false);
   const [previewError, setPreviewError] = useState(false);
+  const [resolvedUrl, setResolvedUrl] = useState(file.url);
+
+  useEffect(() => {
+    let isMounted = true;
+    const resolveUrl = async () => {
+      if (file.url && (file.url.includes('amazonaws.com') || file.url.includes('.s3.') || file.url.includes('firebasestorage.googleapis.com'))) {
+        try {
+          const res = await getSignedDownloadUrl(file.url, file.name);
+          if (res.success && res.url && isMounted) {
+            setResolvedUrl(res.url);
+          }
+        } catch (err) {
+          console.error("Failed to pre-sign URL:", err);
+        }
+      }
+    };
+    resolveUrl();
+    return () => { isMounted = false; };
+  }, [file.url, file.name]);
 
   // Monitor transcoding status for .mov files
   const transcodeState = useVideoTranscodeStatus(file.storagePath, file.name);
@@ -43,7 +63,7 @@ export function FilePreview({ file, onDownload }: FilePreviewProps) {
   // Determine the best URL to use for video playback
   const effectiveVideoUrl = transcodeState.status === "ready" && transcodeState.videoUrl
     ? transcodeState.videoUrl
-    : file.url;
+    : resolvedUrl;
 
   // Whether this file is a .mov that's currently being transcoded
   const isTranscoding = transcodeState.status === "processing" || transcodeState.status === "pending";
@@ -88,22 +108,22 @@ export function FilePreview({ file, onDownload }: FilePreviewProps) {
   // Monitor intersecting for lazy loading
   useEffect(() => {
     if (getFileType(file.name) === 'video' && isIntersecting) {
-        warmVideoInMemory(file.hlsUrl || file.url);
+        warmVideoInMemory(file.hlsUrl || resolvedUrl);
     }
   }, [file.hlsUrl, file.url, file.name, isIntersecting]);
 
   const fileType = getFileType(file.name);
   const ext = getFileExtension(file.name);
   const fileSizeMB = file.size ? `${(file.size / (1024 * 1024)).toFixed(2)} MB` : null;
-  const previewSrc = fileType === "video" ? effectiveVideoUrl : file.url;
+  const previewSrc = fileType === "video" ? effectiveVideoUrl : resolvedUrl;
   const isPdfDocument = fileType === "document" && ext === "pdf";
 
   const handleDownloadClick = async () => {
     if (onDownload) {
-      onDownload(file.url, file.name);
+      onDownload(resolvedUrl, file.name);
       return;
     }
-    await handleFileDownload(file.url, file.name);
+    await handleFileDownload(resolvedUrl, file.name);
   };
 
   // Transcode status badge component
@@ -151,7 +171,7 @@ export function FilePreview({ file, onDownload }: FilePreviewProps) {
           {fileType === 'image' && !previewError ? (
             <>
               <Image
-                src={file.url}
+                src={resolvedUrl}
                 alt={file.name}
                 fill
                 className="object-cover group-hover:scale-110 transition-transform duration-300"
@@ -191,7 +211,7 @@ export function FilePreview({ file, onDownload }: FilePreviewProps) {
                 <>
                   <div className="w-full h-full pointer-events-none">
                     <VideoPlayer
-                      videoPath={file.url}
+                      videoPath={resolvedUrl}
                       className="w-full h-full object-cover"
                     />
                   </div>
@@ -303,7 +323,7 @@ export function FilePreview({ file, onDownload }: FilePreviewProps) {
 
             {fileType === "image" && (
               <Image
-                src={file.url}
+                src={resolvedUrl}
                 alt={file.name}
                 width={1200}
                 height={800}
@@ -335,14 +355,14 @@ export function FilePreview({ file, onDownload }: FilePreviewProps) {
                   <FileAudio className="h-7 w-7" />
                 </div>
                 <p className="mb-4 text-sm font-bold text-foreground">{file.name}</p>
-                <audio controls className="w-full" src={file.url} preload="metadata" />
+                <audio controls className="w-full" src={resolvedUrl} preload="metadata" />
               </div>
             )}
 
             {fileType === "document" && (
               isPdfDocument ? (
                 <iframe
-                  src={file.url}
+                  src={resolvedUrl}
                   title={file.name}
                   className="h-[78vh] w-full rounded-lg border border-white/10 bg-white"
                 />
