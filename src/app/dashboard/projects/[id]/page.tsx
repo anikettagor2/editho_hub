@@ -402,14 +402,13 @@ export default function ProjectDetailsPage() {
      * Gate 3 → executeDownload.
      */
     const initiateDownload = async (revisionId: string) => {
-        // GATE 1: If any payment is made for this project, treat as pay now (ignore pay later for this project)
         const isFullyPaid = project?.paymentStatus === 'full_paid';
-        const hasAnyPayment = (project?.amountPaid || 0) > 0 || !!project?.paymentStatus;
         const isDownloadUnlockedByPM = project?.downloadsUnlocked;
         const requireRating = !project?.editorRating;
+        const isPayLaterActive = user?.payLater === true;
 
-        if (hasAnyPayment) {
-            // After any payment, require full payment and rating for download
+        if (!isPayLaterActive) {
+            // Pay later is disabled/not allowed for this client -> Must be fully paid
             if (!isFullyPaid) {
                 toast.error('Please make the full payment to download the file.');
                 setPendingDownloadId(revisionId);
@@ -424,20 +423,22 @@ export default function ProjectDetailsPage() {
             await executeDownload(revisionId);
             return;
         }
-        // Only if no payment at all, allow pay later download unlock
-        if (user?.payLater || (project as any)?.isPayLaterRequest) {
-            if (isDownloadUnlockedByPM) {
-                if (requireRating) {
-                    setPendingDownloadId(revisionId);
-                    setIsRatingModalOpen(true);
-                    return;
-                }
-                await executeDownload(revisionId);
+
+        // If pay later is active, they can download if fully paid OR if PM unlocked the download
+        if (isFullyPaid || isDownloadUnlockedByPM) {
+            if (requireRating) {
+                setPendingDownloadId(revisionId);
+                setIsRatingModalOpen(true);
                 return;
             }
+            await executeDownload(revisionId);
+            return;
         }
-        // Not eligible for download
-        toast.error('You are not eligible to download this file yet.');
+
+        // Not eligible yet (Pay Later is active, but PM hasn't unlocked it and they haven't paid)
+        toast.error('Download locked. Please complete payment or request PM unlock.');
+        setPendingDownloadId(revisionId);
+        setIsPaymentModalOpen(true);
         return;
     };
 
@@ -540,7 +541,8 @@ export default function ProjectDetailsPage() {
     const latestRevision = revisions[selectedRevisionIdx] || revisions[0];
     const isClient = user?.role === 'client' || project.ownerId === user?.uid;
     const hasRemainingBalance = (project?.totalCost || 0) > (project?.amountPaid || 0);
-    const needsPayment = (project?.paymentStatus !== 'full_paid' || hasRemainingBalance) && !project?.downloadsUnlocked;
+    const isPayLaterActive = user?.payLater === true;
+    const needsPayment = (project?.paymentStatus !== 'full_paid' || hasRemainingBalance) && (!isPayLaterActive || !project?.downloadsUnlocked);
     const isAdmin = user?.role === 'admin';
     const isPM = user?.role === 'project_manager';
     const canManage = isAdmin || isPM;
@@ -931,8 +933,8 @@ export default function ProjectDetailsPage() {
                     {latestRevision && (
                         // If any payment is made, only allow download if fully paid
                         ((project.paymentStatus === 'full_paid') ||
-                        // If no payment at all, allow pay later download if PM unlocked
-                        (((!project.paymentStatus && (!project.amountPaid || project.amountPaid === 0)) && (user?.payLater || (project as any).isPayLaterRequest) && project.downloadsUnlocked))
+                        // If no payment at all, allow pay later download if PM unlocked (strictly requires user to have active payLater privilege)
+                        (((!project.paymentStatus && (!project.amountPaid || project.amountPaid === 0)) && user?.payLater && project.downloadsUnlocked))
                     )) && (
                         <div className="enterprise-card border-primary/20 bg-primary/[0.02] p-8 sm:p-12 text-center space-y-6 flex flex-col items-center">
                             <div className="h-16 w-16 bg-primary/20 border border-primary/30 rounded-2xl flex items-center justify-center text-primary shadow-[0_0_30px_rgba(99,102,241,0.2)]">
