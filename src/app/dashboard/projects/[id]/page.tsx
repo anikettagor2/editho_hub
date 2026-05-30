@@ -298,6 +298,7 @@ export default function ProjectDetailsPage() {
     }, [project]);
 
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [isPayLaterDueReminderModalOpen, setIsPayLaterDueReminderModalOpen] = useState(false);
     const [isAssignModalOpen, setIsAssignModalOpen] = useState(false);
     const [selectedEditorId, setSelectedEditorId] = useState<string | null>(null);
     const [editorRevenueShare, setEditorRevenueShare] = useState<string>("");
@@ -403,7 +404,6 @@ export default function ProjectDetailsPage() {
      */
     const initiateDownload = async (revisionId: string) => {
         const isFullyPaid = project?.paymentStatus === 'full_paid';
-        const isDownloadUnlockedByPM = project?.downloadsUnlocked;
         const requireRating = !project?.editorRating;
         const isPayLaterActive = user?.payLater === true;
 
@@ -424,21 +424,20 @@ export default function ProjectDetailsPage() {
             return;
         }
 
-        // If pay later is active, they can download if fully paid OR if PM unlocked the download
-        if (isFullyPaid || isDownloadUnlockedByPM) {
-            if (requireRating) {
-                setPendingDownloadId(revisionId);
-                setIsRatingModalOpen(true);
-                return;
-            }
-            await executeDownload(revisionId);
+        // If Pay Later is active, show the outstanding balance reminder popup if unpaid
+        if (!isFullyPaid) {
+            setPendingDownloadId(revisionId);
+            setIsPayLaterDueReminderModalOpen(true);
             return;
         }
 
-        // Not eligible yet (Pay Later is active, but PM hasn't unlocked it and they haven't paid)
-        toast.error('Download locked. Please complete payment or request PM unlock.');
-        setPendingDownloadId(revisionId);
-        setIsPaymentModalOpen(true);
+        // If paid, check rating
+        if (requireRating) {
+            setPendingDownloadId(revisionId);
+            setIsRatingModalOpen(true);
+            return;
+        }
+        await executeDownload(revisionId);
         return;
     };
 
@@ -1939,6 +1938,39 @@ export default function ProjectDetailsPage() {
                         className="w-full h-12 rounded-xl bg-primary  text-primary-foreground text-[11px] font-bold uppercase tracking-widest hover:bg-zinc-200 transition-all active:scale-[0.98] disabled:opacity-50"
                     >
                         {isSubmittingRating ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Submit & Download"}
+                    </button>
+                </div>
+            </Modal>
+
+            {/* Pay Later Due Reminder Modal */}
+            <Modal
+                isOpen={isPayLaterDueReminderModalOpen}
+                onClose={() => setIsPayLaterDueReminderModalOpen(false)}
+                title="Outstanding Balance Reminder"
+                maxWidth="max-w-md"
+            >
+                <div className="space-y-6 mt-4 text-center">
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                        Your final balance of <span className="font-bold text-foreground">₹{((((project?.totalCost || 0) - (project?.amountPaid || 0)) * 1.18)).toLocaleString()}</span> is due. As a Pay Later client, you can pay this anytime from your dashboard.
+                    </p>
+                    <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-400 font-medium">
+                        Click "Proceed to Download" to leave your editor rating and download your video.
+                    </div>
+                    <button
+                        onClick={() => {
+                            setIsPayLaterDueReminderModalOpen(false);
+                            if (!project?.editorRating) {
+                                setPendingDownloadId(pendingDownloadId);
+                                setIsRatingModalOpen(true);
+                            } else {
+                                if (pendingDownloadId) {
+                                    void executeDownload(pendingDownloadId);
+                                }
+                            }
+                        }}
+                        className="w-full h-12 rounded-xl bg-primary text-primary-foreground text-[12px] font-black uppercase tracking-widest hover:brightness-110 active:scale-[0.98] transition-all shadow-xl shadow-primary/20"
+                    >
+                        Proceed to Download
                     </button>
                 </div>
             </Modal>

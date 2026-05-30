@@ -308,6 +308,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     // Payment & Feedback state
 
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+    const [isPayLaterDueReminderModalOpen, setIsPayLaterDueReminderModalOpen] = useState(false);
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
     const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
     const [pendingDownloadAfterFlow, setPendingDownloadAfterFlow] = useState(false);
@@ -630,16 +631,13 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                     return;
                 }
             } else {
-                const isDownloadUnlockedByPM = liveDownloadsUnlocked;
-                if (!isPaymentComplete && !isDownloadUnlockedByPM) {
-                    console.log("[Download Flow] Pay Later active, but download not unlocked and payment not complete.");
-                    toast.error("Download locked. Please complete payment or request PM unlock.");
-                    setPendingDownloadAfterFlow(true);
-                    setIsPaymentModalOpen(true);
+                if (!isPaymentComplete) {
+                    console.log("[Download Flow] Pay Later active, unpaid. Showing reminder modal.");
+                    setIsPayLaterDueReminderModalOpen(true);
                     return;
                 }
                 if (!hasFeedback) {
-                    console.log("[Download Flow] Pay Later active/unlocked. Feedback required first.");
+                    console.log("[Download Flow] Pay Later active, paid. Feedback required first.");
                     toast.error("Please submit feedback first to unlock the download.");
                     setPendingDownloadAfterFlow(true);
                     setIsFeedbackModalOpen(true);
@@ -1818,6 +1816,37 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         className="w-full h-12 rounded-xl bg-primary text-primary-foreground text-[12px] font-black uppercase tracking-widest hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-50 shadow-xl shadow-primary/20"
                     >
                         {isSubmittingFeedback ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : "Submit & Start Download"}
+                    </button>
+                </div>
+            </Modal>
+
+            {/* Pay Later Due Reminder Modal */}
+            <Modal
+                isOpen={isPayLaterDueReminderModalOpen && isClient}
+                onClose={() => setIsPayLaterDueReminderModalOpen(false)}
+                title="Outstanding Balance Reminder"
+                maxWidth="max-w-md"
+            >
+                <div className="space-y-6 mt-4 text-center">
+                    <p className="text-sm text-zinc-300 leading-relaxed">
+                        Your final balance of <span className="font-bold text-white">₹{remainingAmount.toLocaleString()}</span> is due. As a Pay Later client, you can pay this anytime from your dashboard.
+                    </p>
+                    <div className="p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-xs text-blue-400 font-medium">
+                        Click "Proceed to Download" to leave your editor rating and download your video.
+                    </div>
+                    <button
+                        onClick={() => {
+                            setIsPayLaterDueReminderModalOpen(false);
+                            if (!hasFeedback) {
+                                setPendingDownloadAfterFlow(true);
+                                setIsFeedbackModalOpen(true);
+                            } else {
+                                void startDownload();
+                            }
+                        }}
+                        className="w-full h-12 rounded-xl bg-primary text-primary-foreground text-[12px] font-black uppercase tracking-widest hover:brightness-110 active:scale-[0.98] transition-all shadow-xl shadow-primary/20"
+                    >
+                        Proceed to Download
                     </button>
                 </div>
             </Modal>
