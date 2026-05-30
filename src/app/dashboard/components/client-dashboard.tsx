@@ -802,7 +802,7 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                                 </td>
                                                 <td className="px-4 py-3">
                                                     <div className="flex items-center gap-2">
-                                                        {!isPaid && isCompleted && (
+                                                        {!isPaid && (isCompleted || user?.payLater) && (
                                                             <PaymentButton
                                                                 projectId={project.id!}
                                                                 projectName={project.name}
@@ -879,7 +879,7 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                                         </div>
                                                     </div>
                                                     <div className="flex items-center gap-1 shrink-0">
-                                                        {!isPaid && isCompleted && (
+                                                        {!isPaid && (isCompleted || user?.payLater) && (
                                                             <PaymentButton
                                                                 projectId={project.id!}
                                                                 projectName={project.name}
