@@ -7,6 +7,11 @@ import { useState, useEffect } from "react";
 export function MarketingHero() {
     const { user } = useAuth();
     
+    const [isMounted, setIsMounted] = useState(false);
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
+    
     // Split screen before/after editing slider positions
     const [sliderPos, setSliderPos] = useState(50);
     const [isPlaying, setIsPlaying] = useState(true);
@@ -123,7 +128,7 @@ export function MarketingHero() {
                     initial={{ opacity: 0, y: 40 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.8, delay: 0.4 }}
-                    className="max-w-5xl mx-auto bg-zinc-950 rounded-3xl border border-zinc-800 shadow-2xl overflow-hidden relative"
+                    className="max-w-6xl lg:max-w-7xl mx-auto bg-zinc-950 rounded-3xl border border-zinc-800 shadow-2xl overflow-hidden relative"
                 >
                     {/* Mock OS Toolbar */}
                     <div className="bg-zinc-900 px-6 py-4 flex items-center justify-between border-b border-zinc-800">
@@ -370,8 +375,8 @@ export function MarketingHero() {
                                                         key={i} 
                                                         className={`w-[2px] rounded-full transition-all duration-300 ${isActive ? 'bg-purple-500' : 'bg-zinc-800'}`} 
                                                         style={{ 
-                                                            height: `${Math.max(4, Math.sin(i * 0.4) * 16 + 8)}px`,
-                                                            transform: isActive && isPlaying ? "scaleY(1.2)" : "scaleY(1)"
+                                                            height: isMounted ? `${Math.max(4, Math.sin(i * 0.4) * 16 + 8)}px` : "12px",
+                                                            transform: isMounted && isActive && isPlaying ? "scaleY(1.2)" : "scaleY(1)"
                                                         }} 
                                                     />
                                                 );
