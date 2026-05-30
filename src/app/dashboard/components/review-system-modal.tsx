@@ -37,6 +37,7 @@ type ReviewProject = {
     assignedPMId?: string;
     createdAt?: number;
     isPayLaterRequest?: boolean;
+    downloadsUnlocked?: boolean;
 };
 
 type RevisionDoc = {
@@ -320,6 +321,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     const [livePaymentStatus, setLivePaymentStatus] = useState(project?.paymentStatus || "");
     const [liveEditorRating, setLiveEditorRating] = useState(project?.editorRating || 0);
     const [liveEditorReview, setLiveEditorReview] = useState(project?.editorReview || "");
+    const [liveDownloadsUnlocked, setLiveDownloadsUnlocked] = useState(project?.downloadsUnlocked || false);
 
     // Voice Message states
     const [isRecording, setIsRecording] = useState(false);
@@ -611,17 +613,38 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         console.log("[Download Flow] Context:", { isClient, isPaymentComplete, hasFeedback, selectedRevisionId });
         if (!project?.id || !selectedRevisionId) return;
         if (isClient) {
-            if (!isPaymentComplete && !user?.payLater && !project?.isPayLaterRequest && project?.paymentStatus !== "pay_later") {
-                console.log("[Download Flow] Pending payment, opening payment modal");
-                setPendingDownloadAfterFlow(true);
-                setIsPaymentModalOpen(true);
-                return;
-            }
-            if (!hasFeedback) {
-                console.log("[Download Flow] Pending feedback, opening feedback modal");
-                setPendingDownloadAfterFlow(true);
-                setIsFeedbackModalOpen(true);
-                return;
+            const isPayLaterActive = user?.payLater === true;
+            if (!isPayLaterActive) {
+                if (!isPaymentComplete) {
+                    console.log("[Download Flow] Client disabled for Pay Later. Payment required first.");
+                    toast.error("Please complete the project payment first.");
+                    setPendingDownloadAfterFlow(true);
+                    setIsPaymentModalOpen(true);
+                    return;
+                }
+                if (!hasFeedback) {
+                    console.log("[Download Flow] Client disabled for Pay Later. Feedback/Rating required first.");
+                    toast.error("Please submit feedback first to unlock the download.");
+                    setPendingDownloadAfterFlow(true);
+                    setIsFeedbackModalOpen(true);
+                    return;
+                }
+            } else {
+                const isDownloadUnlockedByPM = liveDownloadsUnlocked;
+                if (!isPaymentComplete && !isDownloadUnlockedByPM) {
+                    console.log("[Download Flow] Pay Later active, but download not unlocked and payment not complete.");
+                    toast.error("Download locked. Please complete payment or request PM unlock.");
+                    setPendingDownloadAfterFlow(true);
+                    setIsPaymentModalOpen(true);
+                    return;
+                }
+                if (!hasFeedback) {
+                    console.log("[Download Flow] Pay Later active/unlocked. Feedback required first.");
+                    toast.error("Please submit feedback first to unlock the download.");
+                    setPendingDownloadAfterFlow(true);
+                    setIsFeedbackModalOpen(true);
+                    return;
+                }
             }
         }
         await startDownload();
@@ -961,6 +984,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
             setLivePaymentStatus(p.paymentStatus || "");
             setLiveEditorRating(p.editorRating || 0);
             setLiveEditorReview(p.editorReview || "");
+            setLiveDownloadsUnlocked(p.downloadsUnlocked || false);
         });
         return () => unsub();
     }, [isOpen, project?.id]);
