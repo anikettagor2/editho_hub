@@ -84,7 +84,21 @@ export function Footer() {
         </div>
 
         <div className="mt-16 pt-8 border-t border-black/10 flex flex-col md:flex-row items-center justify-between text-sm text-muted-foreground premium-light-surface rounded-2xl px-5 py-4">
-          <p>© {new Date().getFullYear()} EditoHub. All rights reserved.</p>
+          <div className="flex flex-col md:flex-row items-center gap-2 md:gap-6">
+            <p>© {new Date().getFullYear()} EditoHub. All rights reserved.</p>
+            <span className="hidden md:inline text-zinc-300">|</span>
+            <p>
+              Crafted in Pune by{" "}
+              <a 
+                href="https://www.linkedin.com/in/aniket-tagor-25932b246/" 
+                target="_blank" 
+                rel="noopener noreferrer" 
+                className="font-semibold text-primary hover:text-primary/80 hover:underline transition-colors"
+              >
+                Aniket Tagor
+              </a>
+            </p>
+          </div>
           <div className="flex space-x-6 mt-4 md:mt-0">
             <Link href="#" className="hover:text-primary transition-colors">Privacy Policy</Link>
             <Link href="#" className="hover:text-primary transition-colors">Terms of Service</Link>
