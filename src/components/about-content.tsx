@@ -104,18 +104,37 @@ export function AboutContent() {
                       </p>
                   </div>
 
-                  <div className="flex flex-wrap gap-6 items-center pt-4">
-                      <button className="flex items-center gap-3 px-8 py-4 bg-primary text-white text-xs font-bold uppercase tracking-widest rounded-full hover:brightness-110 transition-all shadow-lg shadow-primary/25">
-                          Founder's Story <ArrowRight className="h-4 w-4" />
-                      </button>
-                      <div className="flex gap-4">
-                        <div className="w-12 h-12 rounded-full bg-white border border-zinc-200 flex items-center justify-center hover:border-primary/30 hover:text-primary cursor-pointer transition-all">
-                            <span className="text-xs font-bold">In</span>
-                        </div>
-                        <div className="w-12 h-12 rounded-full bg-white border border-zinc-200 flex items-center justify-center hover:border-primary/30 hover:text-primary cursor-pointer transition-all">
-                            <span className="text-xs font-bold">X</span>
-                        </div>
-                      </div>
+                  <div className="space-y-6 pt-4 border-t border-zinc-200/80">
+                      <h3 className="text-xl font-black uppercase tracking-widest text-primary">Founder's Story</h3>
+                      <p className="text-zinc-600 text-sm md:text-base leading-relaxed">
+                          Divyanshu Yadav founded EditoHub out of a deep-seated passion for digital storytelling and a clear realization of a massive gap in the market. In a digital economy rapidly shifting towards short-form and high-production value long-form video, he saw that many content creators, startups, and international brands struggled to maintain consistent, high-retention video pipelines. They didn't just need software-enabled cuts; they needed visual architects who understand pace, psychology, and the science of audience retention.
+                      </p>
+                      <p className="text-zinc-600 text-sm md:text-base leading-relaxed">
+                          Under Divyanshu's visionary leadership, EditoHub has scaled from a boutique editing collective into a global post-production powerhouse. To date, EditoHub has proudly partnered with over 500 creators and brands, engineered and delivered more than 10,000 viral and high-impact videos, and generated a staggering 1 Billion+ combined views globally.
+                      </p>
+                      <p className="text-zinc-600 text-sm md:text-base leading-relaxed">
+                          Divyanshu’s ultimate vision for the future of content creation is to build a seamless ecosystem where premium creators and global brands can access elite, remote post-production with surgical precision. As attention spans continue to challenge the digital world, he is committed to ensuring that premium human artistry, cinematic styling, and algorithmic science remain at the absolute core of visual media.
+                      </p>
+                  </div>
+                  
+                  <div className="flex gap-4 items-center pt-4">
+                    <span className="text-[10px] font-black uppercase tracking-[0.2em] text-muted-foreground mr-2">Connect:</span>
+                    <a 
+                      href="https://linkedin.com" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="w-10 h-10 rounded-full bg-white border border-zinc-200 flex items-center justify-center hover:border-primary hover:text-primary transition-all text-xs font-bold"
+                    >
+                        In
+                    </a>
+                    <a 
+                      href="https://x.com" 
+                      target="_blank" 
+                      rel="noopener noreferrer"
+                      className="w-10 h-10 rounded-full bg-white border border-zinc-200 flex items-center justify-center hover:border-primary hover:text-primary transition-all text-xs font-bold"
+                    >
+                        X
+                    </a>
                   </div>
               </div>
           </div>

@@ -38,10 +38,10 @@ export function Footer() {
               We turn raw footage into cinematic stories. The premium choice for top-tier creators and brands aiming for viral impact.
             </p>
             <div className="flex space-x-4 pt-4">
-              <SocialIcon href="#" icon={<Twitter className="w-4 h-4" />} />
-              <SocialIcon href="#" icon={<Instagram className="w-4 h-4" />} />
-              <SocialIcon href="#" icon={<Linkedin className="w-4 h-4" />} />
-              <SocialIcon href="#" icon={<Youtube className="w-4 h-4" />} />
+              <SocialIcon href="https://x.com/editohub" icon={<Twitter className="w-4 h-4" />} />
+              <SocialIcon href="https://instagram.com/editohub" icon={<Instagram className="w-4 h-4" />} />
+              <SocialIcon href="https://linkedin.com/company/editohub" icon={<Linkedin className="w-4 h-4" />} />
+              <SocialIcon href="https://youtube.com/@editohub" icon={<Youtube className="w-4 h-4" />} />
             </div>
           </div>
 
@@ -77,8 +77,8 @@ export function Footer() {
             <ul className="space-y-4">
               <FooterLink href="/about">About Us</FooterLink>
               <FooterLink href="/portfolio">Portfolio</FooterLink>
-              <FooterLink href="#">Careers</FooterLink>
-              <FooterLink href="https://wa.me/919096563651">Contact</FooterLink>
+              <FooterLink href="/careers">Careers</FooterLink>
+              <FooterLink href="/contact">Contact</FooterLink>
             </ul>
           </div>
         </div>
@@ -100,8 +100,8 @@ export function Footer() {
             </p>
           </div>
           <div className="flex space-x-6 mt-4 md:mt-0">
-            <Link href="#" className="hover:text-primary transition-colors">Privacy Policy</Link>
-            <Link href="#" className="hover:text-primary transition-colors">Terms of Service</Link>
+            <Link href="/privacy-policy" className="hover:text-primary transition-colors">Privacy Policy</Link>
+            <Link href="/terms-of-service" className="hover:text-primary transition-colors">Terms of Service</Link>
           </div>
         </div>
       </div>

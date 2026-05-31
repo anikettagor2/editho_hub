@@ -7,14 +7,16 @@ import Link from "next/link";
 const plans = [
     {
         name: "Standard",
-        price: "Custom",
+        price: "₹4,999",
+        period: "/month",
         desc: "Perfect for social media creators",
         features: ["1 Active Project", "48hr Turnaround", "Infinite Revisions", "Standard Watermarking", "Dashboard Access"],
         color: "blue"
     },
     {
         name: "Pro",
-        price: "Custom",
+        price: "₹9,999",
+        period: "/month",
         desc: "For growing YouTube channels",
         features: ["3 Active Projects", "24hr Turnaround", "Priority Support", "Custom Branding", "Collaboration Tools"],
         popular: true,
@@ -23,6 +25,7 @@ const plans = [
     {
         name: "Enterprise",
         price: "Custom",
+        period: "Contact for pricing",
         desc: "Full production teams",
         features: ["Unlimited Projects", "Same-day Delivery", "Custom Workflows", "API Access", "SSO Integration"],
         color: "zinc"
@@ -59,8 +62,23 @@ export function PricingSection() {
                                 <p className="text-zinc-500 text-sm">{plan.desc}</p>
                             </div>
 
-                            <div className="mb-8 flex items-baseline gap-1">
-                                <span className="text-5xl font-black text-zinc-900">{plan.price}</span>
+                            <div className="mb-8 min-h-[72px] flex flex-col justify-end">
+                                {plan.price !== "Custom" ? (
+                                    <>
+                                        <span className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">Starting at</span>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-5xl font-black text-zinc-900">{plan.price}</span>
+                                            <span className="text-sm font-semibold text-zinc-500">{plan.period}</span>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="flex items-baseline gap-1">
+                                            <span className="text-5xl font-black text-zinc-900">{plan.price}</span>
+                                        </div>
+                                        <span className="text-sm font-semibold text-zinc-500 mt-1">{plan.period}</span>
+                                    </>
+                                )}
                             </div>
 
                             <div className="space-y-4 mb-10 flex-grow">
