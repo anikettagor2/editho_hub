@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Script from "next/script";
 import { Inter, Poppins } from "next/font/google";
 import "./globals.css";
 import { cn } from "@/lib/utils";
@@ -50,6 +51,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <Script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1784252024159170"
+          crossOrigin="anonymous"
+          strategy="afterInteractive"
+        />
+      </head>
       <body
         suppressHydrationWarning
         className={cn(
