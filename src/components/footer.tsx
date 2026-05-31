@@ -88,7 +88,7 @@ export function Footer() {
             <p>© {new Date().getFullYear()} EditoHub. All rights reserved.</p>
             <span className="hidden md:inline text-zinc-300">|</span>
             <p>
-              Crafted in Pune by{" "}
+              Website by{" "}
               <a 
                 href="https://www.linkedin.com/in/aniket-tagor-25932b246/" 
                 target="_blank" 
