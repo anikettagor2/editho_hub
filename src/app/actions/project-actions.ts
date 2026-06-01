@@ -541,11 +541,15 @@ export async function submitEditorRating(projectId: string, rating: number, revi
 }
 
 export async function getSignedDownloadUrl(downloadUrl: string, fileName?: string) {
+    console.log(`\n--- [getSignedDownloadUrl] ---`);
+    console.log(`Input URL: ${downloadUrl ? (downloadUrl.length > 120 ? downloadUrl.slice(0, 120) + "..." : downloadUrl) : "None"}`);
+    console.log(`Configured BUCKET_NAME: ${BUCKET_NAME}`);
     try {
         if (!downloadUrl) return { success: false, error: "No URL provided" };
 
         // 1. Handle AWS S3 URLs
         const s3Key = extractS3KeyFromUrl(downloadUrl, BUCKET_NAME);
+        console.log(`Extracted S3 Key: ${s3Key}`);
         if (s3Key && BUCKET_NAME) {
             try {
                 const safeFileName = fileName ? fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'download';
@@ -555,6 +559,7 @@ export async function getSignedDownloadUrl(downloadUrl: string, fileName?: strin
                     ResponseContentDisposition: `attachment; filename="${safeFileName}"`
                 });
                 const signedS3Url = await getSignedUrl(s3, getCommand, { expiresIn: 3600 });
+                console.log(`Successfully generated fresh signed S3 URL: ${signedS3Url.slice(0, 100)}...`);
                 return { success: true, url: signedS3Url };
             } catch (s3Err: any) {
                 console.error("[getSignedDownloadUrl] Error generating signed S3 URL:", s3Err);
