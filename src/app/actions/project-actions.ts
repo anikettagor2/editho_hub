@@ -23,39 +23,72 @@ const ASSET_PURGE_DELAY_MS = 24 * 60 * 60 * 1000;
  * @see settleEditorPayment() - Admin QR confirmation completes delivered work.
  */
 
-function extractS3KeyFromUrl(url: string, bucketName: string | undefined): string | null {
-    if (!url || !bucketName) return null;
+function decodeFully(value: string): string {
+    let current = value;
+    for (let i = 0; i < 3; i += 1) {
+        try {
+            const decoded = decodeURIComponent(current);
+            if (decoded === current) break;
+            current = decoded;
+        } catch {
+            break;
+        }
+    }
+    return current;
+}
 
-    // Check if it's an S3 URL
+function parseS3Url(url: string): { bucket: string; key: string } | null {
+    if (!url) return null;
+
     if (!url.includes(".s3.") && !url.includes("amazonaws.com")) return null;
 
     try {
-        // Path-style: https://s3.amazonaws.com/bucket-name/key
-        // or https://s3.region.amazonaws.com/bucket-name/key
-        if (url.includes(`/${bucketName}/`)) {
-            const parts = url.split(`/${bucketName}/`);
-            if (parts.length > 1) {
-                return parts[1].split("?")[0];
-            }
-        }
-
-        // Virtual-hosted style: https://bucket-name.s3.region.amazonaws.com/key
         const urlObj = new URL(url);
-        // If hostname starts with bucket name followed by a dot
-        if (urlObj.hostname.startsWith(`${bucketName}.`)) {
-            return urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
+        const hostname = urlObj.hostname;
+        let bucket = "";
+        let key = "";
+
+        if (hostname === "s3.amazonaws.com" || hostname.startsWith("s3.") || hostname.startsWith("s3-")) {
+            const pathParts = urlObj.pathname.split("/").filter(Boolean);
+            if (pathParts.length >= 2) {
+                bucket = pathParts[0];
+                key = pathParts.slice(1).join("/");
+            }
+        } else {
+            const s3Index = hostname.indexOf(".s3");
+            const awsIndex = hostname.indexOf(".amazonaws.com");
+            if (s3Index > 0) {
+                bucket = hostname.slice(0, s3Index);
+            } else if (awsIndex > 0) {
+                bucket = hostname.slice(0, awsIndex);
+            }
+            key = urlObj.pathname.startsWith("/") ? urlObj.pathname.slice(1) : urlObj.pathname;
         }
 
-        // Fallback for custom domains or other variants if the key is the only thing in the path
-        if (urlObj.hostname.includes(bucketName)) {
-            return urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
-        }
-
+        if (!bucket || !key) return null;
+        return { bucket, key: decodeFully(key.split("?")[0]) };
     } catch (e) {
-        console.error("[extractS3KeyFromUrl] Error parsing URL:", e);
+        console.error("[parseS3Url] Error parsing URL:", e);
+        return null;
+    }
+}
+
+function extractS3KeyFromUrl(url: string, bucketName?: string): string | null {
+    const parsed = parseS3Url(url);
+    if (!parsed) return null;
+
+    if (bucketName && parsed.bucket !== bucketName) {
+        try {
+            if (url.includes(`/${bucketName}/`)) {
+                const parts = url.split(`/${bucketName}/`);
+                return parts[1] ? decodeFully(parts[1].split("?")[0]) : null;
+            }
+        } catch (e) {
+            console.error("[extractS3KeyFromUrl] Error parsing bucket path:", e);
+        }
     }
 
-    return null;
+    return parsed.key;
 }
 
 function extractStoragePathFromUrl(url?: string): string | null {
@@ -337,13 +370,15 @@ export async function registerDownload(projectId: string, revisionId: string) {
             }
         }
 
-        if (s3Key && BUCKET_NAME) {
+        const parsedDownloadS3Url = downloadUrl ? parseS3Url(downloadUrl) : null;
+        const s3Bucket = BUCKET_NAME || parsedDownloadS3Url?.bucket;
+        if (s3Key && s3Bucket) {
             try {
                 const safeProjectName = projectData.name ? projectData.name.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'Video';
                 const downloadFilename = `${safeProjectName}_V${data.version || 'Draft'}.mp4`;
 
                 const getCommand = new GetObjectCommand({
-                    Bucket: BUCKET_NAME,
+                    Bucket: s3Bucket,
                     Key: s3Key,
                     ResponseContentDisposition: `attachment; filename="${downloadFilename}"`
                 });
@@ -529,13 +564,13 @@ export async function getSignedDownloadUrl(downloadUrl: string, fileName?: strin
         if (!downloadUrl) return { success: false, error: "No URL provided" };
 
         // 1. Handle AWS S3 URLs
-        const s3Key = extractS3KeyFromUrl(downloadUrl, BUCKET_NAME);
-        if (s3Key && BUCKET_NAME) {
+        const s3Info = parseS3Url(downloadUrl);
+        if (s3Info) {
             try {
                 const safeFileName = fileName ? fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'download';
                 const getCommand = new GetObjectCommand({
-                    Bucket: BUCKET_NAME,
-                    Key: s3Key,
+                    Bucket: s3Info.bucket,
+                    Key: s3Info.key,
                     ResponseContentDisposition: `attachment; filename="${safeFileName}"`
                 });
                 const signedS3Url = await getSignedUrl(s3, getCommand, { expiresIn: 3600 });

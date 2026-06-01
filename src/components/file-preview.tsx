@@ -119,11 +119,24 @@ export function FilePreview({ file, onDownload }: FilePreviewProps) {
   const isPdfDocument = fileType === "document" && ext === "pdf";
 
   const handleDownloadClick = async () => {
+    let downloadUrl = resolvedUrl;
+    if (file.url && (file.url.includes('amazonaws.com') || file.url.includes('.s3.') || file.url.includes('firebasestorage.googleapis.com'))) {
+      try {
+        const res = await getSignedDownloadUrl(file.url, file.name);
+        if (res.success && res.url) {
+          downloadUrl = res.url;
+          setResolvedUrl(res.url);
+        }
+      } catch (err) {
+        console.error("Failed to refresh signed download URL:", err);
+      }
+    }
+
     if (onDownload) {
-      onDownload(resolvedUrl, file.name);
+      onDownload(downloadUrl, file.name);
       return;
     }
-    await handleFileDownload(resolvedUrl, file.name);
+    await handleFileDownload(downloadUrl, file.name);
   };
 
   // Transcode status badge component
