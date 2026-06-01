@@ -24,6 +24,20 @@ const mux = new Mux({
     tokenSecret: process.env.MUX_TOKEN_SECRET,
 });
 
+function decodeFully(str) {
+    let current = str;
+    for (let i = 0; i < 3; i++) {
+        try {
+            const decoded = decodeURIComponent(current);
+            if (decoded === current) break;
+            current = decoded;
+        } catch (e) {
+            break;
+        }
+    }
+    return current;
+}
+
 function extractS3KeyFromUrl(url, bucketName) {
     if (!url || !bucketName) return null;
     if (!url.includes(".s3.") && !url.includes("amazonaws.com")) return null;
@@ -31,14 +45,16 @@ function extractS3KeyFromUrl(url, bucketName) {
     try {
         if (url.includes(`/${bucketName}/`)) {
             const parts = url.split(`/${bucketName}/`);
-            if (parts.length > 1) return parts[1].split("?")[0];
+            if (parts.length > 1) return decodeFully(parts[1].split("?")[0]);
         }
         const urlObj = new URL(url);
         if (urlObj.hostname.startsWith(`${bucketName}.`)) {
-            return urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
+            const path = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
+            return decodeFully(path);
         }
         if (urlObj.hostname.includes(bucketName)) {
-             return urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
+             const path = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
+             return decodeFully(path);
         }
     } catch (e) {
         return null;

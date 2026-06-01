@@ -23,6 +23,20 @@ const ASSET_PURGE_DELAY_MS = 24 * 60 * 60 * 1000;
  * @see settleEditorPayment() - Admin QR confirmation completes delivered work.
  */
 
+function decodeFully(str: string): string {
+    let current = str;
+    for (let i = 0; i < 3; i++) {
+        try {
+            const decoded = decodeURIComponent(current);
+            if (decoded === current) break;
+            current = decoded;
+        } catch {
+            break;
+        }
+    }
+    return current;
+}
+
 function extractS3KeyFromUrl(url: string, bucketName: string | undefined): string | null {
     if (!url || !bucketName) return null;
     
@@ -35,7 +49,7 @@ function extractS3KeyFromUrl(url: string, bucketName: string | undefined): strin
         if (url.includes(`/${bucketName}/`)) {
             const parts = url.split(`/${bucketName}/`);
             if (parts.length > 1) {
-                return parts[1].split("?")[0];
+                return decodeFully(parts[1].split("?")[0]);
             }
         }
 
@@ -43,12 +57,14 @@ function extractS3KeyFromUrl(url: string, bucketName: string | undefined): strin
         const urlObj = new URL(url);
         // If hostname starts with bucket name followed by a dot
         if (urlObj.hostname.startsWith(`${bucketName}.`)) {
-            return urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
+            const path = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
+            return decodeFully(path);
         }
         
         // Fallback for custom domains or other variants if the key is the only thing in the path
         if (urlObj.hostname.includes(bucketName)) {
-             return urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
+             const path = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
+             return decodeFully(path);
         }
 
     } catch (e) {
