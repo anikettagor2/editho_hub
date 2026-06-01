@@ -23,113 +23,38 @@ const ASSET_PURGE_DELAY_MS = 24 * 60 * 60 * 1000;
  * @see settleEditorPayment() - Admin QR confirmation completes delivered work.
  */
 
-function decodeFully(str: string): string {
-    let current = str;
-    for (let i = 0; i < 3; i++) {
-        try {
-            const decoded = decodeURIComponent(current);
-            if (decoded === current) break;
-            current = decoded;
-        } catch {
-            break;
-        }
-    }
-    return current;
-}
+function extractS3KeyFromUrl(url: string, bucketName: string | undefined): string | null {
+    if (!url || !bucketName) return null;
 
-function parseS3Url(urlStr: string): { bucket: string; key: string } | null {
-    try {
-        const urlObj = new URL(urlStr);
-        const hostname = urlObj.hostname;
-        
-        // Ensure it's an S3 URL
-        if (!hostname.includes(".s3.") && !hostname.includes("amazonaws.com")) {
-            return null;
-        }
-        
-        let bucket = "";
-        let key = "";
-        
-        // 1. Path-style URL: e.g. https://s3.amazonaws.com/bucket-name/key
-        // or https://s3.us-east-1.amazonaws.com/bucket-name/key
-        if (hostname === "s3.amazonaws.com" || hostname.startsWith("s3.") || hostname.startsWith("s3-")) {
-            const pathParts = urlObj.pathname.split("/").filter(Boolean);
-            if (pathParts.length >= 2) {
-                bucket = pathParts[0];
-                key = pathParts.slice(1).join("/");
-            }
-        } else {
-            // 2. Virtual-hosted style: e.g. https://bucket-name.s3.amazonaws.com/key
-            // or https://bucket-name.s3.us-east-1.amazonaws.com/key
-            const s3Index = hostname.indexOf(".s3");
-            if (s3Index > 0) {
-                bucket = hostname.slice(0, s3Index);
-            } else {
-                // Fallback: e.g. https://bucket-name.amazonaws.com/key
-                const awsIndex = hostname.indexOf(".amazonaws.com");
-                if (awsIndex > 0) {
-                    bucket = hostname.slice(0, awsIndex);
-                }
-            }
-            key = urlObj.pathname.startsWith("/") ? urlObj.pathname.slice(1) : urlObj.pathname;
-        }
-        
-        if (bucket && key) {
-            // Strip any query parameters from key if not parsed by URL
-            key = key.split("?")[0];
-            return {
-                bucket,
-                key: decodeFully(key)
-            };
-        }
-    } catch (e) {
-        console.error("[parseS3Url] Error parsing:", e);
-    }
-    return null;
-}
-
-function extractS3KeyFromUrl(url: string, bucketName?: string): string | null {
-    if (!url) return null;
-    
     // Check if it's an S3 URL
     if (!url.includes(".s3.") && !url.includes("amazonaws.com")) return null;
-
-    const bucket = bucketName || BUCKET_NAME || "editohub-storage";
 
     try {
         // Path-style: https://s3.amazonaws.com/bucket-name/key
         // or https://s3.region.amazonaws.com/bucket-name/key
-        if (url.includes(`/${bucket}/`)) {
-            const parts = url.split(`/${bucket}/`);
+        if (url.includes(`/${bucketName}/`)) {
+            const parts = url.split(`/${bucketName}/`);
             if (parts.length > 1) {
-                return decodeFully(parts[1].split("?")[0]);
+                return parts[1].split("?")[0];
             }
         }
 
         // Virtual-hosted style: https://bucket-name.s3.region.amazonaws.com/key
         const urlObj = new URL(url);
         // If hostname starts with bucket name followed by a dot
-        if (urlObj.hostname.startsWith(`${bucket}.`)) {
-            const path = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
-            return decodeFully(path);
-        }
-        
-        // Fallback for custom domains or other variants if the key is the only thing in the path
-        if (urlObj.hostname.includes(bucket)) {
-             const path = urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
-             return decodeFully(path);
+        if (urlObj.hostname.startsWith(`${bucketName}.`)) {
+            return urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
         }
 
-        // Dynamic S3 parsing fallback
-        const s3Info = parseS3Url(url);
-        if (s3Info) {
-            return s3Info.key;
+        // Fallback for custom domains or other variants if the key is the only thing in the path
+        if (urlObj.hostname.includes(bucketName)) {
+            return urlObj.pathname.startsWith('/') ? urlObj.pathname.slice(1).split("?")[0] : urlObj.pathname.split("?")[0];
         }
 
     } catch (e) {
         console.error("[extractS3KeyFromUrl] Error parsing URL:", e);
     }
-    
+
     return null;
 }
 
@@ -340,11 +265,11 @@ export async function registerDownload(projectId: string, revisionId: string) {
         // AUTO-RECOVERY: If the requested revision is empty, try to find the latest valid one for this project
         if (!downloadUrl && !data.s3Key && !data.assetId && !data.playbackId) {
             console.warn(`[registerDownload] Requested revision ${revisionId} is EMPTY. Attempting auto-recovery for Project: ${projectId}`);
-            
+
             const allRevsSnap = await adminDb.collection('revisions')
                 .where('projectId', '==', projectId)
                 .get();
-            
+
             const validRevs = allRevsSnap.docs
                 .map(d => ({ id: d.id, ...d.data() } as Revision))
                 .filter(d => d.videoUrl || d.s3Key || d.assetId || d.playbackId)
@@ -354,20 +279,20 @@ export async function registerDownload(projectId: string, revisionId: string) {
                 const latestValid = validRevs[0];
                 console.log(`[registerDownload] Auto-recovered: Falling back to Revision ${latestValid.id} (V${latestValid.version})`);
                 downloadUrl = latestValid.videoUrl || "";
-                
+
                 // Switch context to the recovered revision
                 data.s3Key = latestValid.s3Key;
                 data.version = latestValid.version;
                 targetDocRef = adminDb.collection('revisions').doc(latestValid.id);
                 targetRevisionId = latestValid.id;
-                
+
                 const { addProjectLog } = await import("./admin-actions");
                 await addProjectLog(projectId, 'DATA_REPAIR', { uid: 'system', displayName: 'EditoHub System' }, `Client tried to download empty revision ${revisionId}. System auto-recovered by serving latest valid revision ${latestValid.id} (V${latestValid.version}).`);
             } else {
                 console.error(`[registerDownload] GHOST PROJECT: No valid revisions found for project ${projectId}`);
-                return { 
-                    success: false, 
-                    error: "This project doesn't have any uploaded video files yet. Please contact your editor or support." 
+                return {
+                    success: false,
+                    error: "This project doesn't have any uploaded video files yet. Please contact your editor or support."
                 };
             }
         }
@@ -382,11 +307,11 @@ export async function registerDownload(projectId: string, revisionId: string) {
             if (extractedKey) {
                 s3Key = extractedKey;
                 console.warn(`[registerDownload] CRITICAL: s3Key was missing in database for revision ${targetRevisionId}. Successfully extracted from URL: ${s3Key}. Patching database record.`);
-                
+
                 // Repair the database record immediately
-                await targetDocRef.update({ 
+                await targetDocRef.update({
                     s3Key: extractedKey,
-                    updatedAt: now 
+                    updatedAt: now
                 });
 
                 // Log this data inconsistency for admin review
@@ -412,14 +337,13 @@ export async function registerDownload(projectId: string, revisionId: string) {
             }
         }
 
-        const resolvedBucket = BUCKET_NAME || "editohub-storage";
-        if (s3Key) {
+        if (s3Key && BUCKET_NAME) {
             try {
                 const safeProjectName = projectData.name ? projectData.name.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'Video';
                 const downloadFilename = `${safeProjectName}_V${data.version || 'Draft'}.mp4`;
 
                 const getCommand = new GetObjectCommand({
-                    Bucket: resolvedBucket,
+                    Bucket: BUCKET_NAME,
                     Key: s3Key,
                     ResponseContentDisposition: `attachment; filename="${downloadFilename}"`
                 });
@@ -443,7 +367,7 @@ export async function registerDownload(projectId: string, revisionId: string) {
         if (downloadUrl.includes('firebasestorage.googleapis.com')) {
             const safeProjectName = projectData.name ? projectData.name.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'Video';
             const downloadFilename = `${safeProjectName}_V${data.version || 'Draft'}.mp4`;
-            
+
             const signedUrlRes = await getSignedDownloadUrl(downloadUrl, downloadFilename);
             if (signedUrlRes.success && signedUrlRes.url) {
                 downloadUrl = signedUrlRes.url;
@@ -451,12 +375,12 @@ export async function registerDownload(projectId: string, revisionId: string) {
         }
 
         revalidatePath(`/dashboard/projects/${projectId}`);
-        return { 
-            success: true, 
-            count: nextCount, 
-            remaining: "unlimited", 
+        return {
+            success: true,
+            count: nextCount,
+            remaining: "unlimited",
             downloadUrl,
-            status: newStatus 
+            status: newStatus
         };
 
     } catch (error: any) {
@@ -601,26 +525,20 @@ export async function submitEditorRating(projectId: string, rating: number, revi
 }
 
 export async function getSignedDownloadUrl(downloadUrl: string, fileName?: string) {
-    console.log(`\n--- [getSignedDownloadUrl] ---`);
-    console.log(`Input URL: ${downloadUrl ? (downloadUrl.length > 120 ? downloadUrl.slice(0, 120) + "..." : downloadUrl) : "None"}`);
-    console.log(`Configured BUCKET_NAME: ${BUCKET_NAME}`);
     try {
         if (!downloadUrl) return { success: false, error: "No URL provided" };
 
         // 1. Handle AWS S3 URLs
-        const s3Info = parseS3Url(downloadUrl);
-        if (s3Info) {
-            const { bucket, key } = s3Info;
-            console.log(`Extracted from S3 URL - Bucket: ${bucket}, Key: ${key}`);
+        const s3Key = extractS3KeyFromUrl(downloadUrl, BUCKET_NAME);
+        if (s3Key && BUCKET_NAME) {
             try {
                 const safeFileName = fileName ? fileName.replace(/[^a-zA-Z0-9.\-_]/g, '_') : 'download';
                 const getCommand = new GetObjectCommand({
-                    Bucket: bucket,
-                    Key: key,
+                    Bucket: BUCKET_NAME,
+                    Key: s3Key,
                     ResponseContentDisposition: `attachment; filename="${safeFileName}"`
                 });
                 const signedS3Url = await getSignedUrl(s3, getCommand, { expiresIn: 3600 });
-                console.log(`Successfully generated fresh signed S3 URL: ${signedS3Url.slice(0, 100)}...`);
                 return { success: true, url: signedS3Url };
             } catch (s3Err: any) {
                 console.error("[getSignedDownloadUrl] Error generating signed S3 URL:", s3Err);
@@ -676,11 +594,11 @@ export async function syncRevisionMetadata(revisionId: string) {
     try {
         const revRef = adminDb.collection('revisions').doc(revisionId);
         const snap = await revRef.get();
-        
+
         if (!snap.exists) return { success: false, error: "Revision not found" };
-        
+
         const data = snap.data() as Revision;
-        
+
         // If we already have playbackId, we're good
         if (data.playbackId) {
             return { success: true, playbackId: data.playbackId, status: "ready" };
@@ -730,10 +648,10 @@ export async function syncRevisionMetadata(revisionId: string) {
                 updatedAt: Date.now()
             });
 
-            return { 
-                success: true, 
-                status: "processing", 
-                assetId: asset.id 
+            return {
+                success: true,
+                status: "processing",
+                assetId: asset.id
             };
         } catch (muxErr: any) {
             if (muxErr.message?.includes("Free plan is limited to 10 assets")) {
@@ -757,7 +675,7 @@ export async function repairProjectMuxStreams(projectId: string) {
         const revsSnap = await adminDb.collection('revisions')
             .where('projectId', '==', projectId)
             .get();
-        
+
         const results = [];
         for (const doc of revsSnap.docs) {
             const rev = doc.data() as Revision;
