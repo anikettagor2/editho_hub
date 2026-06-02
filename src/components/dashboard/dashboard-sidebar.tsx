@@ -31,10 +31,10 @@ import { ModeToggle } from "@/components/mode-toggle";
 
 import Image from "next/image";
 import { useBranding } from "@/lib/context/branding-context";
-import { storage, db } from "@/lib/firebase/config";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db } from "@/lib/firebase/config";
 import { doc, setDoc } from "firebase/firestore";
 import { toast } from "sonner";
+import { uploadFileToS3Object } from "@/lib/s3-upload-utils";
 
 interface DashboardSidebarProps {}
 
@@ -101,9 +101,11 @@ export function DashboardSidebar({}: DashboardSidebarProps) {
 
         try {
             const compressedBlob = await compressImage(file);
-            const storageRef = ref(storage, `avatars/${user.uid}_${Date.now()}`);
-            await uploadBytes(storageRef, compressedBlob);
-            const downloadURL = await getDownloadURL(storageRef);
+            const downloadURL = await uploadFileToS3Object(compressedBlob, {
+                folder: "avatars",
+                ownerId: user.uid,
+                fileName: `avatar-${Date.now()}.jpg`,
+            });
 
             await setDoc(doc(db, "users", user.uid), {
                 photoURL: downloadURL,

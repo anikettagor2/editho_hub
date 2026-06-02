@@ -4,8 +4,6 @@
  * Supports both optimized and original videos
  */
 
-import { getDownloadURL, ref } from 'firebase/storage';
-import { storage } from './config';
 import { cacheVideoUrl, getCachedVideoUrl } from './videoUrlCache';
 import {
   cacheVideoMetadata,
@@ -34,7 +32,7 @@ export interface VideoUrlResult {
  * Always checks cache before making Firebase requests
  *
  * @param videoId - Video ID from Firestore
- * @param storagePath - Path to original video in Firebase Storage
+ * @param storagePath - S3 proxy URL, S3 URL, or Mux identifier for the video
  * @param options - Configuration options
  * @returns Video URL and metadata
  *
@@ -44,7 +42,7 @@ export interface VideoUrlResult {
  *   cacheDurationHours: 1,
  *   useCache: true
  * });
- * console.log(result.url); // Firebase download URL
+ * console.log(result.url); // S3 proxy URL or Mux URL
  * console.log(result.isOptimized); // Was it an optimized version?
  */
 export async function getVideoUrl(
@@ -175,15 +173,18 @@ export async function getMultipleVideoUrls(
  * Returns null if not found
  */
 async function tryGetVideoUrl(path: string): Promise<string | null> {
-  try {
-    const videoRef = ref(storage, path);
-    const url = await getDownloadURL(videoRef);
-    return url;
-  } catch (error) {
-    // Path doesn't exist or isn't accessible
-    console.log('[getVideoUrl] Path not found:', path);
-    return null;
+  if (!path) return null;
+  if (
+    path.startsWith("http://") ||
+    path.startsWith("https://") ||
+    path.startsWith("/api/storage/s3")
+  ) {
+    return path;
   }
+
+  // New storage is S3-only. Bare legacy Firebase paths are not resolved here.
+  console.log('[getVideoUrl] Unsupported non-S3 video path:', path);
+  return null;
 }
 
 /**
@@ -255,10 +256,10 @@ export async function refreshVideoUrl(
   storagePath: string,
   options?: VideoUrlOptions
 ): Promise<VideoUrlResult> {
-  // Force cache bypass by directly getting from Firebase
+  // Force cache bypass by returning the current S3/proxy URL.
   try {
-    const videoRef = ref(storage, storagePath);
-    const url = await getDownloadURL(videoRef);
+    const url = await tryGetVideoUrl(storagePath);
+    if (!url) throw new Error("Unsupported video storage path");
 
     // Cache the fresh URL
     if (options?.useCache !== false) {
@@ -303,8 +304,8 @@ export async function invalidateVideoUrlCache(videoPaths: string[]): Promise<voi
 export async function getVideoSize(storagePath: string): Promise<number> {
   try {
     const response = await fetch(
-      `https://firebasestorage.googleapis.com/v0/b/${process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || 'studio-4633365007-23d80.firebasestorage.app'}/o/${encodeURIComponent(storagePath)}?alt=media`,
-      { method: 'HEAD' }
+      storagePath,
+      { method: 'HEAD', redirect: 'follow' }
     );
     const contentLength = response.headers.get('content-length');
     return contentLength ? parseInt(contentLength, 10) : 0;

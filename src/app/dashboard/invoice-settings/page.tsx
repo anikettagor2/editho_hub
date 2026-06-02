@@ -4,8 +4,6 @@ import { useState, useEffect, useRef } from "react";
 import { useAuth } from "@/lib/context/auth-context";
 import { useRouter } from "next/navigation";
 import { getInvoiceSettings, updateInvoiceSettings } from "@/app/actions/admin-actions";
-import { storage } from "@/lib/firebase/config";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
@@ -29,6 +27,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { InvoiceRenderer } from "@/components/invoice/invoice-renderer";
 import { Invoice } from "@/types/schema";
+import { uploadFileToS3Object } from "@/lib/s3-upload-utils";
 
 interface InvoiceSettings {
     companyName: string;
@@ -116,9 +115,10 @@ export default function InvoiceSettingsPage() {
 
         setUploading(true);
         try {
-            const storageRef = ref(storage, `invoice-assets/logo-${Date.now()}`);
-            await uploadBytes(storageRef, file);
-            const url = await getDownloadURL(storageRef);
+            const url = await uploadFileToS3Object(file, {
+                folder: "invoice-assets",
+                ownerId: "global",
+            });
             setSettings(prev => ({ ...prev, companyLogo: url }));
             toast.success("Logo uploaded");
         } catch (err) {

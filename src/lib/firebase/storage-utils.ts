@@ -1,5 +1,4 @@
-import { ref, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
-import { storage } from "./config";
+import { deleteS3ObjectByUrl, uploadFileToS3Object } from "@/lib/s3-upload-utils";
 
 export const uploadCommentAttachment = async (file: File, projectId: string, revisionId: string): Promise<string> => {
     if (!file) throw new Error("No file provided");
@@ -45,8 +44,7 @@ export const uploadCommentImage = async (file: File, projectId: string, revision
 
 export const deleteCommentImage = async (imageUrl: string): Promise<void> => {
     try {
-        const fileRef = ref(storage, imageUrl);
-        await deleteObject(fileRef);
+        await deleteS3ObjectByUrl(imageUrl);
     } catch (error) {
         console.error("Failed to delete image:", error);
     }
@@ -65,12 +63,8 @@ export const uploadProfileImage = async (file: File, userId: string): Promise<st
         throw new Error("Only JPEG, PNG, and WebP images are allowed");
     }
 
-    const timestamp = Date.now();
-    const fileName = `${timestamp}_${file.name}`;
-    const storageRef = ref(storage, `profiles/${userId}/${fileName}`);
-
-    const snapshot = await uploadBytes(storageRef, file);
-    const downloadUrl = await getDownloadURL(snapshot.ref);
-
-    return downloadUrl;
+    return uploadFileToS3Object(file, {
+        folder: "profiles",
+        ownerId: userId,
+    });
 };

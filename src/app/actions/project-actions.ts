@@ -4,7 +4,7 @@ import { adminDb, adminStorage } from "@/lib/firebase/admin";
 import { Project, Revision } from "@/types/schema";
 import { revalidatePath } from "next/cache";
 import { FieldValue } from "firebase-admin/firestore";
-import { GetObjectCommand } from '@aws-sdk/client-s3';
+import { DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { s3Client as s3, BUCKET_NAME } from '@/lib/s3';
 import { video } from '@/lib/mux';
@@ -73,7 +73,21 @@ function parseS3Url(url: string): { bucket: string; key: string } | null {
     }
 }
 
+function extractS3ProxyKeyFromUrl(url?: string): string | null {
+    if (!url) return null;
+    try {
+        const urlObj = new URL(url);
+        if (urlObj.pathname !== "/api/storage/s3") return null;
+        return urlObj.searchParams.get("key");
+    } catch {
+        return null;
+    }
+}
+
 function extractS3KeyFromUrl(url: string, bucketName?: string): string | null {
+    const proxyKey = extractS3ProxyKeyFromUrl(url);
+    if (proxyKey) return proxyKey;
+
     const parsed = parseS3Url(url);
     if (!parsed) return null;
 
@@ -109,6 +123,16 @@ function extractStoragePathFromUrl(url?: string): string | null {
 }
 
 async function deleteStorageFileByUrl(url?: string): Promise<void> {
+    const s3Key = url ? extractS3KeyFromUrl(url, BUCKET_NAME) : null;
+    if (s3Key && BUCKET_NAME) {
+        try {
+            await s3.send(new DeleteObjectCommand({ Bucket: BUCKET_NAME, Key: s3Key }));
+            return;
+        } catch {
+            // Fall through to legacy Firebase deletion if the URL is not an S3 object we can delete.
+        }
+    }
+
     const path = extractStoragePathFromUrl(url);
     if (!path) return;
 

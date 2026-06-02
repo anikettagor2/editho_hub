@@ -6,8 +6,7 @@ import { Loader2, Trash2, User, Mail, Shield } from "lucide-react";
 import { useState } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import { storage, db } from "@/lib/firebase/config";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db } from "@/lib/firebase/config";
 import { doc, setDoc } from "firebase/firestore";
 import { useBranding } from "@/lib/context/branding-context";
 import Image from "next/image";
@@ -16,6 +15,7 @@ import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_GB } from "@/lib/constants";
+import { uploadFileToS3Object } from "@/lib/s3-upload-utils";
 
 
 export default function SettingsPage() {
@@ -91,9 +91,11 @@ export default function SettingsPage() {
             // Compress image to minimize storage footprint
             const compressedBlob = await compressImage(file);
             
-            const storageRef = ref(storage, `avatars/${user.uid}_${Date.now()}`);
-            await uploadBytes(storageRef, compressedBlob);
-            const downloadURL = await getDownloadURL(storageRef);
+            const downloadURL = await uploadFileToS3Object(compressedBlob, {
+                folder: "avatars",
+                ownerId: user.uid,
+                fileName: `avatar-${Date.now()}.jpg`,
+            });
 
             await setDoc(doc(db, "users", user.uid), {
                 photoURL: downloadURL,
@@ -124,9 +126,10 @@ export default function SettingsPage() {
         const toastId = toast.loading("Uploading agency logo...");
 
         try {
-            const storageRef = ref(storage, `branding/logo_${Date.now()}`);
-            await uploadBytes(storageRef, file);
-            const downloadURL = await getDownloadURL(storageRef);
+            const downloadURL = await uploadFileToS3Object(file, {
+                folder: "branding",
+                ownerId: "global",
+            });
 
             await setDoc(doc(db, "settings", "branding"), {
                 logoUrl: downloadURL,

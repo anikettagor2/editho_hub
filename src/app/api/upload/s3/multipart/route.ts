@@ -10,6 +10,11 @@ import {
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { s3Client as s3, BUCKET_NAME } from '@/lib/s3';
 
+function buildStorageUrl(req: Request, key: string, name = "download"): string {
+  const origin = new URL(req.url).origin;
+  const params = new URLSearchParams({ key, name });
+  return `${origin}/api/storage/s3?${params.toString()}`;
+}
 
 export async function POST(req: Request) {
   try {
@@ -55,8 +60,11 @@ export async function POST(req: Request) {
       });
       const s3Url = await getSignedUrl(s3, getCommand, { expiresIn: 3600 });
       
-      return NextResponse.json({ 
-        location: s3Url,
+      const fileName = key.split("/").pop() || "download";
+
+      return NextResponse.json({
+        location: buildStorageUrl(req, key, fileName),
+        signedUrl: s3Url,
         key: key
       });
     }

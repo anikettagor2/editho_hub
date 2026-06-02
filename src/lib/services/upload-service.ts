@@ -1,8 +1,8 @@
-import { ref, uploadBytesResumable, getDownloadURL } from "firebase/storage";
-import { storage, db } from "@/lib/firebase/config";
+import { db } from "@/lib/firebase/config";
 import { doc, updateDoc } from "firebase/firestore";
 import Uppy from '@uppy/core';
 import AwsS3Multipart from '@uppy/aws-s3';
+import { uploadFileToS3Object } from "@/lib/s3-upload-utils";
 
 export interface UploadProgress {
   percent: number;
@@ -18,15 +18,14 @@ export interface UploadOptions {
   revisionId?: string;
   type: 'raw' | 'revision' | 'asset' | 'pm_file' | 'document';
   onProgress?: (progress: UploadProgress) => void;
-  storagePath?: string; // Custom path for Firebase Storage
+  storagePath?: string;
   onCancelRef?: (cancel: () => void) => void;
 }
 
 export class UploadService {
   /**
    * Main entry point for file uploads.
-   * Client project creation uploads go to Firebase Storage.
-   * Editor revisions go to AWS S3 Multipart + Mux.
+   * All file uploads go to AWS S3. Editor revisions are also ingested to Mux.
    */
   static async uploadFileUnified(
     file: File,
@@ -61,8 +60,8 @@ export class UploadService {
       return this.uploadToAwsS3Mux(file, options);
     }
 
-    console.log(`[UploadService] Routing ${options.type} upload to Firebase Storage for project ${options.projectId}`);
-    return this.uploadToFirebase(file, options);
+    console.log(`[UploadService] Routing ${options.type} upload to AWS S3 object storage for project ${options.projectId}`);
+    return this.uploadToS3Object(file, options);
   }
 
   static async uploadFile(
@@ -209,7 +208,7 @@ export class UploadService {
             method: 'POST',
             body: JSON.stringify({ action: 'complete', uploadId, key, parts }),
           });
-          const { location, key: s3Key } = await response.json();
+          const { location, signedUrl, key: s3Key } = await response.json();
           
           if (options.type !== 'revision') {
             console.log(`[UploadService] Client S3 Multipart upload complete, bypassing Mux. URL: ${location}`);
@@ -226,7 +225,7 @@ export class UploadService {
               
               const updateData = { 
                 s3Key: s3Key,
-                videoUrl: location 
+                videoUrl: location
               };
 
               await Promise.all([
@@ -257,7 +256,7 @@ export class UploadService {
 
           const ingestResponse = await fetch('/api/ingest', {
             method: 'POST',
-            body: JSON.stringify({ url: location, passthrough }),
+            body: JSON.stringify({ url: signedUrl || location, passthrough }),
           });
           const ingestData = await ingestResponse.json();
           
@@ -345,88 +344,34 @@ export class UploadService {
   }
 
   /**
-   * Upload files to Firebase Storage
+   * Upload small/non-video files to AWS S3 through the server.
    */
-  private static async uploadToFirebase(file: File, options: UploadOptions): Promise<string> {
-    const { projectId, type, onProgress, storagePath, onCancelRef } = options;
-
-    let finalPath = storagePath;
-    if (!finalPath) {
-      const timestamp = Date.now();
-      const fileName = `${timestamp}_${file.name.replace(/\s+/g, '_')}`;
-      // Store all raw and asset files under raw_footage/{projectId}/
-      if (type === 'raw' || type === 'asset') {
-        finalPath = `raw_footage/${projectId}/${fileName}`;
-      } else {
-        finalPath = `projects/${projectId}/${type}/${fileName}`;
-      }
-    }
-
-    const storageRef = ref(storage, finalPath);
-    const uploadTask = uploadBytesResumable(storageRef, file);
-
-    const startTime = Date.now();
-    let lastProgressUpdate = 0;
-    const PROGRESS_THROTTLE_MS = 200; // Throttle progress updates to reduce callback overhead
-    
-    return new Promise((resolve, reject) => {
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {
-          if (!onProgress) return;
-          
-          // Throttle progress callbacks to avoid reducing upload speed
-          const now = Date.now();
-          if (now - lastProgressUpdate < PROGRESS_THROTTLE_MS && snapshot.bytesTransferred < snapshot.totalBytes) {
-            return;
-          }
-          lastProgressUpdate = now;
-
-          const elapsed = (now - startTime) / 1000;
-          const speedBps = elapsed > 0 ? snapshot.bytesTransferred / elapsed : 0;
-          const remainingBytes = snapshot.totalBytes - snapshot.bytesTransferred;
-          const eta = speedBps > 0 ? remainingBytes / speedBps : 0;
-
-          onProgress({
-            percent: (snapshot.bytesTransferred / snapshot.totalBytes) * 100,
-            transferred: snapshot.bytesTransferred,
-            total: snapshot.totalBytes,
-            speedBps,
-            eta,
-            status: 'uploading'
-          });
-        },
-        (error) => {
-          console.error(`[UploadService] Firebase upload error for ${file.name}:`, error);
-          reject(error);
-        },
-        async () => {
-          try {
-            const downloadUrl = await getDownloadURL(uploadTask.snapshot.ref);
-            if (onProgress) {
-              onProgress({
-                percent: 100,
-                transferred: file.size,
-                total: file.size,
-                status: 'complete'
-              });
-            }
-            console.log(`[UploadService] Firebase upload complete: ${file.name} (${this.formatBytes(file.size)})`);
-            resolve(downloadUrl);
-          } catch (err) {
-            console.error(`[UploadService] Error finalizing upload for ${file.name}:`, err);
-            reject(err);
-          }
-        }
-      );
-
-      if (onCancelRef) {
-        onCancelRef(() => {
-          console.log(`[UploadService] Upload cancelled: ${file.name}`);
-          uploadTask.cancel();
-        });
-      }
+  private static async uploadToS3Object(file: File, options: UploadOptions): Promise<string> {
+    options.onProgress?.({
+      percent: 0,
+      transferred: 0,
+      total: file.size,
+      status: "uploading",
     });
+
+    const folder = options.storagePath
+      ? options.storagePath.split("/").filter(Boolean).slice(0, -1).join("/") || `projects/${options.projectId}/${options.type}`
+      : `projects/${options.projectId}/${options.type}`;
+
+    const url = await uploadFileToS3Object(file, {
+      folder,
+      ownerId: options.projectId,
+    });
+
+    options.onProgress?.({
+      percent: 100,
+      transferred: file.size,
+      total: file.size,
+      status: "complete",
+    });
+
+    console.log(`[UploadService] AWS S3 object upload complete: ${file.name} (${this.formatBytes(file.size)})`);
+    return url;
   }
 
   /**

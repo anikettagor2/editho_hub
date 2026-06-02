@@ -2,9 +2,8 @@
 
 import { useState } from "react";
 import { User } from "@/types/schema";
-import { db, storage } from "@/lib/firebase/config";
+import { db } from "@/lib/firebase/config";
 import { doc, updateDoc, arrayUnion } from "firebase/firestore";
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { motion } from "framer-motion";
 import { FileText, Download, Upload, Trash2, Eye, Loader2, Link as LinkIcon, FileCheck } from "lucide-react";
 import { toast } from "sonner";

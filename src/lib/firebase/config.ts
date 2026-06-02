@@ -6,14 +6,12 @@ import {
     persistentLocalCache,
     persistentMultipleTabManager
 } from "firebase/firestore";
-import { getStorage } from "firebase/storage";
 import { getFunctions } from "firebase/functions";
 
 const firebaseConfig = {
     apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyBnrX9Q1wxDitXOT37_ftMN3rQWsOY6Ikk",
     authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "studio-4633365007-23d80.firebaseapp.com",
     projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "studio-4633365007-23d80",
-    storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "studio-4633365007-23d80.firebasestorage.app",
     messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "707194789184",
     appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:707194789184:web:0908252c6107bd67432ea5"
 };
@@ -50,5 +48,4 @@ try {
 
 export const db = dbInstance;
 
-export const storage = getStorage(app);
 export const functions = getFunctions(app);

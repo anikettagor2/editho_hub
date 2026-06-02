@@ -3,9 +3,9 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { addDoc, collection, doc, getDoc, updateDoc, increment } from "firebase/firestore";
-import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { UploadService } from "@/lib/services/upload-service";
-import { db, storage } from "@/lib/firebase/config";
+import { db } from "@/lib/firebase/config";
+import { deleteS3ObjectByUrl } from "@/lib/s3-upload-utils";
 import { useAuth } from "@/lib/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -506,13 +506,11 @@ export default function NewProjectPage() {
     const data = fileToRemove?.uploadedData;
 
     if (fileToRemove.status === 'complete' && data?.url) {
-        const path = data.storagePath;
+        const path = data.storagePath || data.url;
 
         try {
-            // All videos are now stored in Firebase
-            const storageRef = ref(storage, path);
-            await deleteObject(storageRef);
-            toast.success("Video removed successfully");
+            await deleteS3ObjectByUrl(path);
+            toast.success("File removed successfully");
         } catch (error) {
             console.error("Cleanup error:", error);
         }
@@ -822,8 +820,7 @@ export default function NewProjectPage() {
                     const path = data.storagePath || data.url;
                     if (!path) return;
                     try {
-                        const storageRef = ref(storage, path);
-                        await deleteObject(storageRef);
+                        await deleteS3ObjectByUrl(path);
                     } catch (error) {
                         console.error("Cleanup error during close:", error);
                     }
