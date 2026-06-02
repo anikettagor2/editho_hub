@@ -9,14 +9,22 @@ export const uploadCommentAttachment = async (file: File, projectId: string, rev
         throw new Error("File size must be less than 20MB");
     }
 
-    const timestamp = Date.now();
-    const fileName = `${timestamp}_${file.name}`;
-    const storageRef = ref(storage, `comments/${projectId}/${revisionId}/${fileName}`);
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("projectId", projectId);
+    formData.append("revisionId", revisionId);
 
-    const snapshot = await uploadBytes(storageRef, file);
-    const downloadUrl = await getDownloadURL(snapshot.ref);
+    const response = await fetch("/api/comments/attachments", {
+        method: "POST",
+        body: formData,
+    });
 
-    return downloadUrl;
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.success || !result?.url) {
+        throw new Error(result?.error || "Failed to upload comment attachment");
+    }
+
+    return result.url;
 };
 
 export const uploadCommentImage = async (file: File, projectId: string, revisionId: string): Promise<string> => {
@@ -32,14 +40,7 @@ export const uploadCommentImage = async (file: File, projectId: string, revision
         throw new Error("Only JPEG, PNG, WebP, and GIF images are allowed");
     }
 
-    const timestamp = Date.now();
-    const fileName = `${timestamp}_${file.name}`;
-    const storageRef = ref(storage, `comments/${projectId}/${revisionId}/${fileName}`);
-
-    const snapshot = await uploadBytes(storageRef, file);
-    const downloadUrl = await getDownloadURL(snapshot.ref);
-
-    return downloadUrl;
+    return uploadCommentAttachment(file, projectId, revisionId);
 };
 
 export const deleteCommentImage = async (imageUrl: string): Promise<void> => {

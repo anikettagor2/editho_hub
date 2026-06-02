@@ -10,7 +10,7 @@ import { addDoc, collection, doc, getDocs, onSnapshot, query, updateDoc, where, 
 import { localFileManager } from "@/lib/local-file-manager";
 import { Loader2, MessageSquare, Share2, Copy, Download, Star, X, Send, Image as ImageIcon, Clock, Users, Film, ChevronLeft, ChevronRight, Smile, ThumbsUp, FileText, FileVideo, Music, Mic, Trash2, Check, Play, Pause } from "lucide-react";
 import { toast } from "sonner";
-import { registerDownload, submitEditorRating } from "@/app/actions/project-actions";
+import { getSignedDownloadUrl, registerDownload, submitEditorRating } from "@/app/actions/project-actions";
 import { handleNewComment } from "@/app/actions/notification-actions";
 import { PaymentButton } from "@/components/payment-button";
 import { uploadCommentAttachment } from "@/lib/firebase/storage-utils";
@@ -120,9 +120,10 @@ interface InlineAudioPlayerProps {
     url: string;
     name?: string;
     size?: number | null;
+    onDownload?: () => void;
 }
 
-export function InlineAudioPlayer({ url, name, size }: InlineAudioPlayerProps) {
+export function InlineAudioPlayer({ url, name, size, onDownload }: InlineAudioPlayerProps) {
     const audioRef = useRef<HTMLAudioElement | null>(null);
     const [isPlaying, setIsPlaying] = useState(false);
     const [currentTime, setCurrentTime] = useState(0);
@@ -221,7 +222,13 @@ export function InlineAudioPlayer({ url, name, size }: InlineAudioPlayerProps) {
 
                 <button
                     type="button"
-                    onClick={() => void handleFileDownload(url, name || "voice-comment.webm")}
+                    onClick={() => {
+                        if (onDownload) {
+                            onDownload();
+                            return;
+                        }
+                        void handleFileDownload(url, name || "voice-comment.webm");
+                    }}
                     className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white/5 text-zinc-300 hover:bg-white/10 hover:text-white transition-colors"
                     title="Download Audio"
                 >
@@ -299,6 +306,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     const [editingCommentText, setEditingCommentText] = useState("");
     const [replyingTo, setReplyingTo] = useState<string | null>(null);
     const [previewAttachment, setPreviewAttachment] = useState<{ url: string; name: string; type?: string | null } | null>(null);
+    const [resolvedAttachmentUrls, setResolvedAttachmentUrls] = useState<Record<string, string>>({});
     const [topPaneHeight, setTopPaneHeight] = useState(0);
 
     // Video state
@@ -494,6 +502,82 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         isVideoFile(fileType, fileName) ||
         isAudioFile(fileType, fileName) ||
         Boolean(fileName?.match(/\.pdf$/i));
+
+    const isStorageAttachmentUrl = (url?: string | null) =>
+        Boolean(url && (
+            url.includes("amazonaws.com") ||
+            url.includes(".s3.") ||
+            url.includes("firebasestorage.googleapis.com") ||
+            url.includes("firebasestorage.app")
+        ));
+
+    const getDisplayAttachmentUrl = (url?: string | null) => {
+        if (!url) return "";
+        return resolvedAttachmentUrls[url] || url;
+    };
+
+    const getFreshAttachmentUrl = async (url: string, name?: string | null) => {
+        if (!isStorageAttachmentUrl(url)) return url;
+        try {
+            const res = await getSignedDownloadUrl(url, name || "attachment");
+            if (res.success && res.url) {
+                setResolvedAttachmentUrls((prev) => ({ ...prev, [url]: res.url! }));
+                return res.url;
+            }
+        } catch (error) {
+            console.error("Failed to resolve attachment URL:", error);
+        }
+        return url;
+    };
+
+    const handleAttachmentDownload = async (url: string, name?: string | null) => {
+        const freshUrl = await getFreshAttachmentUrl(url, name);
+        await handleFileDownload(freshUrl, name || "attachment");
+    };
+
+    const attachmentSignTargets = useMemo(() => {
+        const targets: { url: string; name: string }[] = [];
+        [...comments, ...directConnections].forEach((comment) => {
+            const url = comment.attachmentUrl || comment.imageUrl;
+            if (url && isStorageAttachmentUrl(url)) {
+                targets.push({ url, name: comment.attachmentName || "attachment" });
+            }
+            (comment.replies || []).forEach((reply) => {
+                const replyUrl = reply.attachmentUrl || reply.imageUrl;
+                if (replyUrl && isStorageAttachmentUrl(replyUrl)) {
+                    targets.push({ url: replyUrl, name: reply.attachmentName || "attachment" });
+                }
+            });
+        });
+        return targets;
+    }, [comments, directConnections]);
+
+    useEffect(() => {
+        let cancelled = false;
+        const missingTargets = attachmentSignTargets.filter((target) => !resolvedAttachmentUrls[target.url]);
+        if (missingTargets.length === 0) return;
+
+        void Promise.all(
+            missingTargets.map(async (target) => {
+                const res = await getSignedDownloadUrl(target.url, target.name);
+                return res.success && res.url ? [target.url, res.url] as const : null;
+            })
+        ).then((entries) => {
+            if (cancelled) return;
+            const resolvedEntries = entries.filter(Boolean) as [string, string][];
+            if (resolvedEntries.length === 0) return;
+            setResolvedAttachmentUrls((prev) => ({
+                ...prev,
+                ...Object.fromEntries(resolvedEntries),
+            }));
+        }).catch((error) => {
+            console.error("Failed to resolve review attachment URLs:", error);
+        });
+
+        return () => {
+            cancelled = true;
+        };
+    }, [attachmentSignTargets]);
 
     const seekToCommentTime = (timestamp: number) => {
         if (timestamp < 0) return;
@@ -1356,9 +1440,10 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                     <div className="ml-7 lg:ml-1 mt-1" onClick={(e) => e.stopPropagation()}>
                                         {isAudioFile(c.attachmentType, c.attachmentName) ? (
                                             <InlineAudioPlayer
-                                                url={c.attachmentUrl || c.imageUrl || ""}
+                                                url={getDisplayAttachmentUrl(c.attachmentUrl || c.imageUrl)}
                                                 name={c.attachmentName || "Voice Message"}
                                                 size={c.attachmentSize}
+                                                onDownload={() => void handleAttachmentDownload(c.attachmentUrl || c.imageUrl || "", c.attachmentName || "voice-comment.webm")}
                                             />
                                         ) : (
                                             <div
@@ -1377,13 +1462,13 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                                             });
                                                             return;
                                                         }
-                                                        void handleFileDownload(attachmentUrl, attachmentName);
+                                                        void handleAttachmentDownload(attachmentUrl, attachmentName);
                                                     }}
                                                     className="flex min-w-0 flex-1 items-center gap-2 text-left"
                                                 >
                                                 {isImageFile(c.attachmentType, c.attachmentName) || (!!c.imageUrl && !c.attachmentType) ? (
                                                     <div className="h-14 w-14 overflow-hidden rounded-md bg-black/20">
-                                                        <img src={c.attachmentUrl || c.imageUrl || ""} className="h-full w-full object-cover" alt={c.attachmentName || "Comment attachment"} />
+                                                        <img src={getDisplayAttachmentUrl(c.attachmentUrl || c.imageUrl)} className="h-full w-full object-cover" alt={c.attachmentName || "Comment attachment"} />
                                                     </div>
                                                 ) : isVideoFile(c.attachmentType, c.attachmentName) ? (
                                                     <div className="flex h-14 w-14 items-center justify-center rounded-md bg-black/20 text-zinc-200">
@@ -1405,7 +1490,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                                 </button>
                                                 <button
                                                     type="button"
-                                                    onClick={() => void handleFileDownload(c.attachmentUrl || c.imageUrl || "", c.attachmentName || "attachment")}
+                                                    onClick={() => void handleAttachmentDownload(c.attachmentUrl || c.imageUrl || "", c.attachmentName || "attachment")}
                                                     className="flex h-9 w-9 shrink-0 items-center justify-center rounded-md bg-white/5 text-zinc-300 transition-colors hover:bg-white/10 hover:text-white"
                                                     title="Download attachment"
                                                 >
@@ -1682,7 +1767,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                             <X className="h-5 w-5" />
                         </button>
                         <button
-                            onClick={() => void handleFileDownload(previewAttachment.url, previewAttachment.name)}
+                            onClick={() => void handleAttachmentDownload(previewAttachment.url, previewAttachment.name)}
                             className="mb-4 inline-flex items-center gap-2 rounded-lg bg-white/10 px-3 py-2 text-xs font-bold text-white transition-colors hover:bg-white/20"
                             title="Download attachment"
                         >
@@ -1693,7 +1778,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         {isImageFile(previewAttachment.type, previewAttachment.name) && (
                             <div className="flex max-h-[78vh] items-center justify-center">
                                 <img
-                                    src={previewAttachment.url}
+                                    src={getDisplayAttachmentUrl(previewAttachment.url)}
                                     alt={previewAttachment.name}
                                     className="max-h-[78vh] max-w-full rounded-lg object-contain"
                                 />
@@ -1702,7 +1787,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
 
                         {isVideoFile(previewAttachment.type, previewAttachment.name) && (
                             <VideoPlayer
-                                videoPath={previewAttachment.url}
+                                videoPath={getDisplayAttachmentUrl(previewAttachment.url)}
                                 title={previewAttachment.name}
                                 className="w-full aspect-video rounded-lg"
                             />
@@ -1711,7 +1796,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         {isAudioFile(previewAttachment.type, previewAttachment.name) && (
                             <div className="rounded-xl border border-border/50 bg-card p-6">
                                 <p className="mb-4 text-sm font-bold text-foreground">{previewAttachment.name}</p>
-                                <audio controls className="w-full" src={previewAttachment.url} preload="metadata" />
+                                <audio controls className="w-full" src={getDisplayAttachmentUrl(previewAttachment.url)} preload="metadata" />
                             </div>
                         )}
 
@@ -1720,7 +1805,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                             !isAudioFile(previewAttachment.type, previewAttachment.name) && (
                                 previewAttachment.name.match(/\.pdf$/i) ? (
                                     <iframe
-                                        src={previewAttachment.url}
+                                        src={getDisplayAttachmentUrl(previewAttachment.url)}
                                         title={previewAttachment.name}
                                         className="h-[78vh] w-full rounded-lg border border-white/10 bg-white"
                                     />
