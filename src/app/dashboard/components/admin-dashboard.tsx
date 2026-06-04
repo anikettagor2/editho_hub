@@ -65,6 +65,7 @@ import {
   Phone,
   Download,
   Wallet,
+  Loader2,
 } from "lucide-react";
 
 import { cn, safeJsonParse } from "@/lib/utils";
@@ -103,6 +104,7 @@ import {
   getSystemSettings,
   updateSystemSettings,
   settleProjectPayment,
+  bulkSettleClientPayments,
   addProjectLog,
   assignProjectManager,
   updateUserDetails,
@@ -501,6 +503,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
 
   const [overviewTimeRange, setOverviewTimeRange] = useState<AdminAnalyticsRange>("Week");
   const [expandedFinanceGroups, setExpandedFinanceGroups] = useState<Record<string, boolean>>({});
+  const [clientSettlementProcessing, setClientSettlementProcessing] = useState<Record<string, boolean>>({});
 
   const [whatsappTemplates, setWhatsappTemplates] = useState<any>({});
   const [isUpdatingTemplates, setIsUpdatingTemplates] = useState(false);
@@ -991,23 +994,31 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
   };
 
   const handleSettlePayment = async (projectId: string) => {
+    if (clientSettlementProcessing[projectId]) return;
     if (
       !confirm(
         "Are you sure you want to mark this client due as settled (fully paid)?",
       )
     )
       return;
-    const res = await settleProjectPayment(
-      projectId,
-      currentUser!.uid,
-      currentUser!.displayName || "Admin",
-      currentUser?.role || "admin",
-    );
-    if (res.success) toast.success("Payment settled successfully");
-    else toast.error("Failed to settle payment");
+    setClientSettlementProcessing((prev) => ({ ...prev, [projectId]: true }));
+    try {
+      const res = await settleProjectPayment(
+        projectId,
+        currentUser!.uid,
+        currentUser!.displayName || "Admin",
+        currentUser?.role || "admin",
+      );
+      if (res.success) toast.success("Payment received successfully");
+      else toast.error(res.error || "Failed to mark payment received");
+    } finally {
+      setClientSettlementProcessing((prev) => ({ ...prev, [projectId]: false }));
+    }
   };
 
   const handleSettleAllClientDues = async (clientId: string) => {
+    const processingKey = `client-${clientId}`;
+    if (clientSettlementProcessing[processingKey]) return;
     if (
       !confirm(
         "Are you sure you want to mark all pending client dues for this account as settled?",
@@ -1023,26 +1034,30 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
           Math.max(0, getProjectRevenueValue(p) - (p.amountPaid || 0)) > 0,
       );
 
-      let successCount = 0;
-      for (const p of clientProjects) {
-        const res = await settleProjectPayment(
-          p.id,
-          currentUser!.uid,
-          currentUser!.displayName || "Admin",
-          currentUser?.role || "admin",
-        );
-        if (res.success) successCount++;
+      if (clientProjects.length === 0) {
+        toast.success("No pending dues for this client", { id: loadingToast });
+        return;
       }
 
-      if (successCount === clientProjects.length) {
-        toast.success(`Successfully settled ${successCount} projects`, { id: loadingToast });
-      } else if (successCount > 0) {
-        toast.success(`Partially settled ${successCount}/${clientProjects.length} projects`, { id: loadingToast });
+      setClientSettlementProcessing((prev) => ({ ...prev, [processingKey]: true }));
+      const res = await bulkSettleClientPayments(
+        clientProjects.map((p) => p.id),
+        {
+          uid: currentUser!.uid,
+          displayName: currentUser!.displayName || "Admin",
+          role: currentUser?.role || "admin",
+        },
+      );
+
+      if (res.success) {
+        toast.success(`Marked ${clientProjects.length} project${clientProjects.length === 1 ? "" : "s"} received`, { id: loadingToast });
       } else {
-        toast.error("Failed to settle projects", { id: loadingToast });
+        toast.error(res.error || "Failed to mark dues received", { id: loadingToast });
       }
     } catch (e: any) {
       toast.error(e.message || "Failed to settle dues", { id: loadingToast });
+    } finally {
+      setClientSettlementProcessing((prev) => ({ ...prev, [processingKey]: false }));
     }
   };
 
@@ -4347,6 +4362,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         clientDueGroups.map(({ client, dueProjects, totalDue }) => {
                           const groupKey = `client-${client.uid}`;
                           const isOpen = !!expandedFinanceGroups[groupKey];
+                          const isSettlingClient = !!clientSettlementProcessing[groupKey];
 
                           return (
                             <div key={client.uid} className="bg-card/10">
@@ -4381,9 +4397,11 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                   </div>
                                   <button
                                     onClick={() => handleSettleAllClientDues(client.uid)}
-                                    className="h-9 rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 text-[10px] font-bold uppercase tracking-widest text-orange-400 transition-colors hover:bg-orange-500 hover:text-foreground"
+                                    disabled={isSettlingClient}
+                                    className="flex h-9 items-center gap-2 rounded-lg border border-orange-500/20 bg-orange-500/10 px-3 text-[10px] font-bold uppercase tracking-widest text-orange-400 transition-colors hover:bg-orange-500 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                                   >
-                                    Mark All Received
+                                    {isSettlingClient && <Loader2 className="h-3 w-3 animate-spin" />}
+                                    {isSettlingClient ? "Receiving..." : "Mark All Received"}
                                   </button>
                                   <button
                                     onClick={() => toggleFinanceGroup(groupKey)}
@@ -4402,7 +4420,9 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
 
                               {isOpen && (
                                 <div className="border-t border-border bg-card/40">
-                                  {dueProjects.map(({ project, dueAmount }) => (
+                                  {dueProjects.map(({ project, dueAmount }) => {
+                                    const isSettlingProject = !!clientSettlementProcessing[project.id];
+                                    return (
                                     <div
                                       key={project.id}
                                       className="grid gap-3 border-t border-border/70 px-4 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center first:border-t-0"
@@ -4431,13 +4451,16 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                         </div>
                                         <button
                                           onClick={() => handleSettlePayment(project.id)}
-                                          className="h-8 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 text-[10px] font-bold uppercase tracking-widest text-emerald-400 transition-colors hover:bg-emerald-500 hover:text-foreground"
+                                          disabled={isSettlingProject}
+                                          className="flex h-8 items-center gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/10 px-3 text-[10px] font-bold uppercase tracking-widest text-emerald-400 transition-colors hover:bg-emerald-500 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-60"
                                         >
-                                          Mark Received
+                                          {isSettlingProject && <Loader2 className="h-3 w-3 animate-spin" />}
+                                          {isSettlingProject ? "Receiving..." : "Mark Received"}
                                         </button>
                                       </div>
                                     </div>
-                                  ))}
+                                    );
+                                  })}
                                 </div>
                               )}
                             </div>

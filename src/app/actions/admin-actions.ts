@@ -676,26 +676,37 @@ export async function getAllUsers() {
 /**
  * Settles a Project payment from 'pay_later' to fully paid.
  */
+function getProjectReceivableAmount(projectData: any): number {
+    return Math.max(
+        0,
+        Number(projectData?.totalCost ?? projectData?.pricingTierPrice ?? projectData?.budget ?? 0) || 0
+    );
+}
+
 export async function settleProjectPayment(projectId: string, uid: string, displayName: string, role: string) {
     try {
         const projectRef = adminDb.collection('projects').doc(projectId);
         const projectSnap = await projectRef.get();
         if (!projectSnap.exists) return { success: false, error: "Not found" };
-        let pData = projectSnap.data();
-        let cost = pData?.totalCost || 0;
+        const pData = projectSnap.data();
+        const cost = getProjectReceivableAmount(pData);
+        const now = Date.now();
 
         await projectRef.update({
             paymentStatus: 'full_paid',
             amountPaid: cost,
             paymentOption: 'pay_later', // keep text conceptually, but mark settled
-            updatedAt: Date.now()
+            clientPaymentReceived: true,
+            clientPaymentReceivedAt: now,
+            clientPaymentReceivedBy: uid,
+            updatedAt: now
         });
 
         await addProjectLog(
             projectId,
             'PAYMENT_SETTLED',
             { uid, displayName, designation: role === 'admin' ? 'Admin' : 'Project Manager' },
-            `Payment settled manually.`
+            `Client payment marked as received manually.`
         );
 
         return { success: true };
@@ -733,16 +744,16 @@ export async function bulkSettleClientPayments(projectIds: string[], user: { uid
             const snap = await ref.get();
             if (!snap.exists) continue;
             const data = snap.data();
-            const cost = data?.totalCost || 0;
+            const cost = getProjectReceivableAmount(data);
 
             batch.update(ref, {
                 paymentStatus: 'full_paid',
                 amountPaid: cost,
                 paymentOption: 'pay_later',
-                updatedAt: now
-            });
-
-            batch.update(ref, {
+                clientPaymentReceived: true,
+                clientPaymentReceivedAt: now,
+                clientPaymentReceivedBy: user.uid,
+                updatedAt: now,
                 logs: admin.firestore.FieldValue.arrayUnion({
                     event: 'PAYMENT_SETTLED',
                     user: user.uid,
