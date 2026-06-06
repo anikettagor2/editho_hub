@@ -4,6 +4,7 @@ import { useEffect, useState, Suspense } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/context/auth-context";
 import { DashboardSidebar } from "@/components/dashboard/dashboard-sidebar";
+import { DashboardPopupMessage } from "@/components/dashboard/dashboard-popup-message";
 import { Loader2, Menu, X, Zap } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence, motion } from "framer-motion";
@@ -61,6 +62,7 @@ function DashboardLayoutContent({ children }: { children: React.ReactNode }) {
       </div>
 
       <div className="flex flex-1 overflow-hidden relative z-10">
+        <DashboardPopupMessage />
 
         {/* Mobile Sidebar Toggle - Fixed Top Right */}
         {!isMobileMenuOpen && (

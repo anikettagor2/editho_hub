@@ -24,6 +24,7 @@ import {
   ReceiptText,
   ChevronLeft,
   ChevronRight,
+  Code2,
 } from "lucide-react";
 import { useAuth } from "@/lib/context/auth-context";
 import { motion } from "framer-motion";
@@ -123,6 +124,10 @@ export function DashboardSidebar({}: DashboardSidebarProps) {
 
   const getLinks = () => {
     switch(role) {
+      case 'developer':
+        return [
+          { href: "/dashboard", label: "Developer Dashboard", icon: Code2 },
+        ];
       case 'admin':
         return [
           { href: "/dashboard", label: "Admin Dashboard", icon: LayoutDashboard },

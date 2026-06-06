@@ -6,9 +6,12 @@ import {
   query,
   orderBy,
   onSnapshot,
+  getDocs,
   updateDoc,
   writeBatch,
   doc,
+  type DocumentData,
+  type QuerySnapshot,
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
 import { Project, User } from "@/types/schema";
@@ -577,19 +580,50 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
       collection(db, "projects"),
       orderBy("updatedAt", "desc"),
     );
-    const unsubProjects = onSnapshot(projectsQ, (snapshot) => {
+
+    const applyProjectSnapshot = (snapshot: QuerySnapshot<DocumentData>) => {
       const fetchedProjects = snapshot.docs.map(
         (doc) => ({ id: doc.id, ...doc.data() }) as Project,
       );
       setProjects(fetchedProjects);
-    });
+    };
 
     const usersQ = collection(db, "users");
-    const unsubUsers = onSnapshot(usersQ, (snapshot) => {
+
+    const applyUserSnapshot = (snapshot: QuerySnapshot<DocumentData>) => {
       const fetchedUsers = snapshot.docs.map(
         (doc) => ({ uid: doc.id, ...doc.data() }) as User,
       );
       setUsers(fetchedUsers);
+    };
+
+    const loadProjectsOnce = async () => {
+      try {
+        applyProjectSnapshot(await getDocs(projectsQ));
+      } catch (error) {
+        console.error("[AdminDashboard] Failed to load projects:", error);
+      }
+    };
+
+    const loadUsersOnce = async () => {
+      try {
+        applyUserSnapshot(await getDocs(usersQ));
+      } catch (error) {
+        console.error("[AdminDashboard] Failed to load users:", error);
+      }
+    };
+
+    void loadProjectsOnce();
+    void loadUsersOnce();
+
+    const unsubProjects = onSnapshot(projectsQ, applyProjectSnapshot, (error) => {
+      console.error("[AdminDashboard] Project listener failed, using fallback fetch:", error);
+      void loadProjectsOnce();
+    });
+
+    const unsubUsers = onSnapshot(usersQ, applyUserSnapshot, (error) => {
+      console.error("[AdminDashboard] User listener failed, using fallback fetch:", error);
+      void loadUsersOnce();
     });
 
     getWhatsAppTemplates().then((res) => {

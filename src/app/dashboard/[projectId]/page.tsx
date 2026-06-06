@@ -7,6 +7,7 @@ import { EditorDashboardV2 } from "../components/editor-dashboard-v2";
 import { AdminDashboard } from "../components/admin-dashboard";
 import { SalesDashboard } from "../components/sales-dashboard";
 import { ProjectManagerDashboard } from "../components/project-manager-dashboard";
+import { DeveloperDashboard } from "../components/developer-dashboard";
 import { useParams } from "next/navigation";
 
 export default function DashboardProjectPage() {
@@ -74,8 +75,9 @@ export default function DashboardProjectPage() {
         {user.role === 'admin' && <AdminDashboard preselectedProjectId={projectId} />}
         {user.role === 'sales_executive' && <SalesDashboard />}
         {user.role === 'project_manager' && <ProjectManagerDashboard preselectedProjectId={projectId} />}
+        {user.role === 'developer' && <DeveloperDashboard />}
         
-        {!['client', 'editor', 'admin', 'sales_executive', 'project_manager'].includes(user.role) && (
+        {!['client', 'editor', 'admin', 'sales_executive', 'project_manager', 'developer'].includes(user.role) && (
             <div className="text-center py-20 text-muted-foreground">
                 Unknown role: {user.role}. Please contact support.
             </div>

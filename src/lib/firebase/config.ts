@@ -3,8 +3,6 @@ import { getAuth } from "firebase/auth";
 import {
     initializeFirestore,
     getFirestore,
-    persistentLocalCache,
-    persistentMultipleTabManager
 } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 
@@ -27,23 +25,16 @@ setPersistence(auth, browserLocalPersistence).catch(err => {
 });
 
 
-// Initialize Firestore with specialized settings for better connectivity and offline support
+// Initialize Firestore with memory cache and safer browser transport settings.
+// Avoid persistent local cache here: Firebase 12 can hit internal watch-state
+// assertions (ca9/b815) during HMR, multi-tab use, or failed listeners.
 let dbInstance;
 try {
-    // If it's already initialized, just get it
-    dbInstance = getFirestore(app);
-} catch (e) {
-    // Determine persistence type based on environment
-    // Multiple tabs in development can sometimes trigger 'Unexpected state (ID: ca9)' due to HMR
-    const isDev = process.env.NODE_ENV === 'development';
-    
     dbInstance = initializeFirestore(app, {
-        localCache: persistentLocalCache({
-            tabManager: isDev 
-                ? undefined // Default to single tab in dev to avoid 'ca9' race conditions
-                : persistentMultipleTabManager()
-        })
+        experimentalAutoDetectLongPolling: true,
     });
+} catch (e) {
+    dbInstance = getFirestore(app);
 }
 
 export const db = dbInstance;

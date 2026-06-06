@@ -89,8 +89,9 @@ function isEditorCompletedProject(project: Pick<Project, "status">) {
     return project.status === "completed" || project.status === "archived";
 }
 
-function isEditorDeliveredProject(project: Pick<Project, "status">) {
-    return isEditorCompletedProject(project) || project.status === "completed_pending_payment";
+function isEditorDeliveredProject(project: Pick<Project, "status" | "clientHasDownloaded">) {
+    return isEditorCompletedProject(project) || 
+        (project.status === "completed_pending_payment" && project.clientHasDownloaded === true);
 }
 
 function StatusBadge({ status, editorPaid }: { status: string; editorPaid?: boolean }) {

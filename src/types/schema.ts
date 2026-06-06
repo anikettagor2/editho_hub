@@ -1,7 +1,7 @@
 
 // Firestore Data Models
 
-export type UserRole = 'admin' | 'manager' | 'editor' | 'client' | 'guest' | 'sales_executive' | 'project_manager';
+export type UserRole = 'admin' | 'manager' | 'editor' | 'client' | 'guest' | 'sales_executive' | 'project_manager' | 'developer';
 
 export interface User {
     uid: string;

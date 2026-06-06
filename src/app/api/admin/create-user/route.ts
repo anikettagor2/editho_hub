@@ -12,7 +12,7 @@ export async function POST(request: Request) {
         }
 
         // Validate Role
-        const validRoles = ['admin', 'manager', 'editor', 'client', 'sales_executive', 'project_manager'];
+        const validRoles = ['admin', 'manager', 'editor', 'client', 'sales_executive', 'project_manager', 'developer'];
         if (!validRoles.includes(role)) {
             return NextResponse.json({ error: 'Invalid role' }, { status: 400 });
         }
