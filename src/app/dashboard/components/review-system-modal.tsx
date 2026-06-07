@@ -1703,6 +1703,11 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                                 )}
                             </div>
                         </div>
+                        {hasPendingSubmit && (
+                            <p className="text-[10px] text-amber-500/90 dark:text-amber-400/90 text-right mt-2 font-medium">
+                                *after clicking on submit button the editor will get notification
+                            </p>
+                        )}
                     </div>
                 </div>
             </div>

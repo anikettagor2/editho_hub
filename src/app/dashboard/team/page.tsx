@@ -5,7 +5,7 @@ import { db } from "@/lib/firebase/config";
 import { collection, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { Project, User } from "@/types/schema";
 import { useEffect, useMemo, useState } from "react";
-import { Users, Loader2, IndianRupee, FolderOpen, Mail } from "lucide-react";
+import { Users, Loader2, IndianRupee, FolderOpen, Mail, Search, ChevronDown, ChevronUp } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { ClientPriorityManager } from "./client-priority-manager";
@@ -19,6 +19,8 @@ export default function TeamManagementPage() {
   const [salesExecs, setSalesExecs] = useState<User[]>([]);
   // Full users list (for SE name lookup fallback even if role changed)
   const [allUsers, setAllUsers] = useState<User[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [expandedClients, setExpandedClients] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     if (!user?.uid || !user?.role) return;
@@ -197,6 +199,15 @@ export default function TeamManagementPage() {
     return Array.from(byClient.values()).sort((a, b) => b.totalPendingDues - a.totalPendingDues);
   }, [clients, projects, salesExecs, allUsers]);
 
+  const filteredTeamData = useMemo(() => {
+    if (!searchQuery.trim()) return teamData;
+    const query = searchQuery.toLowerCase().trim();
+    return teamData.filter(item => 
+      item.clientName.toLowerCase().includes(query) || 
+      item.clientEmail.toLowerCase().includes(query)
+    );
+  }, [teamData, searchQuery]);
+
   const totals = useMemo(() => {
     return teamData.reduce(
       (acc, c) => {
@@ -244,30 +255,47 @@ export default function TeamManagementPage() {
       </div>
 
       <div className="bg-card border border-border rounded-xl overflow-hidden">
-        <div className="p-4 md:p-5 border-b border-border flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-foreground">Assigned Clients Overview</h2>
-          <span className="text-xs text-muted-foreground bg-muted px-2 py-1 rounded-full">{teamData.length} clients</span>
+        <div className="p-4 md:p-5 border-b border-border flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-semibold text-foreground">Assigned Clients Overview</h2>
+            <span className="text-xs text-muted-foreground bg-muted px-2.5 py-0.5 rounded-full">
+              {searchQuery.trim() ? `${filteredTeamData.length} filtered` : `${teamData.length} clients`}
+            </span>
+          </div>
+          
+          <div className="relative w-full sm:w-72">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Search clients..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full bg-background border border-border rounded-lg pl-9 pr-4 py-1.5 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+            />
+          </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full">
+          <table className="w-full min-w-[1100px]">
             <thead>
               <tr className="bg-muted/30 border-b border-border">
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Client</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Total Projects</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Total Dues Left</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground">Pending Dues by Project</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground w-[380px] min-w-[380px]">Client</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground w-[160px] min-w-[160px]">Total Projects</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground w-[180px] min-w-[180px]">Total Dues Left</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-muted-foreground min-w-[300px]">Pending Dues by Project</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
-              {teamData.length === 0 ? (
+              {filteredTeamData.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-4 py-14 text-center text-sm text-muted-foreground">No assigned clients yet.</td>
+                  <td colSpan={4} className="px-4 py-14 text-center text-sm text-muted-foreground">
+                    {searchQuery.trim() ? "No clients found matching search." : "No assigned clients yet."}
+                  </td>
                 </tr>
               ) : (
-                teamData.map((item) => (
+                filteredTeamData.map((item) => (
                   <tr key={item.clientId} className="hover:bg-muted/20 transition-colors align-top">
-                    <td className="px-4 py-4">
+                    <td className="px-4 py-4 w-[380px] min-w-[380px]">
                       <div className="font-semibold text-foreground">{item.clientName}</div>
                       <div className="text-xs text-muted-foreground mb-1">{item.clientEmail}</div>
                       {item.salesExecName && (
@@ -327,21 +355,42 @@ export default function TeamManagementPage() {
                       />
                       </div>
                     </td>
-                    <td className="px-4 py-4 text-sm font-bold text-foreground tabular-nums">{item.totalProjects}</td>
-                    <td className="px-4 py-4 text-sm font-bold tabular-nums text-amber-500">₹{item.totalPendingDues.toLocaleString()}</td>
-                    <td className="px-4 py-4">
+                    <td className="px-4 py-4 text-sm font-bold text-foreground tabular-nums w-[160px] min-w-[160px]">{item.totalProjects}</td>
+                    <td className="px-4 py-4 text-sm font-bold tabular-nums text-amber-500 w-[180px] min-w-[180px]">₹{item.totalPendingDues.toLocaleString()}</td>
+                    <td className="px-4 py-4 min-w-[300px]">
                       {item.pendingProjects.length === 0 ? (
                         <span className="text-xs text-emerald-500 font-semibold">No pending dues</span>
                       ) : (
                         <div className="space-y-2 max-w-[500px]">
-                          {item.pendingProjects.map((p) => (
-                            <div key={p.id} className="flex items-center justify-between gap-3 p-2 rounded-lg bg-muted/30 border border-border">
-                              <Link href={`/dashboard/projects/${p.id}`} className="text-xs font-semibold text-foreground hover:text-primary truncate">
-                                {p.name}
-                              </Link>
-                              <span className="text-xs font-bold text-amber-500 tabular-nums whitespace-nowrap">₹{p.pending.toLocaleString()}</span>
+                          <button
+                            onClick={() => setExpandedClients(prev => ({ ...prev, [item.clientId]: !prev[item.clientId] }))}
+                            className="flex items-center gap-1.5 text-xs font-semibold text-primary hover:text-primary/80 transition-colors bg-primary/5 hover:bg-primary/10 px-2.5 py-1.5 rounded-lg border border-primary/10"
+                          >
+                            {expandedClients[item.clientId] ? (
+                              <>
+                                <ChevronUp className="h-3.5 w-3.5" />
+                                Hide Projects ({item.pendingProjects.length})
+                              </>
+                            ) : (
+                              <>
+                                <ChevronDown className="h-3.5 w-3.5" />
+                                Show Projects ({item.pendingProjects.length})
+                              </>
+                            )}
+                          </button>
+                          
+                          {expandedClients[item.clientId] && (
+                            <div className="space-y-2 mt-2 pt-2 border-t border-border/50 animate-in fade-in slide-in-from-top-1 duration-200">
+                              {item.pendingProjects.map((p) => (
+                                <div key={p.id} className="flex items-center justify-between gap-3 p-2 rounded-lg bg-muted/30 border border-border hover:bg-muted/50 transition-colors">
+                                  <Link href={`/dashboard/projects/${p.id}`} className="text-xs font-semibold text-foreground hover:text-primary truncate">
+                                    {p.name}
+                                  </Link>
+                                  <span className="text-xs font-bold text-amber-500 tabular-nums whitespace-nowrap">₹{p.pending.toLocaleString()}</span>
+                                </div>
+                              ))}
                             </div>
-                          ))}
+                          )}
                         </div>
                       )}
                     </td>

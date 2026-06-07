@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { User } from "@/types/schema";
 import { saveClientEditorPriority } from "@/app/actions/admin-actions";
 import { toast } from "sonner";
-import { Plus, X, GripVertical, Settings2 } from "lucide-react";
+import { Plus, X, GripVertical, Settings2, Search, ChevronDown, ChevronUp } from "lucide-react";
 import { Modal } from "@/components/ui/modal";
+import { cn } from "@/lib/utils";
 
 interface ClientPriorityManagerProps {
     clientId: string;
@@ -39,6 +40,33 @@ export function ClientPriorityManager({
     const [newEditorId, setNewEditorId] = useState("");
     const [newTargetPrice, setNewTargetPrice] = useState<number | "">("");
     const [newEditorFee, setNewEditorFee] = useState<number | "">("");
+
+    const [editorDropdownOpen, setEditorDropdownOpen] = useState(false);
+    const [editorSearch, setEditorSearch] = useState("");
+    const dropdownRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        function handleClickOutside(event: MouseEvent) {
+            if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+                setEditorDropdownOpen(false);
+            }
+        }
+        document.addEventListener("mousedown", handleClickOutside);
+        return () => document.removeEventListener("mousedown", handleClickOutside);
+    }, []);
+
+    const filteredEditors = useMemo(() => {
+        const q = editorSearch.toLowerCase().trim();
+        if (!q) return editors;
+        return editors.filter(e => 
+            (e.displayName || "").toLowerCase().includes(q) || 
+            (e.email || "").toLowerCase().includes(q)
+        );
+    }, [editors, editorSearch]);
+
+    const selectedEditor = useMemo(() => {
+        return editors.find(e => e.uid === newEditorId);
+    }, [editors, newEditorId]);
 
     const availablePrices = useMemo(() => {
         const prices = new Set<number>();
@@ -80,6 +108,7 @@ export function ClientPriorityManager({
         setNewEditorId("");
         setNewTargetPrice("");
         setNewEditorFee("");
+        setEditorSearch("");
     };
 
     const handleRemoveEditor = (editorId: string, targetPrice?: number) => {
@@ -214,18 +243,59 @@ export function ClientPriorityManager({
                                     )}
                                 </select>
                             </div>
-                            <div className="space-y-1">
+                            <div className="space-y-1" ref={dropdownRef}>
                                 <label className="text-[10px] text-muted-foreground uppercase font-bold">Editor</label>
-                                <select 
-                                    className="w-full bg-background border border-input rounded-md text-sm px-3 py-2"
-                                    value={newEditorId}
-                                    onChange={(e) => setNewEditorId(e.target.value)}
-                                >
-                                    <option value="" disabled>Select Editor...</option>
-                                    {editors.map(e => (
-                                        <option key={e.uid} value={e.uid}>{e.displayName || e.email}</option>
-                                    ))}
-                                </select>
+                                <div className="relative">
+                                    <button
+                                        type="button"
+                                        onClick={() => setEditorDropdownOpen(!editorDropdownOpen)}
+                                        className="w-full bg-background border border-input rounded-md text-sm px-3 py-2 text-left flex items-center justify-between focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                                    >
+                                        <span className="truncate">
+                                            {selectedEditor ? (selectedEditor.displayName || selectedEditor.email) : "Select Editor..."}
+                                        </span>
+                                        <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform duration-200", editorDropdownOpen && "transform rotate-180")} />
+                                    </button>
+                                    
+                                    {editorDropdownOpen && (
+                                        <div className="absolute z-50 mt-1 w-full bg-popover border border-border rounded-md shadow-lg flex flex-col max-h-60 overflow-hidden animate-in fade-in slide-in-from-top-1 duration-200">
+                                            <div className="p-2 border-b border-border bg-muted/20 flex items-center gap-2">
+                                                <Search className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                                                <input
+                                                    type="text"
+                                                    placeholder="Search editor..."
+                                                    className="w-full bg-background border border-input rounded-md text-xs px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                                                    value={editorSearch}
+                                                    onChange={(e) => setEditorSearch(e.target.value)}
+                                                    autoFocus
+                                                />
+                                            </div>
+                                            <div className="overflow-y-auto flex-1 py-1 max-h-48">
+                                                {filteredEditors.length === 0 ? (
+                                                    <div className="px-3 py-2 text-xs text-muted-foreground text-center">No editors found</div>
+                                                ) : (
+                                                    filteredEditors.map(e => (
+                                                        <button
+                                                            key={e.uid}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setNewEditorId(e.uid);
+                                                                setEditorDropdownOpen(false);
+                                                                setEditorSearch("");
+                                                            }}
+                                                            className={cn(
+                                                                "w-full text-left px-3 py-2 text-xs hover:bg-muted transition-colors truncate",
+                                                                newEditorId === e.uid && "bg-primary/10 text-primary font-semibold hover:bg-primary/20"
+                                                            )}
+                                                        >
+                                                            {e.displayName || e.email}
+                                                        </button>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
                             </div>
                             <div className="space-y-1">
                                 <label className="text-[10px] text-muted-foreground uppercase font-bold">Editor Fee (₹)</label>

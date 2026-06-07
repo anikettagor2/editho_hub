@@ -208,7 +208,8 @@ export async function handleProjectCreated(projectId: string) {
                             continue;
                         }
                         
-                        // 3. Workload check (maxProjectLimit)
+                        // 3. Workload check (maxProjectLimit) - Bypassed for auto-assigned editors
+                        /*
                         const maxLimit = editorData?.maxProjectLimit || 5;
                         const activeProjectsSnap = await adminDb.collection('projects')
                             .where('assignedEditorId', '==', p.editorId)
@@ -219,6 +220,7 @@ export async function handleProjectCreated(projectId: string) {
                             console.log(`Skipping editor ${p.editorId}: Workload limit reached (${activeProjectsSnap.size}/${maxLimit})`);
                             continue;
                         }
+                        */
 
                         // Found a suitable editor
                         autoAssignedEditorId = p.editorId;
@@ -1137,7 +1139,8 @@ export async function autoAssignEditor(projectId: string, editorPrice: number, d
             
             if (isInactive || !isOnline) continue;
             
-            // 3. Workload check (maxProjectLimit)
+            // 3. Workload check (maxProjectLimit) - Bypassed for auto-assigned editors
+            /*
             const maxLimit = editorData?.maxProjectLimit || 5;
             const activeProjectsSnap = await adminDb.collection('projects')
                 .where('assignedEditorId', '==', p.editorId)
@@ -1145,6 +1148,7 @@ export async function autoAssignEditor(projectId: string, editorPrice: number, d
                 .get();
             
             if (activeProjectsSnap.size >= maxLimit) continue;
+            */
 
             // Use rule-specific fee if price wasn't explicitly overridden by PM in dashboard,
             // OR if the provided price was 0 (auto-calculate).
@@ -1303,13 +1307,15 @@ export async function tryNextAutoAssign(projectId: string): Promise<{
             const isOnline = editorData?.availabilityStatus === 'online';
             if (isInactive || !isOnline) continue;
             
-            // Workload check
+            // Workload check - Bypassed for auto-assigned editors
+            /*
             const maxLimit = editorData?.maxProjectLimit || 5;
             const activeProjectsSnap = await adminDb.collection('projects')
                 .where('assignedEditorId', '==', p.editorId)
                 .where('status', 'in', ['editor_assigned', 'in_production', 'review'])
                 .get();
             if (activeProjectsSnap.size >= maxLimit) continue;
+            */
             
             // Found eligible editor!
             nextEditorId = p.editorId;
