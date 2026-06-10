@@ -1109,9 +1109,37 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                 style={{ "--review-top-height": `${topPaneHeight || 420}px` } as React.CSSProperties}
             >
                 <div className="flex items-center justify-between gap-3 bg-[#171925] px-4 py-3 lg:rounded-2xl lg:border lg:border-border/50 lg:bg-muted/10 lg:p-3">
-                    <div className="flex min-w-0 items-center gap-2 text-xs font-bold text-zinc-400 lg:hidden">
+                    <div className="flex min-w-0 items-center gap-1.5 text-xs font-bold text-zinc-400 lg:hidden">
                         <Users className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{selectedRevision?.description || `v${selectedRevision?.version || "?"}`}</span>
+                        {revisions.length > 1 ? (
+                            <div className="flex items-center gap-0.5 bg-black/40 p-0.5 rounded-lg border border-white/5 shrink-0">
+                                <button
+                                    onClick={() => {
+                                        const idx = revisions.findIndex(r => r.id === selectedRevisionId);
+                                        if (idx < revisions.length - 1) setSelectedRevisionId(revisions[idx + 1].id);
+                                    }}
+                                    disabled={revisions.findIndex(r => r.id === selectedRevisionId) >= revisions.length - 1}
+                                    className="h-6 w-6 rounded-md hover:bg-white/10 flex items-center justify-center text-zinc-400 disabled:opacity-20 transition-all active:scale-90"
+                                >
+                                    <ChevronLeft size={14} />
+                                </button>
+                                <span className="text-[10px] font-black text-white px-1.5 tabular-nums">
+                                    v{selectedRevision?.version || "?"}
+                                </span>
+                                <button
+                                    onClick={() => {
+                                        const idx = revisions.findIndex(r => r.id === selectedRevisionId);
+                                        if (idx > 0) setSelectedRevisionId(revisions[idx - 1].id);
+                                    }}
+                                    disabled={revisions.findIndex(r => r.id === selectedRevisionId) <= 0}
+                                    className="h-6 w-6 rounded-md hover:bg-white/10 flex items-center justify-center text-zinc-400 disabled:opacity-20 transition-all active:scale-90"
+                                >
+                                    <ChevronRight size={14} />
+                                </button>
+                            </div>
+                        ) : (
+                            <span className="truncate">{selectedRevision?.description || `v${selectedRevision?.version || "?"}`}</span>
+                        )}
                         <span className="text-zinc-600">/</span>
                         <span className="truncate text-zinc-100">{project?.name || "Review"}</span>
                     </div>
