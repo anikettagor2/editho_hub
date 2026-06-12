@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import * as admin from 'firebase-admin';
 import { adminDb } from '@/lib/firebase/admin';
-import { notifyPMEditorRejected, notifyPMProjectReminder24h, notifyEditorDelay10m, notifyPMDelay10m } from '@/lib/whatsapp';
+import { notifyPMEditorRejected, notifyPMProjectReminder24h, notifyEditorDelay10m, notifyPMDelay10m, notifyEditorLate, notifyPMLate } from '@/lib/whatsapp';
 import { tryNextAutoAssign } from '@/app/actions/admin-actions';
 
 export const dynamic = 'force-dynamic';
@@ -215,7 +215,61 @@ export async function GET(request: Request) {
             }
         }
 
-        if (processedCount > 0 || reminderCount > 0 || editor10mAlertCount > 0 || pm10mAlertCount > 0) {
+        // Check for delayed projects (deadline passed)
+        let delayAlertCount = 0;
+        const delayQuery = projectsRef.where('status', 'in', ['in_production', 'amendment']);
+        const delaySnapshot = await delayQuery.get();
+        if (!delaySnapshot.empty) {
+            for (const doc of delaySnapshot.docs) {
+                const projectData = doc.data();
+                const projectId = doc.id;
+
+                if (!projectData.delayAlertSent && projectData.deadline) {
+                    const deadlineMs = new Date(projectData.deadline).getTime();
+                    if (Number.isFinite(deadlineMs) && now > deadlineMs) {
+                        const link = `${appBaseUrl}/dashboard/${projectId}`;
+                        let editorName = 'Editor';
+
+                        if (projectData.assignedEditorId) {
+                            const editorSnap = await adminDb.collection('users').doc(projectData.assignedEditorId).get();
+                            if (editorSnap.exists) {
+                                editorName = editorSnap.data()?.displayName || 'Editor';
+                            }
+
+                            // Send notification to Editor
+                            void notifyEditorLate(
+                                projectId,
+                                projectData.assignedEditorId,
+                                projectData.name || 'Project',
+                                projectData.deadline,
+                                link
+                            ).catch(err => console.error('[Cron] Failed to send editor delay alert:', err));
+                        }
+
+                        if (projectData.assignedPMId) {
+                            // Send notification to PM
+                            void notifyPMLate(
+                                projectId,
+                                projectData.assignedPMId,
+                                projectData.name || 'Project',
+                                editorName,
+                                projectData.deadline,
+                                link
+                            ).catch(err => console.error('[Cron] Failed to send PM delay alert:', err));
+                        }
+
+                        batch.update(doc.ref, {
+                            delayAlertSent: true,
+                            updatedAt: now
+                        });
+
+                        delayAlertCount++;
+                    }
+                }
+            }
+        }
+
+        if (processedCount > 0 || reminderCount > 0 || editor10mAlertCount > 0 || pm10mAlertCount > 0 || delayAlertCount > 0) {
             await batch.commit();
         }
 
@@ -230,11 +284,12 @@ export async function GET(request: Request) {
 
         return NextResponse.json({ 
             success: true, 
-            message: `Processed ${processedCount} expired assignments, ${reminderCount} 24h reminders, ${editor10mAlertCount} editor 10m alerts, and ${pm10mAlertCount} PM 10m alerts`,
+            message: `Processed ${processedCount} expired assignments, ${reminderCount} 24h reminders, ${editor10mAlertCount} editor 10m alerts, ${pm10mAlertCount} PM 10m alerts, and ${delayAlertCount} delay alerts`,
             processed: processedCount,
             reminders: reminderCount,
             editor10mAlerts: editor10mAlertCount,
-            pm10mAlerts: pm10mAlertCount
+            pm10mAlerts: pm10mAlertCount,
+            delayAlerts: delayAlertCount
         });
 
 

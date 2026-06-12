@@ -984,61 +984,237 @@ function ProjectTable({ projects, allUsers, projectRevisions, startIndex = 0, on
         };
     }, [projects, projectRevisions]);
 
-    return (
-        <div className="overflow-hidden rounded-2xl border border-border/50 bg-card shadow-xl shadow-black/5">
-            <div
-                ref={topScrollRef}
-                className="overflow-x-auto overflow-y-hidden h-[6px] w-full transition-opacity duration-300"
-                style={{ opacity: tableWidth > (tableContainerRef.current?.offsetWidth || 0) ? 1 : 0 }}
-            >
-                <div style={{ width: tableWidth, height: "1px" }} />
-            </div>
-            <div ref={tableContainerRef} className="overflow-x-auto">
-                <table className="min-w-[1080px] w-full table-fixed text-left">
-                    <colgroup>
-                        <col className="w-[54px]" />
-                        <col className="w-[230px]" />
-                        <col className="w-[118px]" />
-                        <col className="w-[118px]" />
-                        <col className="w-[150px]" />
-                        <col className="w-[118px]" />
-                        <col className="w-[150px]" />
-                        <col className="w-[112px]" />
-                        <col className="w-[170px]" />
-                    </colgroup>
-                    <thead>
-                        <tr className="bg-muted/30">
-                            {["S.No", "Project", "Type", "PM", "Status", "Created", "Last Draft", "Editor Share", "Payment / Actions"].map((header) => (
-                                <th key={header} className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
-                                    {header}
-                                </th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-border">
-                        {projects.map((project: Project, index: number) => (
-                            <ProjectTableRow
-                                key={project.id}
-                                index={startIndex + index}
-                                project={project}
-                                pm={project.assignedPMId ? allUsers[project.assignedPMId] : undefined}
-                                latestRevision={projectRevisions[project.id]}
-                                onUpload={() => onUpload(project)}
-                                onReview={() => onReview(project)}
-                                onAssets={() => onAssets(project)}
-                                onRespond={onRespond}
-                                isResponding={isResponding === project.id}
-                            />
-                        ))}
-                        {projects.length === 0 && (
-                            <tr>
-                                <td colSpan={9} className="px-6 py-16 text-center text-sm font-medium text-muted-foreground">
-                                    No projects match this filter yet.
-                                </td>
-                            </tr>
+    const isCompletedOrDelivered = (status: string) =>
+        ["completed", "archived", "delivered", "approved", "completed_pending_payment"].includes(status);
+
+    const activeAssignments = projects.filter((p: any) => !isCompletedOrDelivered(p.status));
+    const completedAssignments = projects.filter((p: any) => isCompletedOrDelivered(p.status));
+
+    const getCardStyle = (status: string) => {
+        if (["review", "in_review"].includes(status)) {
+            return "bg-gradient-to-br from-purple-500/10 to-indigo-500/5 border border-purple-500/30 rounded-xl p-4 space-y-3 shadow-md hover:shadow-lg transition-all duration-300";
+        }
+        if (["in_production", "active", "editor_assigned"].includes(status)) {
+            return "bg-gradient-to-br from-amber-500/10 to-orange-500/5 border border-amber-500/30 rounded-xl p-4 space-y-3 shadow-md hover:shadow-lg transition-all duration-300";
+        }
+        if (["completed", "approved", "delivered", "completed_pending_payment"].includes(status)) {
+            return "bg-gradient-to-br from-emerald-500/10 to-teal-500/5 border border-emerald-500/30 rounded-xl p-4 space-y-3 shadow-md hover:shadow-lg transition-all duration-300";
+        }
+        return "bg-gradient-to-br from-zinc-800/80 to-zinc-900/50 border border-zinc-700 rounded-xl p-4 space-y-3 shadow-md hover:shadow-lg transition-all duration-300";
+    };
+
+    const renderMobileCard = (project: Project) => {
+        const pm = project.assignedPMId ? allUsers[project.assignedPMId] : undefined;
+        const latestRevision = projectRevisions[project.id];
+        const isPending = project.assignmentStatus !== "accepted" && project.assignmentStatus !== "rejected";
+        const isAccepted = project.assignmentStatus === "accepted";
+        const isDeliveryLocked = isEditorDeliveredProject(project);
+
+        return (
+            <div key={project.id} className={getCardStyle(project.status)}>
+                {/* Header: Title & Format */}
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-bold text-foreground tracking-tight leading-snug">
+                            {project.name}
+                        </h3>
+                        <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-black mt-1">
+                            {project.videoFormat || project.videoType || "Not set"}
+                        </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                        <span className="text-xs font-black text-blue-400">{formatCurrency(project.editorPrice)}</span>
+                        <div className="text-[8px] text-muted-foreground uppercase tracking-wider font-bold">Payout</div>
+                    </div>
+                </div>
+
+                {/* Details list */}
+                <div className="grid grid-cols-2 gap-3 py-2.5 border-t border-b border-border/40 text-[11px]">
+                    <div>
+                        <p className="text-muted-foreground/80 font-bold uppercase tracking-wider text-[9px]">PM</p>
+                        <p className="text-xs font-bold text-foreground mt-0.5 truncate">{pm?.displayName || "System Manager"}</p>
+                    </div>
+                    <div>
+                        <p className="text-muted-foreground/80 font-bold uppercase tracking-wider text-[9px]">Last Activity</p>
+                        <p className="text-xs font-bold text-foreground mt-0.5 truncate">
+                            {latestRevision ? `Draft ${latestRevision.version}` : "No Drafts"}
+                        </p>
+                    </div>
+                </div>
+
+                {/* Status and Action Buttons */}
+                <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <StatusBadge status={project.status} editorPaid={project.editorPaid} />
+                            {isPending && !isDeliveryLocked && (
+                                <div className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-amber-500">
+                                    <Clock size={11} className="animate-pulse" />
+                                    Awaiting Response
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2">
+                        {isDeliveryLocked ? (
+                            <span className={cn(
+                                "w-full inline-flex items-center justify-center rounded-lg border px-3 py-2 text-[10px] font-black uppercase tracking-widest text-center",
+                                project.editorPaid
+                                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-500"
+                                    : "border-amber-500/20 bg-amber-500/10 text-amber-500"
+                            )}>
+                                {project.editorPaid ? "Paid by Admin" : "Payment Pending"}
+                            </span>
+                        ) : isPending ? (
+                            <button
+                                onClick={() => onAssets(project)}
+                                className="w-full inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-primary text-xs font-bold text-white hover:brightness-110 active:scale-[0.98] transition-all shadow-md shadow-primary/20"
+                            >
+                                <Briefcase size={14} /> Review & Accept
+                            </button>
+                        ) : (
+                            <div className="flex gap-2">
+                                {latestRevision && (
+                                    <button 
+                                        onClick={() => onReview(project)} 
+                                        className="flex-1 inline-flex items-center justify-center gap-1 py-2 px-3 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:brightness-110 active:scale-[0.98] transition-all"
+                                    >
+                                        Review
+                                    </button>
+                                )}
+                                <button 
+                                    onClick={() => onAssets(project)} 
+                                    className="flex-1 inline-flex items-center justify-center gap-1 py-2 px-3 rounded-lg border border-border/50 bg-muted/30 text-foreground text-xs font-bold hover:bg-muted/50 active:scale-[0.98] transition-all"
+                                >
+                                    Details
+                                </button>
+                                {isAccepted && (
+                                    <button 
+                                        onClick={() => onUpload(project)} 
+                                        className="flex-1 inline-flex items-center justify-center gap-1 py-2 px-3 rounded-lg bg-emerald-600 text-white text-xs font-bold hover:bg-emerald-700 active:scale-[0.98] transition-all"
+                                    >
+                                        Upload
+                                    </button>
+                                )}
+                            </div>
                         )}
-                    </tbody>
-                </table>
+                        {!isPending && !isDeliveryLocked && (
+                            <p className="text-[9px] text-muted-foreground text-center">
+                                Client details and uploads are available inside Assets.
+                            </p>
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div>
+            {/* Desktop Table View */}
+            <div className="hidden sm:block overflow-hidden rounded-2xl border border-border/50 bg-card shadow-xl shadow-black/5">
+                <div
+                    ref={topScrollRef}
+                    className="overflow-x-auto overflow-y-hidden h-[6px] w-full transition-opacity duration-300"
+                    style={{ opacity: tableWidth > (tableContainerRef.current?.offsetWidth || 0) ? 1 : 0 }}
+                >
+                    <div style={{ width: tableWidth, height: "1px" }} />
+                </div>
+                <div ref={tableContainerRef} className="overflow-x-auto">
+                    <table className="min-w-[1080px] w-full table-fixed text-left">
+                        <colgroup>
+                            <col className="w-[54px]" />
+                            <col className="w-[230px]" />
+                            <col className="w-[118px]" />
+                            <col className="w-[118px]" />
+                            <col className="w-[150px]" />
+                            <col className="w-[118px]" />
+                            <col className="w-[150px]" />
+                            <col className="w-[112px]" />
+                            <col className="w-[170px]" />
+                        </colgroup>
+                        <thead>
+                            <tr className="bg-muted/30">
+                                {["S.No", "Project", "Type", "PM", "Status", "Created", "Last Draft", "Editor Share", "Payment / Actions"].map((header) => (
+                                    <th key={header} className="px-3 py-2 text-[10px] font-bold uppercase tracking-widest text-muted-foreground border-b border-border">
+                                        {header}
+                                    </th>
+                                ))}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-border">
+                            {projects.map((project: Project, index: number) => (
+                                <ProjectTableRow
+                                    key={project.id}
+                                    index={startIndex + index}
+                                    project={project}
+                                    pm={project.assignedPMId ? allUsers[project.assignedPMId] : undefined}
+                                    latestRevision={projectRevisions[project.id]}
+                                    onUpload={() => onUpload(project)}
+                                    onReview={() => onReview(project)}
+                                    onAssets={() => onAssets(project)}
+                                    onRespond={onRespond}
+                                    isResponding={isResponding === project.id}
+                                />
+                            ))}
+                            {projects.length === 0 && (
+                                <tr>
+                                    <td colSpan={9} className="px-6 py-16 text-center text-sm font-medium text-muted-foreground">
+                                        No projects match this filter yet.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            {/* Mobile Cards View */}
+            <div className="block sm:hidden space-y-6">
+                {projects.length === 0 ? (
+                    <div className="py-12 text-center rounded-2xl border border-border/50 bg-card p-6">
+                        <p className="text-sm font-medium text-muted-foreground">No projects match this filter yet.</p>
+                    </div>
+                ) : (
+                    <div className="space-y-6">
+                        {/* Active Assignments Section */}
+                        {activeAssignments.length > 0 && (
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between px-1">
+                                    <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-muted-foreground/80 flex items-center gap-2">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                        Active Assignments
+                                    </h4>
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted border border-border/40 text-muted-foreground">
+                                        {activeAssignments.length}
+                                    </span>
+                                </div>
+                                <div className="space-y-4">
+                                    {activeAssignments.map((project: any) => renderMobileCard(project))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* Completed Assignments Section */}
+                        {completedAssignments.length > 0 && (
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between px-1">
+                                    <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-muted-foreground/80 flex items-center gap-2">
+                                        <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                        Completed & Delivered
+                                    </h4>
+                                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted border border-border/40 text-muted-foreground">
+                                        {completedAssignments.length}
+                                    </span>
+                                </div>
+                                <div className="space-y-4">
+                                    {completedAssignments.map((project: any) => renderMobileCard(project))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
             </div>
         </div>
     );

@@ -1373,11 +1373,11 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
     // Status filter
     switch (projectFilter) {
       case "completed":
-        return p.status === "completed" || p.status === "archived";
+        return p.status === "completed" || p.status === "approved" || p.status === "archived";
       case "active":
-        return p.status === "active";
+        return p.status === "active" || p.status === "in_production" || p.status === "editor_assigned";
       case "in_review":
-        return p.status === "in_review";
+        return p.status === "in_review" || p.status === "review";
       case "pending":
         return p.status === "pending_assignment" || !p.assignedEditorId;
       case "pay_later":

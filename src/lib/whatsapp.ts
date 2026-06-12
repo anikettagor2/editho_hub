@@ -26,6 +26,8 @@ const ALLOWED_CAMPAIGNS = new Set<string>([
     'pro_delay',
     'pr_accept_editor',
     'delay_check_editor_client',
+    'editor_deadline_reminder',
+    'pm_urgent_deadline',
 ]);
 
 const CAMPAIGN_BY_NOTIFICATION: Partial<Record<NotificationType, string>> = {
@@ -949,6 +951,79 @@ export async function notifyPMDelay10m(
         });
     } catch (error: any) {
         console.error('[WhatsApp] notifyPMDelay10m Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Notify Editor that a project is delayed/late.
+ * Template params: {{1}} editor name, {{2}} project name, {{3}} deadline, {{4}} late info, {{5}} link
+ */
+export async function notifyEditorLate(
+    projectId: string,
+    editorId: string,
+    projectName: string,
+    deadline: string,
+    link: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const settings = await getWhatsAppSettings();
+        if (settings && !settings.enabled) return { success: true };
+
+        const editorSnap = await adminDb.collection('users').doc(editorId).get();
+        if (!editorSnap.exists) return { success: false, error: 'Editor not found' };
+        const editor = editorSnap.data();
+
+        const phoneNumber = editor?.whatsappNumber || editor?.phoneNumber;
+        if (!phoneNumber) return { success: false, error: 'No phone number for editor' };
+
+        const editorName = editor?.displayName || 'Editor';
+
+        // Parameters: {{1}} Editor Name, {{2}} Project Name, {{3}} Deadline, {{4}} Late Info, {{5}} Project Link
+        const params = [editorName, projectName, deadline, "Delayed", link];
+
+        return await sendWhatsAppNotification(phoneNumber, params, 'editor_deadline_reminder', 0, {
+            templateName: 'editor_deadline_reminder',
+        });
+    } catch (error: any) {
+        console.error('[WhatsApp] notifyEditorLate Error:', error);
+        return { success: false, error: error.message };
+    }
+}
+
+/**
+ * Notify PM that a project is delayed/late by the editor.
+ * Template params: {{1}} PM name, {{2}} project name, {{3}} editor name, {{4}} deadline, {{5}} status, {{6}} link
+ */
+export async function notifyPMLate(
+    projectId: string,
+    pmId: string,
+    projectName: string,
+    editorName: string,
+    deadline: string,
+    link: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const settings = await getWhatsAppSettings();
+        if (settings && !settings.enabled) return { success: true };
+
+        const pmSnap = await adminDb.collection('users').doc(pmId).get();
+        if (!pmSnap.exists) return { success: false, error: 'PM not found' };
+        const pm = pmSnap.data();
+
+        const phoneNumber = pm?.whatsappNumber || pm?.phoneNumber;
+        if (!phoneNumber) return { success: false, error: 'No phone number for PM' };
+
+        const pmName = pm?.displayName || 'Manager';
+
+        // Parameters: {{1}} PM Name, {{2}} Project Name, {{3}} Editor Name, {{4}} Deadline, {{5}} Status, {{6}} Project Link
+        const params = [pmName, projectName, editorName, deadline, "Delayed", link];
+
+        return await sendWhatsAppNotification(phoneNumber, params, 'pm_urgent_deadline', 0, {
+            templateName: 'pm_urgent_deadline',
+        });
+    } catch (error: any) {
+        console.error('[WhatsApp] notifyPMLate Error:', error);
         return { success: false, error: error.message };
     }
 }

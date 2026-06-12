@@ -344,6 +344,120 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
         ? (selectedProject.referenceFiles || []).filter((f: any) => !f?.uploadedBy)
         : [];
 
+    const isCompletedStatus = (status: string) => 
+        ["completed", "approved", "archived", "delivered", "completed_pending_payment"].includes(status);
+
+    const activeProjects = filteredProjects.filter(p => !isCompletedStatus(p.status));
+    const completedProjects = filteredProjects.filter(p => isCompletedStatus(p.status));
+
+    const getCardStyle = (status: string) => {
+        if (["review", "in_review"].includes(status)) {
+            return "bg-gradient-to-br from-purple-500/10 to-indigo-500/5 border border-purple-500/30 rounded-xl p-3.5 space-y-3 shadow-md hover:shadow-lg transition-all duration-300";
+        }
+        if (["in_production", "active", "editor_assigned"].includes(status)) {
+            return "bg-gradient-to-br from-amber-500/10 to-orange-500/5 border border-amber-500/30 rounded-xl p-3.5 space-y-3 shadow-md hover:shadow-lg transition-all duration-300";
+        }
+        if (["completed", "approved", "delivered", "completed_pending_payment"].includes(status)) {
+            return "bg-gradient-to-br from-emerald-500/10 to-teal-500/5 border border-emerald-500/30 rounded-xl p-3.5 space-y-3 shadow-md hover:shadow-lg transition-all duration-300";
+        }
+        return "bg-gradient-to-br from-zinc-800/80 to-zinc-900/50 border border-zinc-700 rounded-xl p-3.5 space-y-3 shadow-md hover:shadow-lg transition-all duration-300";
+    };
+
+    const renderProjectCard = (project: Project) => {
+        const amountPaid = project.amountPaid || 0;
+        const totalCost = project.totalCost || 0;
+        const isPaid = amountPaid >= totalCost;
+        const remainingBase = Math.max(0, totalCost - amountPaid);
+        const remainingWithGst = withGst(remainingBase);
+        const pmName = project.assignedPMId
+            ? allUsers.find((u) => u.uid === project.assignedPMId)?.displayName || "PM"
+            : assignedPM?.displayName || "—";
+        const hasDraft = draftProjectIds.includes(project.id || "");
+        const projectInvoices = invoices.filter((inv) => inv.projectId === project.id);
+        
+        return (
+            <div key={project.id} className={getCardStyle(project.status)}>
+                {/* Top: Title & Meta */}
+                <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                        <h3 className="text-sm font-bold text-foreground tracking-tight leading-snug">
+                            {project.name}
+                        </h3>
+                        <p className="text-[11px] text-muted-foreground mt-1 font-medium flex items-center gap-1.5">
+                            <span>{project.videoType || "Video"}</span>
+                            <span>•</span>
+                            <span>{project.createdAt ? new Date(project.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric" }) : ""}</span>
+                        </p>
+                    </div>
+                </div>
+
+                {/* Mid: Cost breakdown & PM */}
+                <div className="grid grid-cols-2 gap-3 py-2.5 border-t border-b border-border/40 text-[11px]">
+                    <div>
+                        <p className="text-muted-foreground/80 font-bold uppercase tracking-wider text-[9px]">Cost (incl. GST)</p>
+                        <p className="text-sm font-extrabold text-foreground mt-0.5">{formatInr(withGst(project.totalCost || 0))}</p>
+                        <p className="text-[9px] text-muted-foreground/60">Base: {formatInr(project.totalCost || 0)}</p>
+                    </div>
+                    <div>
+                        <p className="text-muted-foreground/80 font-bold uppercase tracking-wider text-[9px]">Project Manager</p>
+                        <p className="text-sm font-extrabold text-foreground mt-0.5 truncate">{pmName}</p>
+                    </div>
+                </div>
+
+                {/* Bottom: Badges & Action Buttons */}
+                <div className="flex flex-col gap-3">
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <StatusBadge status={project.status} />
+                            <PaymentBadge paid={isPaid} partial={!isPaid && (amountPaid > 0)} />
+                        </div>
+                        
+                        {!isPaid && (["completed", "completed_pending_payment", "approved"].includes(project.status)) && (
+                            <PaymentButton 
+                                projectId={project.id!}
+                                projectName={project.name}
+                                user={user}
+                                amount={remainingWithGst}
+                                accountingAmount={remainingBase}
+                                description={`Payment for ${project.name}`}
+                                allowPayLaterBypass={false}
+                                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-red-600 hover:bg-red-700 text-white transition-colors text-[10px] font-black shadow-sm"
+                            />
+                        )}
+                    </div>
+
+                    {/* Primary Action Buttons: Grid for larger tap targets */}
+                    <div className="flex items-center gap-2 pt-1">
+                        {hasDraft && (
+                            <button 
+                                onClick={() => { setSelectedProject(project); setIsReviewSystemOpen(true); }}
+                                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30 text-emerald-500 text-xs font-bold hover:bg-emerald-500/20 active:scale-[0.98] transition-all"
+                            >
+                                <FileVideo className="h-3.5 w-3.5" /> Review Draft
+                            </button>
+                        )}
+                        {!project.clientHasDownloaded ? (
+                            <button 
+                                onClick={() => { setSelectedProject(project); setIsProjectModalOpen(true); }}
+                                className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-primary/10 border border-primary/20 text-primary text-xs font-bold hover:bg-primary/20 active:scale-[0.98] transition-all"
+                            >
+                                <Eye className="h-3.5 w-3.5" /> View Details
+                            </button>
+                        ) : (
+                            isPaid && projectInvoices.length > 0 && (
+                                <Link href={`/invoices/${projectInvoices[0].id}`} className="flex-1">
+                                    <button className="w-full inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-primary/10 border border-primary/20 text-primary text-xs font-bold hover:bg-primary/20 active:scale-[0.98] transition-all">
+                                        <Receipt className="h-3.5 w-3.5" /> View Invoice
+                                    </button>
+                                </Link>
+                            )
+                        )}
+                    </div>
+                </div>
+            </div>
+        );
+    };
+
     // ── Render ───────────────────────────────────────────────────────────────
     return (
         <div className="space-y-4 md:space-y-8 pb-10 md:pb-16">
@@ -608,94 +722,46 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                 </Link>
                             </div>
                         ) : (
-                            <div className="p-2 space-y-2">
-                                {filteredProjects.map((project, idx) => {
-                                    const amountPaid = project.amountPaid || 0;
-                                    const totalCost = project.totalCost || 0;
-                                    const isPaid = amountPaid >= totalCost;
-                                    const remainingBase = Math.max(0, totalCost - amountPaid);
-                                    const remainingWithGst = withGst(remainingBase);
-                                    const pmName = project.assignedPMId
-                                        ? allUsers.find((u) => u.uid === project.assignedPMId)?.displayName || "PM"
-                                        : assignedPM?.displayName || "—";
-                                    const hasDraft = draftProjectIds.includes(project.id || "");
-                                    const projectInvoices = invoices.filter((inv) => inv.projectId === project.id);
-                                    
-                                    return (
-                                        <div key={project.id} className="bg-muted/15 border border-border rounded-xl p-2.5 space-y-2.5">
-                                            {/* Top: Title and details button */}
-                                            <div className="flex items-start justify-between gap-2">
-                                                <div className="min-w-0 flex-1">
-                                                    <h3 className="text-xs font-bold text-foreground truncate">
-                                                        {project.name}
-                                                    </h3>
-                                                    <p className="text-[10px] text-muted-foreground mt-0.5">
-                                                        {project.videoType || "Video"} • {project.createdAt ? new Date(project.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric" }) : ""}
-                                                    </p>
-                                                </div>
-                                                <div className="flex items-center gap-1 shrink-0">
-                                                    {hasDraft && (
-                                                        <button onClick={() => { setSelectedProject(project); setIsReviewSystemOpen(true); }}
-                                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-emerald-500/10 text-emerald-500 text-[10px] font-bold hover:bg-emerald-500/20 transition-colors">
-                                                            <FileVideo className="h-3 w-3" /> Review
-                                                        </button>
-                                                    )}
-                                                    {!project.clientHasDownloaded ? (
-                                                        <button onClick={() => { setSelectedProject(project); setIsProjectModalOpen(true); }}
-                                                            className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-bold hover:bg-primary/20 transition-colors">
-                                                            <Eye className="h-3 w-3" /> Details
-                                                        </button>
-                                                    ) : (
-                                                        isPaid && projectInvoices.length > 0 && (
-                                                            <Link href={`/invoices/${projectInvoices[0].id}`}>
-                                                                <button className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md bg-primary/10 text-primary text-[10px] font-bold hover:bg-primary/20 transition-colors">
-                                                                    <Receipt className="h-3 w-3" /> Invoice
-                                                                </button>
-                                                            </Link>
-                                                        )
-                                                    )}
-                                                </div>
-                                            </div>
-
-                                            {/* Mid: Cost breakdown & PM */}
-                                            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border/60 text-[10px]">
-                                                <div>
-                                                    <p className="text-muted-foreground font-semibold uppercase tracking-wider text-[8px]">Cost (incl. GST)</p>
-                                                    <p className="text-xs font-bold text-foreground mt-0.5">{formatInr(withGst(project.totalCost || 0))}</p>
-                                                    <p className="text-[8px] text-muted-foreground">Base: {formatInr(project.totalCost || 0)}</p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-muted-foreground font-semibold uppercase tracking-wider text-[8px]">Project Manager</p>
-                                                    <p className="text-xs font-bold text-foreground mt-0.5 truncate">{pmName}</p>
-                                                </div>
-                                            </div>
-
-                                            {/* Bottom: Status & payment action */}
-                                            <div className="flex items-center justify-between pt-2 border-t border-border/60">
-                                                <div className="flex items-center gap-1.5">
-                                                    <StatusBadge status={project.status} />
-                                                    <PaymentBadge paid={isPaid} partial={!isPaid && (amountPaid > 0)} />
-                                                </div>
-                                                {!isPaid && (["completed", "completed_pending_payment", "approved"].includes(project.status)) && (
-                                                    <PaymentButton 
-                                                        projectId={project.id!}
-                                                        projectName={project.name}
-                                                        user={user}
-                                                        amount={remainingWithGst}
-                                                        accountingAmount={remainingBase}
-                                                        description={`Payment for ${project.name}`}
-                                                        allowPayLaterBypass={false}
-                                                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-red-500 text-white hover:bg-red-600 transition-colors text-[9px] font-black shadow-sm h-auto w-auto"
-                                                    />
-                                                )}
-                                            </div>
+                            <div className="p-3 space-y-6">
+                                {/* Active Projects Section */}
+                                {activeProjects.length > 0 && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between px-1">
+                                            <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-muted-foreground/80 flex items-center gap-2">
+                                                <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+                                                Active Projects
+                                            </h4>
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted border border-border/40 text-muted-foreground">
+                                                {activeProjects.length}
+                                            </span>
                                         </div>
-                                    );
-                                })}
+                                        <div className="space-y-4">
+                                            {activeProjects.map((project) => renderProjectCard(project))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Completed Projects Section */}
+                                {completedProjects.length > 0 && (
+                                    <div className="space-y-3">
+                                        <div className="flex items-center justify-between px-1">
+                                            <h4 className="text-[11px] font-extrabold uppercase tracking-widest text-muted-foreground/80 flex items-center gap-2">
+                                                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
+                                                Completed Projects
+                                            </h4>
+                                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-muted border border-border/40 text-muted-foreground">
+                                                {completedProjects.length}
+                                            </span>
+                                        </div>
+                                        <div className="space-y-4">
+                                            {completedProjects.map((project) => renderProjectCard(project))}
+                                        </div>
+                                    </div>
+                                )}
                             </div>
                         )}
                         {!loading && filteredProjects.length > 0 && (
-                            <div className="px-3 py-2 border-t border-border text-[10px] text-muted-foreground">
+                            <div className="px-4 py-3 border-t border-border text-[10px] text-muted-foreground">
                                 Showing {filteredProjects.length} of {projects.length} projects
                             </div>
                         )}
