@@ -832,15 +832,11 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                         commentUserName,
                         commentUserRole === "guest" ? "client" : (commentUserRole || "guest"),
                         content || "Image comment",
-                        selectedRevisionId
+                        selectedRevisionId,
+                        commentRef.id
                     );
 
                     if (!res.success) throw new Error(res.error || "WhatsApp notification failed.");
-
-                    await updateDoc(doc(db, "comments", commentRef.id), {
-                        notificationSubmitted: true,
-                        notificationSubmittedAt: Date.now(),
-                    });
 
                     if (!options?.silent) {
                         toast.success("Comment saved and WhatsApp notification sent!");
@@ -964,13 +960,10 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                 comment.userName || user?.displayName || guestName || "User",
                 comment.userRole === "guest" ? "client" : (comment.userRole || (user as any)?.role || "guest"),
                 comment.content || "Image comment",
-                selectedRevisionId
+                selectedRevisionId,
+                comment.id
             );
             if (!res.success) throw new Error(res.error || "WhatsApp notification failed.");
-            await updateDoc(doc(db, "comments", comment.id), {
-                notificationSubmitted: true,
-                notificationSubmittedAt: Date.now(),
-            });
             setPendingNotificationComment((current) => current?.id === comment.id ? null : current);
             toast.success("WhatsApp notification submitted.");
         } catch (error: any) {

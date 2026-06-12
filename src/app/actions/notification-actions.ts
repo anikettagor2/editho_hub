@@ -109,7 +109,8 @@ export async function handleNewComment(
     commenterName: string, 
     commenterRole: string,
     commentText?: string,
-    revisionId?: string
+    revisionId?: string,
+    commentId?: string
 ) {
     try {
         const projectSnap = await adminDb.collection('projects').doc(projectId).get();
@@ -205,6 +206,13 @@ export async function handleNewComment(
                     });
                 }
             }
+        }
+
+        if (commentId) {
+            await adminDb.collection("comments").doc(commentId).update({
+                notificationSubmitted: true,
+                notificationSubmittedAt: Date.now()
+            }).catch(err => console.error("[handleNewComment] Failed to update comment notification status:", err));
         }
 
         return { success: true };
