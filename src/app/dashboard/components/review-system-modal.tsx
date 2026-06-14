@@ -8,7 +8,7 @@ import { db } from "@/lib/firebase/config";
 import { useAuth } from "@/lib/context/auth-context";
 import { addDoc, collection, doc, getDocs, onSnapshot, query, updateDoc, where, deleteDoc, limit, orderBy } from "firebase/firestore";
 import { localFileManager } from "@/lib/local-file-manager";
-import { Loader2, MessageSquare, Share2, Copy, Download, Star, X, Send, Image as ImageIcon, Clock, Users, Film, ChevronLeft, ChevronRight, Smile, ThumbsUp, FileText, FileVideo, Music, Mic, Trash2, Check, Play, Pause } from "lucide-react";
+import { Loader2, MessageSquare, Share2, Copy, Download, Star, X, Send, Image as ImageIcon, Clock, Users, Film, ChevronLeft, ChevronRight, Smile, ThumbsUp, FileText, FileVideo, Music, Mic, Trash2, Check, Play, Pause, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { getSignedDownloadUrl, registerDownload, submitEditorRating } from "@/app/actions/project-actions";
 import { handleNewComment } from "@/app/actions/notification-actions";
@@ -317,6 +317,7 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
 
     const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
     const [isPayLaterDueReminderModalOpen, setIsPayLaterDueReminderModalOpen] = useState(false);
+    const [isCreditLimitBlockModalOpen, setIsCreditLimitBlockModalOpen] = useState(false);
     const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
     const [isSubmittingFeedback, setIsSubmittingFeedback] = useState(false);
     const [pendingDownloadAfterFlow, setPendingDownloadAfterFlow] = useState(false);
@@ -331,6 +332,9 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     const [liveEditorRating, setLiveEditorRating] = useState(project?.editorRating || 0);
     const [liveEditorReview, setLiveEditorReview] = useState(project?.editorReview || "");
     const [liveDownloadsUnlocked, setLiveDownloadsUnlocked] = useState(project?.downloadsUnlocked || false);
+
+    const creditLimit = user?.creditLimit !== undefined ? user.creditLimit : 5000;
+    const isOverLimit = (user?.pendingDues || 0) >= creditLimit && (user?.payLater || false);
 
     // Voice Message states
     const [isRecording, setIsRecording] = useState(false);
@@ -716,6 +720,11 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                 }
             } else {
                 if (!isPaymentComplete) {
+                    if (isOverLimit) {
+                        console.log("[Download Flow] Pay Later active, client over limit. Showing limit block modal.");
+                        setIsCreditLimitBlockModalOpen(true);
+                        return;
+                    }
                     console.log("[Download Flow] Pay Later active, unpaid. Showing reminder modal.");
                     setIsPayLaterDueReminderModalOpen(true);
                     return;
@@ -1959,6 +1968,51 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                     >
                         Proceed to Download
                     </button>
+                </div>
+            </Modal>
+
+            {/* Credit Limit Block Modal */}
+            <Modal
+                isOpen={isCreditLimitBlockModalOpen && isClient}
+                onClose={() => setIsCreditLimitBlockModalOpen(false)}
+                title="Credit Limit Exceeded"
+                maxWidth="max-w-md"
+            >
+                <div className="space-y-6 mt-4 text-center">
+                    <div className="flex justify-center">
+                        <div className="h-12 w-12 rounded-full bg-red-500/10 flex items-center justify-center border border-red-500/20 text-red-500">
+                            <AlertCircle className="h-6 w-6" />
+                        </div>
+                    </div>
+                    <div className="space-y-2">
+                        <p className="text-sm text-zinc-300 leading-relaxed">
+                            Your outstanding balance of <span className="font-bold text-white">₹{(user?.pendingDues || 0).toLocaleString()}</span> has exceeded your credit limit of <span className="font-semibold text-zinc-400">₹{creditLimit.toLocaleString()}</span>.
+                        </p>
+                        <p className="text-xs text-muted-foreground leading-normal">
+                            To download this video, please complete the payment for this project first.
+                        </p>
+                    </div>
+                    
+                    <div className="flex flex-col gap-2.5">
+                        <button
+                            onClick={() => {
+                                setIsCreditLimitBlockModalOpen(false);
+                                setIsPaymentModalOpen(true);
+                            }}
+                            className="w-full h-12 rounded-xl bg-red-600 text-white text-[12px] font-black uppercase tracking-widest hover:bg-red-700 active:scale-[0.98] transition-all shadow-xl shadow-red-600/20"
+                        >
+                            Pay Current Project (₹{remainingAmount.toLocaleString()})
+                        </button>
+                        <button
+                            onClick={() => {
+                                setIsCreditLimitBlockModalOpen(false);
+                                toast.info("Please go to your dashboard's Finance tab to clear other outstanding invoices.");
+                            }}
+                            className="w-full h-12 rounded-xl border border-border bg-muted/20 hover:bg-muted/40 text-foreground text-[12px] font-black uppercase tracking-widest active:scale-[0.98] transition-all"
+                        >
+                            Close
+                        </button>
+                    </div>
                 </div>
             </Modal>
         </>
