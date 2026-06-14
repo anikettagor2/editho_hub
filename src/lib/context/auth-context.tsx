@@ -20,6 +20,7 @@ import { User, UserRole } from "@/types/schema";
 import { useRouter } from "next/navigation";
 import { clearVideoBlobCache } from "@/components/dashboard-video-optimizer";
 import { consumePostLoginRedirect } from "@/lib/auth-redirect";
+import { isPhoneNumberRegistered } from "@/app/actions/auth-actions";
 
 interface AuthContextType {
   user: User | null;
@@ -299,13 +300,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signupWithEmail = async (email: string, password: string, name: string, role: UserRole, metadata?: any) => {
       try {
           const { createUserWithEmailAndPassword, updateProfile } = await import("firebase/auth");
-          const { collection, query, where, getDocs } = await import("firebase/firestore");
 
           // Check if phone number is already in use
           if (metadata?.phoneNumber) {
-              const q = query(collection(db, "users"), where("phoneNumber", "==", metadata.phoneNumber.trim()));
-              const phoneSnapshot = await getDocs(q);
-              if (!phoneSnapshot.empty) {
+              const phoneRegistered = await isPhoneNumberRegistered(metadata.phoneNumber);
+              if (phoneRegistered) {
                   throw new Error("Phone number already in use by another account.");
               }
           }
