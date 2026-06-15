@@ -126,8 +126,14 @@ export async function handleNewComment(
         const reviewLink = safeRevisionId ? `${baseUrl}/r/${safeRevisionId}` : `${baseUrl}/dashboard/projects/${projectId}`;
         const commentSnippet = (commentText || '').trim();
 
+        // Normalize role for routing
+        let targetRole = commenterRole;
+        if (['admin', 'super_admin', 'staff', 'sales_executive'].includes(commenterRole)) {
+            targetRole = 'project_manager';
+        }
+
         // Determine who to notify based on commenter role
-        if (commenterRole === 'client') {
+        if (targetRole === 'client') {
             // Client commented -> notify editor (EVERY TIME) and PM
             if (project?.assignedEditorId) {
                 const clientSnap = await adminDb.collection('users').doc(commenterId).get();
@@ -156,7 +162,7 @@ export async function handleNewComment(
                     });
                 }
             }
-        } else if (commenterRole === 'editor' || commenterRole === 'video_editor') {
+        } else if (targetRole === 'editor' || targetRole === 'video_editor') {
             // Editor commented -> notify client and PM
             if (project?.clientId) {
                 const clientCommentResult = await notifyClientNewComment(projectId, commenterName, commentSnippet, reviewLink);
@@ -177,7 +183,7 @@ export async function handleNewComment(
                     });
                 }
             }
-        } else if (commenterRole === 'project_manager') {
+        } else if (targetRole === 'project_manager') {
             // PM commented -> notify client and editor
             if (project?.clientId) {
                 const clientCommentResult = await notifyClientNewComment(projectId, commenterName, commentSnippet, reviewLink);
