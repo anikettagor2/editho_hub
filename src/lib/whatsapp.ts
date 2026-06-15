@@ -141,6 +141,10 @@ interface WhatsAppSettings {
         campaignName?: string;
         fallbackCampaignName?: string;
     }>;
+    editorAcceptanceDelay?: number;
+    editorReminderDelay?: number;
+    pmReminderDelay?: number;
+    pmProductionReminderDelay?: number;
 }
 
 async function getWhatsAppSettings(): Promise<WhatsAppSettings | null> {

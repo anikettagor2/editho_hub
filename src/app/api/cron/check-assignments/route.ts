@@ -17,6 +17,22 @@ export async function GET(request: Request) {
 
         const now = Date.now();
         
+        // Fetch custom delay configurations
+        const whatsappSettingsSnap = await adminDb.collection('settings').doc('whatsapp').get();
+        const whatsappSettings = whatsappSettingsSnap.exists ? whatsappSettingsSnap.data() : null;
+        
+        const editorAcceptanceDelay = whatsappSettings?.editorAcceptanceDelay ?? 15; // default 15m
+        const editorReminderDelay = whatsappSettings?.editorReminderDelay ?? 10;     // default 10m
+        const pmReminderDelay = whatsappSettings?.pmReminderDelay ?? 10;             // default 10m
+        const pmProductionReminderDelay = whatsappSettings?.pmProductionReminderDelay ?? 24; // default 24h
+        
+        const editorReminderDelayMs = editorReminderDelay * 60 * 1000;
+        const pmReminderDelayMs = pmReminderDelay * 60 * 1000;
+        const pmProductionReminderDelayMs = pmProductionReminderDelay * 60 * 60 * 1000;
+        const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
+
+        const notificationPromises: Promise<any>[] = [];
+
         // Find all projects with pending assignment that have expired
         const projectsRef = adminDb.collection('projects');
         const expiredQuery = projectsRef
@@ -50,7 +66,7 @@ export async function GET(request: Request) {
                 batch.update(doc.ref, {
                     assignmentStatus: 'expired',
                     status: 'pending_assignment',
-                    editorDeclineReason: 'Assignment expired - no response within 15 minutes',
+                    editorDeclineReason: `Assignment expired - no response within ${editorAcceptanceDelay} minutes`,
                     assignedEditorId: admin.firestore.FieldValue.delete(),
                     editorPrice: admin.firestore.FieldValue.delete(),
                     assignmentAt: admin.firestore.FieldValue.delete(),
@@ -76,28 +92,28 @@ export async function GET(request: Request) {
                         userId: expiredPmId,
                         type: 'project_rejected',
                         title: `${projectData?.name || 'Project'} - Assignment Timed Out`,
-                        message: `${expiredEditorName} did not respond within 15 minutes. Please reassign the project.`,
+                        message: `${expiredEditorName} did not respond within ${editorAcceptanceDelay} minutes. Please reassign the project.`,
                         projectId,
                         editorName: expiredEditorName,
-                        reason: 'No response within 15 minutes',
+                        reason: `No response within ${editorAcceptanceDelay} minutes`,
                         read: false,
                         link: `/dashboard?project=${projectId}`,
                         createdAt: admin.firestore.FieldValue.serverTimestamp()
                     });
 
                     // Send WhatsApp via pro_delay template
-                    // Don't wait for batch to commit for WhatsApp, do it directly
-                    void notifyPMEditorRejected(projectId, expiredPmId, expiredEditorName, 'No response within 15 minutes')
-                        .catch(err => console.error('[Cron] Failed to send WhatsApp notification:', err));
+                    notificationPromises.push(
+                        notifyPMEditorRejected(projectId, expiredPmId, expiredEditorName, `No response within ${editorAcceptanceDelay} minutes`)
+                            .catch(err => console.error('[Cron] Failed to send WhatsApp notification:', err))
+                    );
                 }
 
                 processedCount++;
             }
         }
 
-        // Check for 24-hour reminders
-        const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
-        const reminderThreshold = now - TWENTY_FOUR_HOURS_MS;
+        // Check for PM production reminders
+        const reminderThreshold = now - pmProductionReminderDelayMs;
         
         const activeProjectsQuery = projectsRef
             .where('status', '==', 'in_production')
@@ -126,21 +142,22 @@ export async function GET(request: Request) {
                     });
                     
                     // Send WhatsApp Notification to PM
-                    void notifyPMProjectReminder24h(
-                        projectId,
-                        projectData.assignedPMId,
-                        projectData.name || 'Project',
-                        editorName,
-                        24
-                    ).catch(err => console.error('[Cron] Failed to send 24h reminder:', err));
+                    notificationPromises.push(
+                        notifyPMProjectReminder24h(
+                            projectId,
+                            projectData.assignedPMId,
+                            projectData.name || 'Project',
+                            editorName,
+                            pmProductionReminderDelay
+                        ).catch(err => console.error('[Cron] Failed to send production reminder:', err))
+                    );
                     
                     reminderCount++;
                 }
             }
         }
 
-        // Check for 10-minute editor reminder alerts
-        const TEN_MINUTES_MS = 10 * 60 * 1000;
+        // Check for editor reminder alerts
         const pendingQuery = projectsRef.where('assignmentStatus', '==', 'pending');
         const pendingSnapshot = await pendingQuery.get();
         
@@ -150,7 +167,7 @@ export async function GET(request: Request) {
                 const projectData = doc.data();
                 const projectId = doc.id;
                 
-                if (!projectData.editor10mAlertSent && projectData.assignmentAt && (now - projectData.assignmentAt >= TEN_MINUTES_MS)) {
+                if (!projectData.editor10mAlertSent && projectData.assignmentAt && (now - projectData.assignmentAt >= editorReminderDelayMs)) {
                     if (projectData.assignedEditorId) {
                         const link = `${appBaseUrl}/dashboard/${projectId}`;
                         
@@ -159,12 +176,14 @@ export async function GET(request: Request) {
                             updatedAt: now
                         });
                         
-                        void notifyEditorDelay10m(
-                            projectId,
-                            projectData.assignedEditorId,
-                            projectData.name || 'Project',
-                            link
-                        ).catch(err => console.error('[Cron] Failed to send editor 10m alert:', err));
+                        notificationPromises.push(
+                            notifyEditorDelay10m(
+                                projectId,
+                                projectData.assignedEditorId,
+                                projectData.name || 'Project',
+                                link
+                            ).catch(err => console.error('[Cron] Failed to send editor reminder alert:', err))
+                        );
                         
                         editor10mAlertCount++;
                     }
@@ -172,11 +191,11 @@ export async function GET(request: Request) {
             }
         }
 
-        // Check for 10-minute PM assignment alerts (without auto-assign clients)
+        // Check for PM assignment alerts (without auto-assign clients)
         let pm10mAlertCount = 0;
         const recentProjectsQuery = projectsRef
             .where('createdAt', '>=', now - TWENTY_FOUR_HOURS_MS)
-            .where('createdAt', '<=', now - TEN_MINUTES_MS);
+            .where('createdAt', '<=', now - pmReminderDelayMs);
             
         const recentSnapshot = await recentProjectsQuery.get();
         if (!recentSnapshot.empty) {
@@ -200,12 +219,14 @@ export async function GET(request: Request) {
                                     updatedAt: now
                                 });
                                 
-                                void notifyPMDelay10m(
-                                    projectId,
-                                    projectData.assignedPMId,
-                                    projectData.name || 'Project',
-                                    link
-                                ).catch(err => console.error('[Cron] Failed to send PM 10m alert:', err));
+                                notificationPromises.push(
+                                    notifyPMDelay10m(
+                                        projectId,
+                                        projectData.assignedPMId,
+                                        projectData.name || 'Project',
+                                        link
+                                    ).catch(err => console.error('[Cron] Failed to send PM reminder alert:', err))
+                                );
                                 
                                 pm10mAlertCount++;
                             }
@@ -237,25 +258,29 @@ export async function GET(request: Request) {
                             }
 
                             // Send notification to Editor
-                            void notifyEditorLate(
-                                projectId,
-                                projectData.assignedEditorId,
-                                projectData.name || 'Project',
-                                projectData.deadline,
-                                link
-                            ).catch(err => console.error('[Cron] Failed to send editor delay alert:', err));
+                            notificationPromises.push(
+                                notifyEditorLate(
+                                    projectId,
+                                    projectData.assignedEditorId,
+                                    projectData.name || 'Project',
+                                    projectData.deadline,
+                                    link
+                                ).catch(err => console.error('[Cron] Failed to send editor delay alert:', err))
+                            );
                         }
 
                         if (projectData.assignedPMId) {
                             // Send notification to PM
-                            void notifyPMLate(
-                                projectId,
-                                projectData.assignedPMId,
-                                projectData.name || 'Project',
-                                editorName,
-                                projectData.deadline,
-                                link
-                            ).catch(err => console.error('[Cron] Failed to send PM delay alert:', err));
+                            notificationPromises.push(
+                                notifyPMLate(
+                                    projectId,
+                                    projectData.assignedPMId,
+                                    projectData.name || 'Project',
+                                    editorName,
+                                    projectData.deadline,
+                                    link
+                                ).catch(err => console.error('[Cron] Failed to send PM delay alert:', err))
+                            );
                         }
 
                         batch.update(doc.ref, {
@@ -273,6 +298,11 @@ export async function GET(request: Request) {
             await batch.commit();
         }
 
+        // Wait for all WhatsApp notification API calls to complete
+        if (notificationPromises.length > 0) {
+            await Promise.all(notificationPromises);
+        }
+
         // Run tryNextAutoAssign on all expired projects
         for (const pid of expiredProjectIds) {
             try {
@@ -284,15 +314,13 @@ export async function GET(request: Request) {
 
         return NextResponse.json({ 
             success: true, 
-            message: `Processed ${processedCount} expired assignments, ${reminderCount} 24h reminders, ${editor10mAlertCount} editor 10m alerts, ${pm10mAlertCount} PM 10m alerts, and ${delayAlertCount} delay alerts`,
+            message: `Processed ${processedCount} expired assignments, ${reminderCount} reminders, ${editor10mAlertCount} editor alerts, ${pm10mAlertCount} PM alerts, and ${delayAlertCount} delay alerts`,
             processed: processedCount,
             reminders: reminderCount,
             editor10mAlerts: editor10mAlertCount,
             pm10mAlerts: pm10mAlertCount,
             delayAlerts: delayAlertCount
         });
-
-
 
     } catch (error: any) {
         console.error('Error processing expired assignments:', error);

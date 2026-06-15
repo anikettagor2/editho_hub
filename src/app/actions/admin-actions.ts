@@ -424,13 +424,18 @@ export async function assignEditor(
         }
 
         const now = Date.now();
-        const fifteenMinutes = 15 * 60 * 1000; // 15 minutes in milliseconds (changed from 5 minutes)
+        
+        // Fetch custom editor acceptance delay from WhatsApp settings document (default: 15 mins)
+        const whatsappSettingsSnap = await adminDb.collection('settings').doc('whatsapp').get();
+        const whatsappSettings = whatsappSettingsSnap.exists ? whatsappSettingsSnap.data() : null;
+        const editorAcceptanceDelay = whatsappSettings?.editorAcceptanceDelay ?? 15;
+        const expirationMs = editorAcceptanceDelay * 60 * 1000;
 
         const updateData: any = {
             assignedEditorId: editorId,
             assignmentStatus: 'pending',
             assignmentAt: now,
-            assignmentExpiresAt: now + fifteenMinutes,
+            assignmentExpiresAt: now + expirationMs,
             status: 'editor_assigned',
             members: members,
             editorPrice: editorPrice,
@@ -501,11 +506,16 @@ export async function respondToAssignment(projectId: string, response: 'accepted
         const expiresAt = projectData?.assignmentExpiresAt;
         
         if (expiresAt && now > expiresAt) {
+            // Fetch custom editor acceptance delay from WhatsApp settings document (default: 15 mins)
+            const whatsappSettingsSnap = await adminDb.collection('settings').doc('whatsapp').get();
+            const whatsappSettings = whatsappSettingsSnap.exists ? whatsappSettingsSnap.data() : null;
+            const editorAcceptanceDelay = whatsappSettings?.editorAcceptanceDelay ?? 15;
+
             // Assignment has expired — auto-reject and clear assignment
             await projectRef.update({
                 assignmentStatus: 'expired',
                 status: 'editor_not_assigned',
-                editorDeclineReason: 'Assignment expired - no response within 15 minutes',
+                editorDeclineReason: `Assignment expired - no response within ${editorAcceptanceDelay} minutes`,
                 assignedEditorId: admin.firestore.FieldValue.delete(),
                 editorPrice: admin.firestore.FieldValue.delete(),
                 assignmentAt: admin.firestore.FieldValue.delete(),
@@ -536,17 +546,17 @@ export async function respondToAssignment(projectId: string, response: 'accepted
                     userId: expiredPmId,
                     type: 'project_rejected',
                     title: `${projectData?.name || 'Project'} - Assignment Timed Out`,
-                    message: `${expiredEditorName} did not respond within 15 minutes. Please reassign the project.`,
+                    message: `${expiredEditorName} did not respond within ${editorAcceptanceDelay} minutes. Please reassign the project.`,
                     projectId,
                     editorName: expiredEditorName,
-                    reason: 'No response within 15 minutes',
+                    reason: `No response within ${editorAcceptanceDelay} minutes`,
                     read: false,
                     link: `/dashboard?project=${projectId}`,
                     createdAt: admin.firestore.FieldValue.serverTimestamp()
                 });
 
                 // WhatsApp via pro_delay template
-                void notifyPMEditorRejected(projectId, expiredPmId, expiredEditorName, 'No response within 15 minutes');
+                await notifyPMEditorRejected(projectId, expiredPmId, expiredEditorName, `No response within ${editorAcceptanceDelay} minutes`);
             }
 
             if (isAutoAssign) {
@@ -554,7 +564,7 @@ export async function respondToAssignment(projectId: string, response: 'accepted
             }
 
             revalidatePath('/dashboard');
-            return { success: false, error: 'Assignment has expired. The 15-minute acceptance window has passed.' };
+            return { success: false, error: `Assignment has expired. The ${editorAcceptanceDelay}-minute acceptance window has passed.` };
         }
         
         const updateData: any = {

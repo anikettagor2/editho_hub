@@ -507,6 +507,10 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
   const [overviewTimeRange, setOverviewTimeRange] = useState<AdminAnalyticsRange>("Week");
   const [expandedFinanceGroups, setExpandedFinanceGroups] = useState<Record<string, boolean>>({});
   const [clientSettlementProcessing, setClientSettlementProcessing] = useState<Record<string, boolean>>({});
+  const [clientFinanceSearch, setClientFinanceSearch] = useState("");
+  const [editorFinanceSearch, setEditorFinanceSearch] = useState("");
+  const [clientFinanceFilter, setClientFinanceFilter] = useState("all");
+  const [editorFinanceFilter, setEditorFinanceFilter] = useState("all");
 
   const [whatsappTemplates, setWhatsappTemplates] = useState<any>({});
   const [isUpdatingTemplates, setIsUpdatingTemplates] = useState(false);
@@ -859,8 +863,8 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
   };
 
   const clientDueGroups = useMemo(
-    () =>
-      users
+    () => {
+      let groups = users
         .filter((u) => u.role === "client")
         .map((client) => {
           const dueProjects = projects
@@ -888,14 +892,44 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
             ),
           };
         })
-        .filter((group) => group.totalDue > 0)
-        .sort((a, b) => b.totalDue - a.totalDue),
-    [projects, users],
+        .filter((group) => group.totalDue > 0);
+
+      // Apply search query
+      if (clientFinanceSearch.trim() !== "") {
+        const query = clientFinanceSearch.toLowerCase();
+        groups = groups.filter(
+          (g) =>
+            g.client.displayName?.toLowerCase().includes(query) ||
+            g.client.email?.toLowerCase().includes(query) ||
+            g.client.companyName?.toLowerCase().includes(query),
+        );
+      }
+
+      // Apply filter
+      if (clientFinanceFilter === "high_dues") {
+        groups = groups.filter((g) => g.totalDue > 5000);
+      } else if (clientFinanceFilter === "multiple_projects") {
+        groups = groups.filter((g) => g.dueProjects.length > 1);
+      }
+
+      // Sort
+      if (clientFinanceFilter === "sort_az") {
+        groups.sort((a, b) =>
+          (a.client.displayName || "").localeCompare(b.client.displayName || ""),
+        );
+      } else {
+        // Default: Sort by totalDue descending
+        groups.sort((a, b) => b.totalDue - a.totalDue);
+      }
+
+      return groups;
+    },
+    [projects, users, clientFinanceSearch, clientFinanceFilter],
   );
 
   const editorDueGroups = useMemo(
-    () =>
-      users
+    () => {
+      let groups = users
         .filter((u) => u.role === "editor")
         .map((editor) => {
           const dueProjects = projects
@@ -925,9 +959,38 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
             ),
           };
         })
-        .filter((group) => group.totalDue > 0)
-        .sort((a, b) => b.totalDue - a.totalDue),
-    [projects, users],
+        .filter((group) => group.totalDue > 0);
+
+      // Apply search query
+      if (editorFinanceSearch.trim() !== "") {
+        const query = editorFinanceSearch.toLowerCase();
+        groups = groups.filter(
+          (g) =>
+            g.editor.displayName?.toLowerCase().includes(query) ||
+            g.editor.email?.toLowerCase().includes(query),
+        );
+      }
+
+      // Apply filter
+      if (editorFinanceFilter === "high_payables") {
+        groups = groups.filter((g) => g.totalDue > 5000);
+      } else if (editorFinanceFilter === "multiple_projects") {
+        groups = groups.filter((g) => g.dueProjects.length > 1);
+      }
+
+      // Sort
+      if (editorFinanceFilter === "sort_az") {
+        groups.sort((a, b) =>
+          (a.editor.displayName || "").localeCompare(b.editor.displayName || ""),
+        );
+      } else {
+        // Default: Sort by totalDue descending
+        groups.sort((a, b) => b.totalDue - a.totalDue);
+      }
+
+      return groups;
+    },
+    [projects, users, editorFinanceSearch, editorFinanceFilter],
   );
 
   const handleCreateUser = async (e: React.FormEvent) => {
@@ -3897,6 +3960,91 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                   </div>
                 </div>
 
+                {/* WhatsApp Notification Delay Timings */}
+                <div className="space-y-3 pt-4 border-t border-border">
+                  <h3 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
+                    <Clock className="h-4 w-4 text-primary" />
+                    Notification Delay Timings
+                  </h3>
+                  <p className="text-[10px] text-muted-foreground px-1 -mt-2">
+                    Configure the delay durations for sending various WhatsApp reminders and notifications.
+                  </p>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {/* Editor Acceptance Expiration */}
+                    <div className="p-4 border border-border bg-muted/50 rounded-2xl flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-bold text-foreground">Editor Assignment Expiration</p>
+                        <p className="text-[9px] text-muted-foreground">Time before assignment times out (minutes)</p>
+                      </div>
+                      <Input
+                        type="number"
+                        value={whatsappTemplates.editorAcceptanceDelay ?? 15}
+                        onChange={(e) => setWhatsappTemplates({
+                          ...whatsappTemplates,
+                          editorAcceptanceDelay: parseInt(e.target.value) || 0
+                        })}
+                        className="w-20 text-center font-bold text-xs"
+                        min={1}
+                      />
+                    </div>
+
+                    {/* Editor Acceptance Reminder */}
+                    <div className="p-4 border border-border bg-muted/50 rounded-2xl flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-bold text-foreground">Editor Warning Alert</p>
+                        <p className="text-[9px] text-muted-foreground">Time before warning editor about expiration (minutes)</p>
+                      </div>
+                      <Input
+                        type="number"
+                        value={whatsappTemplates.editorReminderDelay ?? 10}
+                        onChange={(e) => setWhatsappTemplates({
+                          ...whatsappTemplates,
+                          editorReminderDelay: parseInt(e.target.value) || 0
+                        })}
+                        className="w-20 text-center font-bold text-xs"
+                        min={1}
+                      />
+                    </div>
+
+                    {/* PM Assignment Pending Alert */}
+                    <div className="p-4 border border-border bg-muted/50 rounded-2xl flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-bold text-foreground">PM Unassigned Project Alert</p>
+                        <p className="text-[9px] text-muted-foreground">Time before alerting PM if no editor assigned (minutes)</p>
+                      </div>
+                      <Input
+                        type="number"
+                        value={whatsappTemplates.pmReminderDelay ?? 10}
+                        onChange={(e) => setWhatsappTemplates({
+                          ...whatsappTemplates,
+                          pmReminderDelay: parseInt(e.target.value) || 0
+                        })}
+                        className="w-20 text-center font-bold text-xs"
+                        min={1}
+                      />
+                    </div>
+
+                    {/* PM Production Reminder Follow-up */}
+                    <div className="p-4 border border-border bg-muted/50 rounded-2xl flex items-center justify-between">
+                      <div className="space-y-0.5">
+                        <p className="text-xs font-bold text-foreground">PM Production Reminder</p>
+                        <p className="text-[9px] text-muted-foreground">Time before checking in on editor progress (hours)</p>
+                      </div>
+                      <Input
+                        type="number"
+                        value={whatsappTemplates.pmProductionReminderDelay ?? 24}
+                        onChange={(e) => setWhatsappTemplates({
+                          ...whatsappTemplates,
+                          pmProductionReminderDelay: parseInt(e.target.value) || 0
+                        })}
+                        className="w-20 text-center font-bold text-xs"
+                        min={1}
+                      />
+                    </div>
+                  </div>
+                </div>
+
                 {/* Client Notifications */}
                 <div className="space-y-3">
                   <h3 className="text-sm font-bold text-foreground flex items-center gap-2 px-1">
@@ -4385,6 +4533,38 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                       </div>
                     </div>
 
+                    {/* Search and Filters Bar */}
+                    <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-muted/20 shrink-0">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <input
+                          type="text"
+                          placeholder="Search client, company or email..."
+                          value={clientFinanceSearch}
+                          onChange={(e) => setClientFinanceSearch(e.target.value)}
+                          className="h-8.5 w-full rounded-lg border border-border bg-background pl-9 pr-4 text-xs focus:border-primary/50 focus:outline-none transition-colors text-foreground"
+                        />
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="h-8.5 px-3 rounded-lg border border-border bg-background text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-2 transition-colors shrink-0">
+                            {clientFinanceFilter === "all" && "All Dues"}
+                            {clientFinanceFilter === "high_dues" && "High Dues (> ₹5k)"}
+                            {clientFinanceFilter === "multiple_projects" && "Multiple Projects"}
+                            {clientFinanceFilter === "sort_az" && "Sort: A-Z"}
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44">
+                          <DropdownMenuItem onClick={() => setClientFinanceFilter("all")}>All Dues</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setClientFinanceFilter("high_dues")}>High Dues (&gt; ₹5,000)</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setClientFinanceFilter("multiple_projects")}>Multiple Projects</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setClientFinanceFilter("sort_az")}>Sort: Name A-Z</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+
                     <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-border bg-card/30">
                       {clientDueGroups.length === 0 ? (
                         <div className="flex h-full items-center justify-center p-8 text-center">
@@ -4536,6 +4716,38 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         </div>
                         </div>
                       </div>
+                    </div>
+
+                    {/* Search and Filters Bar */}
+                    <div className="flex items-center gap-2.5 px-4 py-3 border-b border-border bg-muted/20 shrink-0">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                        <input
+                          type="text"
+                          placeholder="Search editor or email..."
+                          value={editorFinanceSearch}
+                          onChange={(e) => setEditorFinanceSearch(e.target.value)}
+                          className="h-8.5 w-full rounded-lg border border-border bg-background pl-9 pr-4 text-xs focus:border-primary/50 focus:outline-none transition-colors text-foreground"
+                        />
+                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <button className="h-8.5 px-3 rounded-lg border border-border bg-background text-xs font-medium text-muted-foreground hover:text-foreground flex items-center gap-2 transition-colors shrink-0">
+                            {editorFinanceFilter === "all" && "All Payables"}
+                            {editorFinanceFilter === "high_payables" && "High Payables (> ₹5k)"}
+                            {editorFinanceFilter === "multiple_projects" && "Multiple Projects"}
+                            {editorFinanceFilter === "sort_az" && "Sort: A-Z"}
+                            <ChevronDown className="h-3.5 w-3.5" />
+                          </button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-44">
+                          <DropdownMenuItem onClick={() => setEditorFinanceFilter("all")}>All Payables</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setEditorFinanceFilter("high_payables")}>High Payables (&gt; ₹5,000)</DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setEditorFinanceFilter("multiple_projects")}>Multiple Projects</DropdownMenuItem>
+                          <DropdownMenuSeparator />
+                          <DropdownMenuItem onClick={() => setEditorFinanceFilter("sort_az")}>Sort: Name A-Z</DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
 
                     <div className="flex-1 overflow-y-auto custom-scrollbar divide-y divide-border bg-card/30">

@@ -3,6 +3,8 @@ import { getAuth } from "firebase/auth";
 import {
     initializeFirestore,
     getFirestore,
+    persistentLocalCache,
+    persistentMultipleTabManager,
 } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 
@@ -32,6 +34,9 @@ let dbInstance;
 try {
     dbInstance = initializeFirestore(app, {
         experimentalAutoDetectLongPolling: true,
+        localCache: persistentLocalCache({
+            tabManager: persistentMultipleTabManager(),
+        }),
     });
 } catch (e) {
     dbInstance = getFirestore(app);
