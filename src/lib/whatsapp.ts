@@ -564,8 +564,8 @@ export async function notifyEditor(
         let params: string[];
         if (notificationType === 'editor_new_comment') {
             const commentText = (extraData?.commentText || '').trim();
-            const compactComment = commentText.length > 110
-                ? `${commentText.slice(0, 107)}...`
+            const compactComment = commentText.length > 600
+                ? `${commentText.slice(0, 597)}...`
                 : commentText;
             const reviewLink = extraData?.reviewLink || extraData?.link || '';
             params = [

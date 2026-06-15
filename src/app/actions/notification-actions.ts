@@ -110,7 +110,7 @@ export async function handleNewComment(
     commenterRole: string,
     commentText?: string,
     revisionId?: string,
-    commentId?: string
+    commentId?: string | string[]
 ) {
     try {
         const projectSnap = await adminDb.collection('projects').doc(projectId).get();
@@ -128,28 +128,22 @@ export async function handleNewComment(
 
         // Determine who to notify based on commenter role
         if (commenterRole === 'client') {
-            // Client commented -> notify editor (FIRST TIME ONLY) and PM
+            // Client commented -> notify editor (EVERY TIME) and PM
             if (project?.assignedEditorId) {
-                // Check if editor has already been notified about first comment
-                const hasEditorBeenNotified = project?.editorFirstCommentNotified === true;
-                
-                if (!hasEditorBeenNotified) {
-                    // Send notification only on first comment
-                    const clientSnap = await adminDb.collection('users').doc(commenterId).get();
-                    const clientName = clientSnap.exists ? clientSnap.data()?.displayName || 'Client' : 'Client';
-                    const editorCommentResult = await notifyEditorNewComment(projectId, project.assignedEditorId, clientName, commentSnippet, reviewLink);
-                    if (!editorCommentResult.success) {
-                        console.error('[WhatsApp] Editor first-comment notification failed', {
-                            projectId,
-                            editorId: project.assignedEditorId,
-                            error: editorCommentResult.error,
-                        });
-                    } else {
-                        // Mark that editor has been notified about first comment
-                        await adminDb.collection('projects').doc(projectId).update({
-                            editorFirstCommentNotified: true
-                        });
-                    }
+                const clientSnap = await adminDb.collection('users').doc(commenterId).get();
+                const clientName = clientSnap.exists ? clientSnap.data()?.displayName || 'Client' : 'Client';
+                const editorCommentResult = await notifyEditorNewComment(projectId, project.assignedEditorId, clientName, commentSnippet, reviewLink);
+                if (!editorCommentResult.success) {
+                    console.error('[WhatsApp] Editor comment notification failed', {
+                        projectId,
+                        editorId: project.assignedEditorId,
+                        error: editorCommentResult.error,
+                    });
+                } else {
+                    // Mark that editor has been notified about comment(s)
+                    await adminDb.collection('projects').doc(projectId).update({
+                        editorFirstCommentNotified: true
+                    }).catch(err => console.error("[handleNewComment] Failed to update editorFirstCommentNotified:", err));
                 }
             }
             if (project?.assignedPMId) {
@@ -209,10 +203,16 @@ export async function handleNewComment(
         }
 
         if (commentId) {
-            await adminDb.collection("comments").doc(commentId).update({
-                notificationSubmitted: true,
-                notificationSubmittedAt: Date.now()
-            }).catch(err => console.error("[handleNewComment] Failed to update comment notification status:", err));
+            const commentIds = Array.isArray(commentId) ? commentId : [commentId];
+            const batch = adminDb.batch();
+            for (const id of commentIds) {
+                const docRef = adminDb.collection("comments").doc(id);
+                batch.update(docRef, {
+                    notificationSubmitted: true,
+                    notificationSubmittedAt: Date.now()
+                });
+            }
+            await batch.commit().catch(err => console.error("[handleNewComment] Failed to update comment notification status:", err));
         }
 
         return { success: true };

@@ -959,21 +959,34 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
         }
     };
 
-    const handleSubmitCommentNotification = async (comment: CommentDoc) => {
-        if (!project?.id || !selectedRevisionId) return;
-        setSubmittingCommentId(comment.id);
+    const handleSubmitCommentNotification = async () => {
+        if (!project?.id || !selectedRevisionId || pendingCommentsForNotification.length === 0) return;
+        setSubmittingCommentId("bulk");
         try {
+            const commentIds = pendingCommentsForNotification.map(c => c.id);
+            const combinedContent = pendingCommentsForNotification
+                .map((c, index) => {
+                    const timePrefix = c.timestamp > 0 ? `[${formatTime(c.timestamp)}] ` : '';
+                    return `${index + 1}. ${timePrefix}${c.content || 'Attachment comment'}`;
+                })
+                .join('; ');
+
+            const firstComment = pendingCommentsForNotification[0];
+            const commenterId = firstComment.userId || user?.uid || "guest";
+            const commenterName = firstComment.userName || user?.displayName || guestName || "User";
+            const commenterRole = firstComment.userRole === "guest" ? "client" : (firstComment.userRole || (user as any)?.role || "guest");
+
             const res = await handleNewComment(
                 project.id,
-                comment.userId || user?.uid || "guest",
-                comment.userName || user?.displayName || guestName || "User",
-                comment.userRole === "guest" ? "client" : (comment.userRole || (user as any)?.role || "guest"),
-                comment.content || "Image comment",
+                commenterId,
+                commenterName,
+                commenterRole,
+                combinedContent,
                 selectedRevisionId,
-                comment.id
+                commentIds
             );
             if (!res.success) throw new Error(res.error || "WhatsApp notification failed.");
-            setPendingNotificationComment((current) => current?.id === comment.id ? null : current);
+            setPendingNotificationComment(null);
             toast.success("WhatsApp notification submitted.");
         } catch (error: any) {
             console.error("Comment notification submit error:", error);
@@ -1086,18 +1099,18 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     }, [isOpen, selectedRevisionId]);
 
     const activeComments = activeTab === 'timeline' ? comments : directConnections;
-    const pendingCommentForNotification = useMemo(() => {
-        if (!pendingNotificationComment || pendingNotificationComment.notificationSubmitted) return null;
-        const liveComment = [...comments, ...directConnections].find((comment) => comment.id === pendingNotificationComment.id);
-        return liveComment?.notificationSubmitted ? null : (liveComment || pendingNotificationComment);
-    }, [comments, directConnections, pendingNotificationComment]);
+    const pendingCommentsForNotification = useMemo(() => {
+        return [...comments, ...directConnections]
+            .filter((c) => !c.notificationSubmitted && canSubmitCommentNotification(c))
+            .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    }, [comments, directConnections]);
     const timelineComments = useMemo(
         () => comments.filter((comment) => comment.timestamp >= 0 && duration > 0),
         [comments, duration]
     );
 
     const isTyping = newComment.trim() !== "" || !!selectedAttachment;
-    const hasPendingSubmit = !isTyping && !!pendingCommentForNotification && canSubmitCommentNotification(pendingCommentForNotification);
+    const hasPendingSubmit = !isTyping && pendingCommentsForNotification.length > 0;
 
     const uiContent = (
         <div
@@ -1706,16 +1719,16 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
                             <div className="flex items-center gap-2">
                                 {hasPendingSubmit ? (
                                     <button
-                                        onClick={() => handleSubmitCommentNotification(pendingCommentForNotification)}
-                                        disabled={submittingCommentId === pendingCommentForNotification.id}
+                                        onClick={() => handleSubmitCommentNotification()}
+                                        disabled={submittingCommentId === "bulk"}
                                         className="flex h-7 px-4 items-center justify-center rounded-lg bg-emerald-600 text-white transition-all hover:bg-emerald-500 active:scale-95 disabled:opacity-50 lg:h-8 lg:px-5 lg:text-[10px] lg:font-black lg:uppercase lg:tracking-widest"
                                     >
-                                        {submittingCommentId === pendingCommentForNotification.id ? (
+                                        {submittingCommentId === "bulk" ? (
                                             <Loader2 className="h-3 w-3 animate-spin mr-1.5" />
                                         ) : (
                                             <Check className="h-3 w-3 mr-1.5" />
                                         )}
-                                        {submittingCommentId === pendingCommentForNotification.id ? "Submitting..." : "Submit"}
+                                        {submittingCommentId === "bulk" ? "Submitting..." : "Submit"}
                                     </button>
                                 ) : (
                                     <button
