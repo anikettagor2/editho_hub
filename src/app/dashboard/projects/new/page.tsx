@@ -113,7 +113,7 @@ const ASPECT_RATIOS = [
     { key: "16:9", label: "16:9", desc: "YouTube Standard" }
 ];
 
-const DEFAULT_URGENT_PRICE = 500;
+const URGENT_DELIVERY_RATE = 0.25;
 const BASE_PROJECT_PRICE = 1000;
 const MAX_CONCURRENT_UPLOADS = 3; // Upload up to 3 files simultaneously
 const DESCRIPTION_WORD_LIMIT = 500;
@@ -171,7 +171,7 @@ export default function NewProjectPage() {
     
     // Project accounting is GST-exclusive; GST is only applied during billing/invoice.
     const gstRate = 0.18;
-    const urgentExtraCost = urgency === 'urgent' ? DEFAULT_URGENT_PRICE : 0;
+    const urgentExtraCost = urgency === 'urgent' ? Math.round(basePrice * URGENT_DELIVERY_RATE) : 0;
     const projectTotalWithoutGst = basePrice + urgentExtraCost;
     const gstAmount = projectTotalWithoutGst * gstRate;
     const finalTotalWithGst = projectTotalWithoutGst + gstAmount;
@@ -963,7 +963,7 @@ export default function NewProjectPage() {
                                         <div className="flex-1 min-w-0">
                                             <div className="flex items-center gap-1.5 flex-wrap">
                                                 <p className={cn("font-bold text-xs sm:text-sm truncate", urgency === 'urgent' ? "text-amber-500" : "text-foreground")}>Urgent Delivery</p>
-                                                <span className="text-[8px] font-black bg-amber-500/20 text-amber-500 px-1 py-0.2 rounded uppercase shrink-0">+Extra</span>
+                                                <span className="text-[8px] font-black bg-amber-500/20 text-amber-500 px-1 py-0.2 rounded uppercase shrink-0">+25%</span>
                                             </div>
                                             <p className="text-[10px] sm:text-xs text-muted-foreground font-medium truncate">Prioritized queue delivery</p>
                                         </div>
@@ -1820,11 +1820,11 @@ export default function NewProjectPage() {
                                 {urgency === 'urgent' && (
                                     <div className="flex justify-between items-center pb-4 border-b border-border">
                                         <span className="text-sm text-amber-500 font-bold uppercase tracking-widest flex items-center gap-2">
-                                            <Zap className="w-4 h-4" /> Urgent Delivery
+                                            <Zap className="w-4 h-4" /> Urgent Delivery (25%)
                                         </span>
                                         <div className="flex items-center font-bold text-amber-500">
                                             + <IndianRupee className="w-4 h-4 mx-1" />
-                                            {DEFAULT_URGENT_PRICE.toLocaleString()}
+                                            {urgentExtraCost.toLocaleString()}
                                         </div>
                                     </div>
                                 )}
@@ -1965,4 +1965,3 @@ export default function NewProjectPage() {
         </div>
     );
 }
-
