@@ -43,13 +43,69 @@ export async function handleRevisionUploaded(projectId: string) {
             revisionId = latestRevision.id;
         }
 
-        // 2. Update project status to 'in_review'
-        await adminDb.collection('projects').doc(projectId).update({
+        // 2. Fetch project details
+        const projectRef = adminDb.collection('projects').doc(projectId);
+        const projectSnap = await projectRef.get();
+        if (!projectSnap.exists) {
+            return { success: false, error: "Project not found" };
+        }
+        const projectData = projectSnap.data();
+
+        // 3. Update project status to 'in_review'
+        const updateData: any = {
             status: 'review',
             updatedAt: Date.now()
-        });
+        };
 
-        // 3. Build client dashboard link for draft notifications - deferred to Mux webhook when video is ready!
+        // 4. Calculate urgent revision charges (25% of base price)
+        const isUrgent = projectData?.urgency === 'urgent';
+        const lastChargedVersion = projectData?.lastChargedRevisionVersion || 0;
+
+        if (isUrgent && versionNumber > 1 && versionNumber > lastChargedVersion) {
+            const projectBasePrice = Number(projectData?.pricingTierPrice || (Number(projectData?.budget || 0) - 500));
+            const revisionCharge = Math.round(projectBasePrice * 0.25);
+            
+            const currentTotalCost = Number(projectData?.totalCost || projectData?.budget || 0);
+            const newTotalCost = currentTotalCost + revisionCharge;
+            
+            updateData.totalCost = newTotalCost;
+            updateData.remainingAmount = Number(projectData?.remainingAmount || 0) + revisionCharge;
+            updateData.lastChargedRevisionVersion = versionNumber;
+
+            // Update user pendingDues if it is a Pay Later project (since client owes more money)
+            if (projectData?.isPayLaterRequest && projectData?.clientId) {
+                try {
+                    const userRef = adminDb.collection('users').doc(projectData.clientId);
+                    const userSnap = await userRef.get();
+                    if (userSnap.exists) {
+                        const userData = userSnap.data();
+                        await userRef.update({
+                            pendingDues: (userData?.pendingDues || 0) + revisionCharge
+                        });
+                    }
+                } catch (err) {
+                    console.error("[UrgentCharge] Failed to update client pendingDues:", err);
+                }
+            }
+
+            // Log the charge
+            try {
+                const { addProjectLog } = await import("@/app/actions/admin-actions");
+                await addProjectLog(
+                    projectId,
+                    'URGENT_REVISION_CHARGE',
+                    { uid: 'system', displayName: 'System Auto-Charge', designation: 'System' },
+                    `Urgent project revision charge applied for V${versionNumber}. Added 25% of base price (₹${projectBasePrice}): +₹${revisionCharge}. New total project cost: ₹${newTotalCost}.`
+                );
+            } catch (err) {
+                console.error("[UrgentCharge] Failed to log charge:", err);
+            }
+        }
+
+        // Update project
+        await projectRef.update(updateData);
+
+        // 5. Build client dashboard link for draft notifications - deferred to Mux webhook when video is ready!
         console.log(`[NotificationActions] Revision ${revisionId} saved for project ${projectId}. Notification deferred until MUX video is ready.`);
 
         revalidatePath(`/dashboard/projects/${projectId}`);
@@ -126,6 +182,19 @@ export async function handleNewComment(
         const reviewLink = safeRevisionId ? `${baseUrl}/r/${safeRevisionId}` : `${baseUrl}/dashboard/projects/${projectId}`;
         const commentSnippet = (commentText || '').trim();
 
+        // Get revision version if revisionId is provided
+        let revisionVersion = 1;
+        if (safeRevisionId) {
+            try {
+                const revisionSnap = await adminDb.collection('revisions').doc(safeRevisionId).get();
+                if (revisionSnap.exists) {
+                    revisionVersion = revisionSnap.data()?.version || 1;
+                }
+            } catch (err) {
+                console.error("[handleNewComment] Failed to fetch revision version:", err);
+            }
+        }
+
         // Normalize role for routing
         let targetRole = commenterRole;
         if (['admin', 'super_admin', 'staff', 'sales_executive'].includes(commenterRole)) {
@@ -150,6 +219,24 @@ export async function handleNewComment(
                     await adminDb.collection('projects').doc(projectId).update({
                         editorFirstCommentNotified: true
                     }).catch(err => console.error("[handleNewComment] Failed to update editorFirstCommentNotified:", err));
+                }
+
+                // Notify editor that revision is assigned (only once per revision round)
+                const lastNotified = project?.lastRevisionNotifiedVersion || 0;
+                if (revisionVersion > lastNotified) {
+                    const { notifyEditorRevisionAssigned } = await import("@/lib/whatsapp");
+                    const revisionNotifResult = await notifyEditorRevisionAssigned(projectId, project.assignedEditorId, clientName, reviewLink);
+                    if (revisionNotifResult.success) {
+                        await adminDb.collection('projects').doc(projectId).update({
+                            lastRevisionNotifiedVersion: revisionVersion
+                        }).catch(err => console.error("[handleNewComment] Failed to update lastRevisionNotifiedVersion:", err));
+                    } else {
+                        console.error('[WhatsApp] Editor revision-assigned notification failed', {
+                            projectId,
+                            editorId: project.assignedEditorId,
+                            error: revisionNotifResult.error,
+                        });
+                    }
                 }
             }
             if (project?.assignedPMId) {

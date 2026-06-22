@@ -1436,7 +1436,7 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
     // Status filter
     switch (projectFilter) {
       case "completed":
-        return p.status === "completed" || p.status === "approved" || p.status === "archived";
+        return p.status === "completed" || p.status === "approved" || p.status === "archived" || p.status === "completed_pending_payment";
       case "active":
         return p.status === "active" || p.status === "in_production" || p.status === "editor_assigned";
       case "in_review":
@@ -1978,10 +1978,10 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                       <Filter className="h-3.5 w-3.5" />
                       {([
                         { key: "all", label: "All" },
-                        { key: "active", label: "Editing" },
-                        { key: "in_review", label: "In Review" },
+                        { key: "active", label: "All In Production" },
+                        { key: "in_review", label: "All Revisions" },
                         { key: "pending", label: "Pending" },
-                        { key: "completed", label: "Completed" },
+                        { key: "completed", label: "All Completed" },
                         { key: "pay_later", label: "Pay Later" },
                         { key: "payment_pending", label: "Payment Due" },
                       ].find((f) => f.key === projectFilter)?.label) || "Filter"}
@@ -1995,10 +1995,10 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                     <DropdownMenuSeparator className="bg-border/50 my-1" />
                     {[
                       { key: "all", label: "All" },
-                      { key: "active", label: "Editing" },
-                      { key: "in_review", label: "In Review" },
+                      { key: "active", label: "All In Production" },
+                      { key: "in_review", label: "All Revisions" },
                       { key: "pending", label: "Pending" },
-                      { key: "completed", label: "Completed" },
+                      { key: "completed", label: "All Completed" },
                       { key: "pay_later", label: "Pay Later" },
                       { key: "payment_pending", label: "Payment Due" },
                     ].map((f) => (

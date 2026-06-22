@@ -28,6 +28,7 @@ const ALLOWED_CAMPAIGNS = new Set<string>([
     'delay_check_editor_client',
     'editor_deadline_reminder',
     'pm_urgent_deadline',
+    'editor_revision_assigned',
 ]);
 
 const CAMPAIGN_BY_NOTIFICATION: Partial<Record<NotificationType, string>> = {
@@ -797,6 +798,46 @@ export async function notifyEditorFeedbackReceived(projectId: string, editorId: 
         rating: rating.toString(),
         extra: `Rating: ${rating} stars`
     });
+}
+
+/**
+ * Notify Editor when a revision has been assigned/requested.
+ * Template params: {{1}} editor name, {{2}} project name, {{3}} client name, {{4}} review link
+ */
+export async function notifyEditorRevisionAssigned(
+    projectId: string,
+    editorId: string,
+    clientName: string,
+    reviewLink: string
+): Promise<{ success: boolean; error?: string }> {
+    try {
+        const settings = await getWhatsAppSettings();
+        if (settings && !settings.enabled) return { success: true };
+
+        const projectSnap = await adminDb.collection('projects').doc(projectId).get();
+        if (!projectSnap.exists) return { success: false, error: 'Project not found' };
+        const project = projectSnap.data();
+
+        const editorSnap = await adminDb.collection('users').doc(editorId).get();
+        if (!editorSnap.exists) return { success: false, error: 'Editor not found' };
+        const editor = editorSnap.data();
+
+        const phoneNumber = editor?.whatsappNumber || editor?.phoneNumber;
+        if (!phoneNumber) return { success: false, error: 'No phone number for editor' };
+
+        const editorName = editor?.displayName || 'Editor';
+        const projectName = project?.name || 'Project';
+
+        // Parameters: {{1}} Editor Name, {{2}} Project Name, {{3}} Client Name, {{4}} Review Link
+        const params = [editorName, projectName, clientName, reviewLink];
+
+        return await sendWhatsAppNotification(phoneNumber, params, 'editor_revision_assigned', 0, {
+            templateName: 'editor_revision_assigned',
+        });
+    } catch (error: any) {
+        console.error('[WhatsApp] notifyEditorRevisionAssigned Error:', error);
+        return { success: false, error: error.message };
+    }
 }
 
 /** Notify PM about new project from SE */

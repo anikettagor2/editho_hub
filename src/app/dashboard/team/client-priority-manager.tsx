@@ -11,7 +11,14 @@ import { cn } from "@/lib/utils";
 interface ClientPriorityManagerProps {
     clientId: string;
     clientName: string;
-    assignedPriority: { editorId: string; priority: number; targetPrice?: number; editorFee?: number }[];
+    assignedPriority: { 
+        editorId: string; 
+        priority: number; 
+        targetPrice?: number; 
+        editorFee?: number;
+        format?: string;
+        tierLabel?: string;
+    }[];
     editors: User[];
     defaultRate?: number;
     multiTierRates?: Record<string, { label?: string; price: number }[]>;
@@ -30,8 +37,16 @@ export function ClientPriorityManager({
     salesExecName
 }: ClientPriorityManagerProps) {
     const [open, setOpen] = useState(false);
-    const [priorities, setPriorities] = useState<{ editorId: string; priority: number; targetPrice?: number; editorFee?: number }[]>(
-        [...(assignedPriority || [])].sort((a, b) => a.priority - b.priority)
+    const [priorities, setPriorities] = useState<any[]>(
+        [...(assignedPriority || [])].sort((a, b) => {
+            const formatComp = (a.format || "").localeCompare(b.format || "");
+            if (formatComp !== 0) return formatComp;
+            const tierComp = (a.tierLabel || "").localeCompare(b.tierLabel || "");
+            if (tierComp !== 0) return tierComp;
+            const priceComp = (a.targetPrice || 0) - (b.targetPrice || 0);
+            if (priceComp !== 0) return priceComp;
+            return a.priority - b.priority;
+        })
     );
     const [editorRate, setEditorRate] = useState<number>(defaultRate);
     const [saving, setSaving] = useState(false);
@@ -40,6 +55,8 @@ export function ClientPriorityManager({
     const [newEditorId, setNewEditorId] = useState("");
     const [newTargetPrice, setNewTargetPrice] = useState<number | "">("");
     const [newEditorFee, setNewEditorFee] = useState<number | "">("");
+    const [newFormat, setNewFormat] = useState<string>("");
+    const [newTierLabel, setNewTierLabel] = useState<string>("");
 
     const [editorDropdownOpen, setEditorDropdownOpen] = useState(false);
     const [editorSearch, setEditorSearch] = useState("");
@@ -68,6 +85,15 @@ export function ClientPriorityManager({
         return editors.find(e => e.uid === newEditorId);
     }, [editors, newEditorId]);
 
+    const availableFormats = useMemo(() => {
+        return multiTierRates ? Object.keys(multiTierRates) : [];
+    }, [multiTierRates]);
+
+    const availableTiers = useMemo(() => {
+        if (!multiTierRates || !newFormat) return [];
+        return multiTierRates[newFormat] || [];
+    }, [multiTierRates, newFormat]);
+
     const availablePrices = useMemo(() => {
         const prices = new Set<number>();
         if (multiTierRates) {
@@ -87,42 +113,51 @@ export function ClientPriorityManager({
             return;
         }
 
-        // Check if this editor already has a priority for this specific price
-        if (priorities.find(p => p.editorId === newEditorId && p.targetPrice === newTargetPrice)) {
-            toast.error("This editor already has a priority for this price.");
+        // Check if this editor already has a priority for this specific configuration
+        if (priorities.find(p => p.editorId === newEditorId && p.targetPrice === newTargetPrice && p.format === newFormat && p.tierLabel === newTierLabel)) {
+            toast.error("This editor already has a priority for this configuration.");
             return;
         }
 
-        // Find current max priority for this specific price
-        const samePricePriorities = priorities.filter(p => p.targetPrice === newTargetPrice);
-        const nextPriority = samePricePriorities.length + 1;
+        // Find current max priority for this specific configuration
+        const sameConfigPriorities = priorities.filter(p => p.format === newFormat && p.tierLabel === newTierLabel && p.targetPrice === newTargetPrice);
+        const nextPriority = sameConfigPriorities.length + 1;
 
         const newEntry = {
             editorId: newEditorId,
             priority: nextPriority,
             targetPrice: Number(newTargetPrice),
-            editorFee: Number(newEditorFee)
+            editorFee: Number(newEditorFee),
+            format: newFormat || undefined,
+            tierLabel: newTierLabel || undefined
         };
 
-        setPriorities([...priorities, newEntry]);
+        const sorted = [...priorities, newEntry].sort((a, b) => 
+            (a.format || "").localeCompare(b.format || "") ||
+            (a.tierLabel || "").localeCompare(b.tierLabel || "") ||
+            (a.targetPrice || 0) - (b.targetPrice || 0) || 
+            a.priority - b.priority
+        );
+
+        setPriorities(sorted);
         setNewEditorId("");
         setNewTargetPrice("");
         setNewEditorFee("");
+        setNewFormat("");
+        setNewTierLabel("");
         setEditorSearch("");
     };
 
-    const handleRemoveEditor = (editorId: string, targetPrice?: number) => {
+    const handleRemoveEditor = (editorId: string, targetPrice?: number, format?: string, tierLabel?: string) => {
         const updated = priorities
-            .filter(p => !(p.editorId === editorId && p.targetPrice === targetPrice))
-            // Re-normalize priorities within the same price group
-            .map(p => p); 
+            .filter(p => !(p.editorId === editorId && p.targetPrice === targetPrice && p.format === format && p.tierLabel === tierLabel));
         
         // Re-calculate priorities for each group
-        const grouped: Record<number, typeof priorities> = {};
+        const grouped: Record<string, typeof priorities> = {};
         updated.forEach(p => {
-            const tp = p.targetPrice || 0;
-            if (!grouped[tp]) grouped[tp] = [];
-            grouped[tp].push(p);
+            const key = `${p.format || ""}-${p.tierLabel || ""}-${p.targetPrice || 0}`;
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(p);
         });
 
         const final: typeof priorities = [];
@@ -135,25 +170,35 @@ export function ClientPriorityManager({
         setPriorities(final);
     };
 
-    const handleMove = (index: number, direction: 'up' | 'down', targetPrice?: number) => {
-        const samePriceIndices = priorities
+    const handleMove = (index: number, direction: 'up' | 'down', targetPrice?: number, format?: string, tierLabel?: string) => {
+        const sameConfigIndices = priorities
             .map((p, i) => ({ p, i }))
-            .filter(x => x.p.targetPrice === targetPrice)
+            .filter(x => x.p.targetPrice === targetPrice && x.p.format === format && x.p.tierLabel === tierLabel)
             .sort((a, b) => a.p.priority - b.p.priority);
 
-        const currentInGroupIdx = samePriceIndices.findIndex(x => x.i === index);
+        const currentInGroupIdx = sameConfigIndices.findIndex(x => x.i === index);
         if (currentInGroupIdx === -1) return;
 
         if (direction === 'up' && currentInGroupIdx > 0) {
-            const swapIdx = samePriceIndices[currentInGroupIdx - 1].i;
+            const swapIdx = sameConfigIndices[currentInGroupIdx - 1].i;
             const newPriorities = [...priorities];
             [newPriorities[swapIdx].priority, newPriorities[index].priority] = [newPriorities[index].priority, newPriorities[swapIdx].priority];
-            setPriorities(newPriorities.sort((a, b) => (a.targetPrice || 0) - (b.targetPrice || 0) || a.priority - b.priority));
-        } else if (direction === 'down' && currentInGroupIdx < samePriceIndices.length - 1) {
-            const swapIdx = samePriceIndices[currentInGroupIdx + 1].i;
+            setPriorities(newPriorities.sort((a, b) => 
+                (a.format || "").localeCompare(b.format || "") ||
+                (a.tierLabel || "").localeCompare(b.tierLabel || "") ||
+                (a.targetPrice || 0) - (b.targetPrice || 0) || 
+                a.priority - b.priority
+            ));
+        } else if (direction === 'down' && currentInGroupIdx < sameConfigIndices.length - 1) {
+            const swapIdx = sameConfigIndices[currentInGroupIdx + 1].i;
             const newPriorities = [...priorities];
             [newPriorities[swapIdx].priority, newPriorities[index].priority] = [newPriorities[index].priority, newPriorities[swapIdx].priority];
-            setPriorities(newPriorities.sort((a, b) => (a.targetPrice || 0) - (b.targetPrice || 0) || a.priority - b.priority));
+            setPriorities(newPriorities.sort((a, b) => 
+                (a.format || "").localeCompare(b.format || "") ||
+                (a.tierLabel || "").localeCompare(b.tierLabel || "") ||
+                (a.targetPrice || 0) - (b.targetPrice || 0) || 
+                a.priority - b.priority
+            ));
         }
     };
 
@@ -172,11 +217,15 @@ export function ClientPriorityManager({
         }
     };
 
-    // Group priorities by price for display
+    // Group priorities by price and format for display
     const groupedPriorities = useMemo(() => {
         const groups: Record<string, typeof priorities> = {};
         priorities.forEach(p => {
-            const key = p.targetPrice ? `₹${p.targetPrice.toLocaleString()}` : "General";
+            const parts = [];
+            if (p.format) parts.push(p.format);
+            if (p.tierLabel) parts.push(p.tierLabel);
+            if (p.targetPrice) parts.push(`₹${p.targetPrice.toLocaleString()}`);
+            const key = parts.length > 0 ? parts.join(" - ") : "General";
             if (!groups[key]) groups[key] = [];
             groups[key].push(p);
         });
@@ -220,9 +269,54 @@ export function ClientPriorityManager({
                         <label className="text-xs font-semibold text-foreground uppercase tracking-wider">Add Priority Rule</label>
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
+                                <label className="text-[10px] text-muted-foreground uppercase font-bold">Video Format</label>
+                                <select 
+                                    className="w-full bg-background border border-input rounded-md text-sm px-3 py-2 text-foreground"
+                                    value={newFormat}
+                                    onChange={(e) => {
+                                        const fmt = e.target.value;
+                                        setNewFormat(fmt);
+                                        setNewTierLabel("");
+                                        setNewTargetPrice("");
+                                    }}
+                                >
+                                    <option value="">Any Format</option>
+                                    {availableFormats.map(fmt => (
+                                        <option key={fmt} value={fmt}>{fmt}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[10px] text-muted-foreground uppercase font-bold">Pricing Tier</label>
+                                <select 
+                                    className="w-full bg-background border border-input rounded-md text-sm px-3 py-2 text-foreground"
+                                    value={newTierLabel}
+                                    onChange={(e) => {
+                                        const tier = e.target.value;
+                                        setNewTierLabel(tier);
+                                        // Auto-populate price
+                                        if (newFormat) {
+                                            const matchedTier = multiTierRates?.[newFormat]?.find(t => t.label === tier);
+                                            if (matchedTier) {
+                                                setNewTargetPrice(matchedTier.price);
+                                                setNewEditorFee(Math.round(matchedTier.price * (editorRate / 100)));
+                                            }
+                                        }
+                                    }}
+                                    disabled={!newFormat}
+                                >
+                                    <option value="">Any Tier</option>
+                                    {availableTiers.map(t => (
+                                        <option key={t.label || t.price} value={t.label || ""}>
+                                            {t.label || "Unnamed"} (₹{t.price.toLocaleString()})
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-1">
                                 <label className="text-[10px] text-muted-foreground uppercase font-bold">Project Price</label>
                                 <select 
-                                    className="w-full bg-background border border-input rounded-md text-sm px-3 py-2"
+                                    className="w-full bg-background border border-input rounded-md text-sm px-3 py-2 text-foreground"
                                     value={newTargetPrice}
                                     onChange={(e) => {
                                         const price = Number(e.target.value);
@@ -249,7 +343,7 @@ export function ClientPriorityManager({
                                     <button
                                         type="button"
                                         onClick={() => setEditorDropdownOpen(!editorDropdownOpen)}
-                                        className="w-full bg-background border border-input rounded-md text-sm px-3 py-2 text-left flex items-center justify-between focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all"
+                                        className="w-full bg-background border border-input rounded-md text-sm px-3 py-2 text-left flex items-center justify-between focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all text-foreground"
                                     >
                                         <span className="truncate">
                                             {selectedEditor ? (selectedEditor.displayName || selectedEditor.email) : "Select Editor..."}
@@ -264,7 +358,7 @@ export function ClientPriorityManager({
                                                 <input
                                                     type="text"
                                                     placeholder="Search editor..."
-                                                    className="w-full bg-background border border-input rounded-md text-xs px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary"
+                                                    className="w-full bg-background border border-input rounded-md text-xs px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary text-foreground"
                                                     value={editorSearch}
                                                     onChange={(e) => setEditorSearch(e.target.value)}
                                                     autoFocus
@@ -284,7 +378,7 @@ export function ClientPriorityManager({
                                                                 setEditorSearch("");
                                                             }}
                                                             className={cn(
-                                                                "w-full text-left px-3 py-2 text-xs hover:bg-muted transition-colors truncate",
+                                                                "w-full text-left px-3 py-2 text-xs hover:bg-muted transition-colors truncate text-foreground",
                                                                 newEditorId === e.uid && "bg-primary/10 text-primary font-semibold hover:bg-primary/20"
                                                             )}
                                                         >
@@ -301,7 +395,7 @@ export function ClientPriorityManager({
                                 <label className="text-[10px] text-muted-foreground uppercase font-bold">Editor Fee (₹)</label>
                                 <input 
                                     type="number" 
-                                    className="w-full bg-background border border-input rounded-md text-sm px-3 py-2"
+                                    className="w-full bg-background border border-input rounded-md text-sm px-3 py-2 text-foreground"
                                     value={newEditorFee}
                                     onChange={(e) => setNewEditorFee(Number(e.target.value))}
                                     placeholder="Amount to pay editor"
@@ -350,16 +444,16 @@ export function ClientPriorityManager({
                                         <div className="space-y-2">
                                             {list.map((p, idx) => {
                                                 const ed = editors.find(e => e.uid === p.editorId);
-                                                const globalIdx = priorities.findIndex(x => x.editorId === p.editorId && x.targetPrice === p.targetPrice);
+                                                const globalIdx = priorities.findIndex(x => x.editorId === p.editorId && x.targetPrice === p.targetPrice && x.format === p.format && x.tierLabel === p.tierLabel);
                                                 return (
-                                                    <div key={`${p.editorId}-${p.targetPrice}`} className="flex items-center justify-between gap-3 p-3 bg-card border border-border rounded-lg shadow-sm">
+                                                    <div key={`${p.editorId}-${p.targetPrice}-${p.format || ""}-${p.tierLabel || ""}`} className="flex items-center justify-between gap-3 p-3 bg-card border border-border rounded-lg shadow-sm">
                                                         <div className="flex items-center gap-3">
                                                             <div className="flex flex-col items-center gap-0.5">
-                                                                <button onClick={() => handleMove(globalIdx, 'up', p.targetPrice)} disabled={idx === 0} className="text-muted-foreground hover:text-foreground disabled:opacity-20">
+                                                                <button onClick={() => handleMove(globalIdx, 'up', p.targetPrice, p.format, p.tierLabel)} disabled={idx === 0} className="text-muted-foreground hover:text-foreground disabled:opacity-20">
                                                                     <GripVertical className="h-3 w-3" />
                                                                 </button>
                                                                 <span className="text-[10px] font-bold text-muted-foreground w-4 text-center">{p.priority}</span>
-                                                                <button onClick={() => handleMove(globalIdx, 'down', p.targetPrice)} disabled={idx === list.length - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-20">
+                                                                <button onClick={() => handleMove(globalIdx, 'down', p.targetPrice, p.format, p.tierLabel)} disabled={idx === list.length - 1} className="text-muted-foreground hover:text-foreground disabled:opacity-20">
                                                                     <GripVertical className="h-3 w-3" />
                                                                 </button>
                                                             </div>
@@ -373,7 +467,7 @@ export function ClientPriorityManager({
                                                             </div>
                                                         </div>
                                                         <button 
-                                                            onClick={() => handleRemoveEditor(p.editorId, p.targetPrice)}
+                                                            onClick={() => handleRemoveEditor(p.editorId, p.targetPrice, p.format, p.tierLabel)}
                                                             className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-md transition-colors"
                                                         >
                                                             <X className="h-4 w-4" />

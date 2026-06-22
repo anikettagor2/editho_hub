@@ -140,7 +140,7 @@ export default function TeamManagementPage() {
       clientName: string;
       clientEmail: string;
       salesExecName?: string;
-      assignedEditorPriority: { editorId: string; priority: number; targetPrice?: number; editorFee?: number }[];
+      assignedEditorPriority: { editorId: string; priority: number; targetPrice?: number; editorFee?: number; format?: string; tierLabel?: string }[];
       defaultEditorRate?: number;
       totalProjects: number;
       totalPendingDues: number;

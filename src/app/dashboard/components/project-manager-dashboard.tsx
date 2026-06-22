@@ -579,9 +579,11 @@ export function ProjectManagerDashboard({ preselectedProjectId }: { preselectedP
             p.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
             p.clientName?.toLowerCase().includes(searchQuery.toLowerCase());
             
-        const matchesStatus = statusFilter === "all" || p.status === statusFilter ||
-            (statusFilter === "review" && p.status === "in_review") || 
-            (statusFilter === "in_production" && p.status === "active");
+        const matchesStatus = statusFilter === "all" || 
+            (statusFilter === "in_production" && (p.status === "in_production" || p.status === "editor_assigned" || p.status === "active")) ||
+            (statusFilter === "completed" && (p.status === "completed" || p.status === "completed_pending_payment" || p.status === "approved" || p.status === "archived")) ||
+            (statusFilter !== "in_production" && statusFilter !== "completed" && p.status === statusFilter) ||
+            (statusFilter === "review" && p.status === "in_review");
             
         return matchesSearch && matchesStatus;
     });

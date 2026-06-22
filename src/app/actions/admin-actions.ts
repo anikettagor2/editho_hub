@@ -178,11 +178,18 @@ export async function handleProjectCreated(projectId: string) {
             if (priorities.length > 0) {
                 // Determine the "Price" to match rules against.
                 const projectPrice = Number(project?.pricingTierPrice || project?.budget || project?.totalCost || 0);
+                const format = project?.videoFormat;
+                const tierLabel = project?.pricingTierLabel;
                 
-                // 1. Filter by price-specific rules or fallback to general rules
-                let rulesToConsider = priorities.filter((p: any) => Number(p.targetPrice) === projectPrice);
+                // 1. Filter by format, tier, and price-specific rules
+                let rulesToConsider = priorities.filter((p: any) => {
+                    const matchesFormat = !p.format || p.format === format;
+                    const matchesTier = !p.tierLabel || p.tierLabel === tierLabel;
+                    const matchesPrice = !p.targetPrice || Number(p.targetPrice) === projectPrice;
+                    return matchesFormat && matchesTier && matchesPrice;
+                });
                 if (rulesToConsider.length === 0) {
-                    rulesToConsider = priorities.filter((p: any) => !p.targetPrice);
+                    rulesToConsider = priorities.filter((p: any) => !p.targetPrice && !p.format && !p.tierLabel);
                 }
 
                 console.log(`[AutoAssign] Found ${priorities.length} total rules. ${rulesToConsider.length} rules match price ${projectPrice}`);
@@ -1126,11 +1133,18 @@ export async function autoAssignEditor(projectId: string, editorPrice: number, d
         
         // Determine the "Price" to match rules against.
         const projectPrice = Number(projectData?.pricingTierPrice || projectData?.budget || projectData?.totalCost || 0);
+        const format = projectData?.videoFormat;
+        const tierLabel = projectData?.pricingTierLabel;
         
         // Filter priorities by matching targetPrice or general rules
-        let rulesToConsider = priorities.filter((p: any) => Number(p.targetPrice) === projectPrice);
+        let rulesToConsider = priorities.filter((p: any) => {
+            const matchesFormat = !p.format || p.format === format;
+            const matchesTier = !p.tierLabel || p.tierLabel === tierLabel;
+            const matchesPrice = !p.targetPrice || Number(p.targetPrice) === projectPrice;
+            return matchesFormat && matchesTier && matchesPrice;
+        });
         if (rulesToConsider.length === 0) {
-            rulesToConsider = priorities.filter((p: any) => !p.targetPrice);
+            rulesToConsider = priorities.filter((p: any) => !p.targetPrice && !p.format && !p.tierLabel);
         }
 
         const sortedPriorities = [...rulesToConsider].sort((a, b) => a.priority - b.priority);
@@ -1296,9 +1310,17 @@ export async function tryNextAutoAssign(projectId: string): Promise<{
         let autoAssignedPrice = 0;
         
         const projectPrice = Number(projectData?.pricingTierPrice || projectData?.budget || projectData?.totalCost || 0);
-        let rulesToConsider = priorities.filter((p: any) => Number(p.targetPrice) === projectPrice);
+        const format = projectData?.videoFormat;
+        const tierLabel = projectData?.pricingTierLabel;
+        
+        let rulesToConsider = priorities.filter((p: any) => {
+            const matchesFormat = !p.format || p.format === format;
+            const matchesTier = !p.tierLabel || p.tierLabel === tierLabel;
+            const matchesPrice = !p.targetPrice || Number(p.targetPrice) === projectPrice;
+            return matchesFormat && matchesTier && matchesPrice;
+        });
         if (rulesToConsider.length === 0) {
-            rulesToConsider = priorities.filter((p: any) => !p.targetPrice);
+            rulesToConsider = priorities.filter((p: any) => !p.targetPrice && !p.format && !p.tierLabel);
         }
         
         const sortedPriorities = [...rulesToConsider].sort((a, b) => a.priority - b.priority);
@@ -1677,7 +1699,7 @@ export async function setDownloadLimitToThree() {
  */
 export async function saveClientEditorPriority(
     clientId: string,
-    priorities: { editorId: string; priority: number; targetPrice?: number; editorFee?: number }[],
+    priorities: { editorId: string; priority: number; targetPrice?: number; editorFee?: number; format?: string; tierLabel?: string }[],
     defaultEditorRate: number
 ) {
     try {

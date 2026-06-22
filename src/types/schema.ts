@@ -26,6 +26,8 @@ export interface User {
         priority: number; 
         targetPrice?: number; // The project budget/price this priority applies to
         editorFee?: number;   // The fixed fee to pay the editor for this project price
+        format?: string;      // The project format (e.g. "Reel Format")
+        tierLabel?: string;   // The project pricing tier (e.g. "Standard")
     }[]; // Ordered priority of editors for auto-assign set by PM
     defaultEditorRate?: number; // Default percentage rate (0-100) for auto-assigning editors
     payLater?: boolean; // New feature: allows client to skip immediate payment
@@ -172,6 +174,8 @@ export interface Project {
         details?: string;
     }[];
     revisionsCount?: number; // Total revisions handled
+    lastRevisionNotifiedVersion?: number; // To track if editor was notified of client comment for this revision round
+    lastChargedRevisionVersion?: number; // To track which revision versions have already been charged the 25% urgent revision fee
     completedAt?: number; // When the project was marked as completed/approved
     completionNotifiedAt?: number; // Completion notification sent after delivery and editor payout
 
