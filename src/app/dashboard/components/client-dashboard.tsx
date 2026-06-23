@@ -376,12 +376,20 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
         const projectInvoices = invoices.filter((inv) => inv.projectId === project.id);
         
         return (
-            <div key={project.id} className={getCardStyle(project.status)}>
+            <div key={project.id} className={cn(
+                getCardStyle(project.status),
+                project.urgency === 'urgent' && "!border-red-500/40 shadow-red-950/20 bg-red-950/10 hover:bg-red-950/20"
+            )}>
                 {/* Top: Title & Meta */}
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-bold text-foreground tracking-tight leading-snug">
-                            {project.name}
+                        <h3 className="text-sm font-bold text-foreground tracking-tight leading-snug inline-flex items-center gap-1.5 flex-wrap">
+                            <span>{project.name}</span>
+                            {project.urgency === 'urgent' && (
+                                <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8px] font-extrabold uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30 shrink-0">
+                                    ⚡ Urgent
+                                </span>
+                            )}
                         </h3>
                         <p className="text-[11px] text-muted-foreground mt-1 font-medium flex items-center gap-1.5">
                             <span>{project.videoType || "Video"}</span>
@@ -628,11 +636,23 @@ export function ClientDashboard({ preselectedProjectId }: { preselectedProjectId
                                             return (
                                                 <motion.tr key={project.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
                                                     transition={{ delay: idx * 0.02 }}
-                                                    className="group hover:bg-muted/30 transition-colors">
+                                                    className={cn(
+                                                        "group transition-colors",
+                                                        project.urgency === 'urgent'
+                                                            ? "border-l-2 border-l-red-500 bg-red-950/10 hover:bg-red-950/20 text-red-200"
+                                                            : "hover:bg-muted/30"
+                                                    )}>
                                                     <td className="px-4 py-3 text-sm text-muted-foreground">{idx + 1}</td>
                                                     <td className="px-4 py-3">
                                                         <div className="max-w-[180px]">
-                                                            <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">{project.name}</p>
+                                                            <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate inline-flex items-center gap-1.5 w-full">
+                                                                <span className="truncate">{project.name}</span>
+                                                                {project.urgency === 'urgent' && (
+                                                                    <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8px] font-extrabold uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30 shrink-0">
+                                                                        ⚡ Urgent
+                                                                    </span>
+                                                                )}
+                                                            </p>
                                                             <p className="text-xs text-muted-foreground truncate mt-0.5">
                                                                 {project.videoType || "Video"} • {project.createdAt ? new Date(project.createdAt).toLocaleDateString("en-IN", { month: "short", day: "numeric" }) : ""}
                                                             </p>

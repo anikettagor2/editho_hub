@@ -821,17 +821,27 @@ export function ProjectManagerDashboard({ preselectedProjectId }: { preselectedP
                                             initial={{ opacity: 0 }}
                                             animate={{ opacity: 1 }}
                                             transition={{ delay: idx * 0.02 }}
-                                            className="group hover:bg-muted/30 transition-colors"
+                                            className={cn(
+                                                "group transition-colors",
+                                                project.urgency === 'urgent'
+                                                    ? "border-l-2 border-l-red-500 bg-red-950/10 hover:bg-red-950/20 text-red-200"
+                                                    : "hover:bg-muted/30"
+                                            )}
                                         >
                                             {/* Project Name */}
                                             <td className="px-4 py-3">
                                                 <div className="max-w-[180px]">
                                                     <button 
                                                         onClick={() => { setInspectProject(project); setIsProjectDetailModalOpen(true); }}
-                                                        className="text-sm font-medium text-foreground hover:text-primary transition-colors text-left truncate block cursor-pointer active:scale-95"
+                                                        className="text-sm font-medium text-foreground hover:text-primary transition-colors text-left truncate cursor-pointer active:scale-95 inline-flex items-center gap-1.5 w-full"
                                                         title={project.name}
                                                     >
-                                                        {project.name}
+                                                        <span className="truncate">{project.name}</span>
+                                                        {project.urgency === 'urgent' && (
+                                                            <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8px] font-extrabold uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30 shrink-0">
+                                                                ⚡ Urgent
+                                                            </span>
+                                                        )}
                                                     </button>
                                                     <p className="text-xs text-muted-foreground truncate mt-0.5">
                                                         {project.videoType || 'Video'} • {new Date(project.createdAt).toLocaleDateString()}

@@ -2211,14 +2211,24 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.05 }}
-                      className="hover:bg-muted/50 transition-colors group"
+                      className={cn(
+                        "transition-colors group",
+                        project.urgency === 'urgent'
+                          ? "border-l-2 border-l-red-500 bg-red-950/10 hover:bg-red-950/20 text-red-200"
+                          : "hover:bg-muted/50"
+                      )}
                     >
                       <td className="px-6 py-5">
                         <Link
                           href={`/dashboard/projects/${project.id}`}
-                          className="text-sm font-bold text-foreground tracking-tight hover:text-primary transition-colors cursor-pointer"
+                          className="text-sm font-bold text-foreground tracking-tight hover:text-primary transition-colors cursor-pointer inline-flex items-center gap-1.5"
                         >
                           {project.name}
+                          {project.urgency === 'urgent' && (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-extrabold uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30">
+                              ⚡ Urgent
+                            </span>
+                          )}
                         </Link>
                         <div className="text-[10px] text-muted-foreground font-bold uppercase tracking-wider mt-0.5">
                           ID: {project.id.slice(0, 12)}
@@ -2317,7 +2327,12 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                       initial={{ opacity: 0, y: 10 }}
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: idx * 0.05 }}
-                      className="hover:bg-muted/50 transition-colors group"
+                      className={cn(
+                        "transition-colors group",
+                        project.urgency === 'urgent'
+                          ? "border-l-2 border-l-red-500 bg-red-950/10 hover:bg-red-950/20 text-red-200"
+                          : "hover:bg-muted/50"
+                      )}
                     >
                       <td className="px-3 py-3 text-xs font-bold text-foreground/80 tabular-nums">
                         {projectSerialMap.get(project.id) ?? idx + 1}
@@ -2325,9 +2340,14 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                       <td className="px-3 py-3">
                         <Link
                           href={`/dashboard/projects/${project.id}`}
-                          className="text-xs font-bold text-foreground hover:text-primary transition-colors block leading-tight"
+                          className="text-xs font-bold text-foreground hover:text-primary transition-colors inline-flex items-center gap-1.5 leading-tight"
                         >
                           {project.name}
+                          {project.urgency === 'urgent' && (
+                            <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8px] font-extrabold uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30">
+                              ⚡ Urgent
+                            </span>
+                          )}
                         </Link>
                         <div className="text-[9px] mt-1 text-muted-foreground font-bold uppercase tracking-widest">
                           ID: {project.id.slice(0, 10)}

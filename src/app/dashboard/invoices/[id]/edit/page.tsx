@@ -103,6 +103,12 @@ export default function EditInvoicePage(props: { params: Promise<{ id: string }>
             setClientId(selectedId);
             setClientName(selectedClient.displayName || "");
             setClientEmail(selectedClient.email || "");
+            setClientAddress(selectedClient.address || "");
+        } else {
+            setClientId("");
+            setClientName("");
+            setClientEmail("");
+            setClientAddress("");
         }
     };
 

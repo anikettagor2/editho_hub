@@ -14,6 +14,7 @@ export interface User {
     companyName?: string; // Optional company name for clients
     websiteUrl?: string; // Additional profile links for clients
     clientCategory?: 'Retainer' | 'One-time' | 'Premium' | string; // Client category
+    address?: string; // Client billing address
     customRates?: Record<string, number>; // Custom video rates for this specific client (legacy - use multiTierRates for multiple prices)
     multiTierRates?: Record<string, { label?: string; price: number }[]>; // Multiple price tiers per video format (new - replaces customRates when set)
     allowedFormats?: Record<string, boolean>; // Which video formats are visible
@@ -114,6 +115,7 @@ export interface Project {
     videoType?: string;
     videoFormat?: string; // e.g., 'Reel Format', 'Documentary', etc.
     aspectRatio?: '9:16' | '1:1' | '16:9' | string;
+    urgency?: '24hrs' | 'urgent' | string;
     referenceLink?: string;
     referenceFiles?: { name: string; url: string; size?: number; type?: string; uploadedAt?: number; uploadedBy?: string }[];
     pmFiles?: { name: string; url: string; size?: number; type?: string; uploadedAt?: number; uploadedBy?: string }[];

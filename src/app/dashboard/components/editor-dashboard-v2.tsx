@@ -836,7 +836,8 @@ function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets
             whileHover={{ y: -6 }}
             className={cn(
                 "group bg-card border border-border/50 rounded-2xl overflow-hidden shadow-2xl shadow-black/5 hover:shadow-primary/10 transition-all flex flex-col relative",
-                isPending && !isDeliveryLocked && "ring-4 ring-primary/30 bg-primary/[0.03] animate-pulse-subtle"
+                isPending && !isDeliveryLocked && "ring-4 ring-primary/30 bg-primary/[0.03] animate-pulse-subtle",
+                project.urgency === 'urgent' && "border-red-500/40 shadow-red-950/20 bg-red-950/10 hover:bg-red-950/20"
             )}
         >
             {/* Top Bar for status/timer */}
@@ -860,8 +861,13 @@ function ProjectCard({ project, pm, latestRevision, onUpload, onReview, onAssets
                 {/* Header Section */}
                 <div className="flex items-start justify-between gap-3">
                     <div className="space-y-1 flex-1">
-                        <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors tracking-tight leading-tight line-clamp-1">
-                            {project.name}
+                        <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors tracking-tight leading-tight line-clamp-1 inline-flex items-center gap-1.5 w-full">
+                            <span className="truncate">{project.name}</span>
+                            {project.urgency === 'urgent' && (
+                                <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8px] font-extrabold uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30 shrink-0">
+                                    ⚡ Urgent
+                                </span>
+                            )}
                         </h3>
                         <div className="flex flex-wrap items-center gap-3 text-[10px] text-muted-foreground uppercase tracking-widest font-black opacity-60">
                             <span className="flex items-center gap-1.5"><User size={11} className="text-primary" /> {pm?.displayName || "System Manager"}</span>
@@ -1011,12 +1017,20 @@ function ProjectTable({ projects, allUsers, projectRevisions, startIndex = 0, on
         const isDeliveryLocked = isEditorDeliveredProject(project);
 
         return (
-            <div key={project.id} className={getCardStyle(project.status)}>
+            <div key={project.id} className={cn(
+                getCardStyle(project.status),
+                project.urgency === 'urgent' && "!border-red-500/40 shadow-red-950/20 bg-red-950/10 hover:bg-red-950/20 text-red-200"
+            )}>
                 {/* Header: Title & Format */}
                 <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
-                        <h3 className="text-sm font-bold text-foreground tracking-tight leading-snug">
-                            {project.name}
+                        <h3 className="text-sm font-bold text-foreground tracking-tight leading-snug inline-flex items-center gap-1.5 flex-wrap">
+                            <span>{project.name}</span>
+                            {project.urgency === 'urgent' && (
+                                <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8px] font-extrabold uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30 shrink-0">
+                                    ⚡ Urgent
+                                </span>
+                            )}
                         </h3>
                         <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-black mt-1">
                             {project.videoFormat || project.videoType || "Not set"}
@@ -1226,11 +1240,23 @@ function ProjectTableRow({ index, project, pm, latestRevision, onUpload, onRevie
     const isDeliveryLocked = isEditorDeliveredProject(project);
 
     return (
-        <tr className="align-top transition-colors hover:bg-muted/50 group">
+        <tr className={cn(
+            "align-top transition-colors group",
+            project.urgency === 'urgent'
+                ? "border-l-2 border-l-red-500 bg-red-950/10 hover:bg-red-950/20 text-red-200"
+                : "hover:bg-muted/50"
+        )}>
             <td className="px-3 py-2 text-xs font-bold text-foreground/80 tabular-nums">{index + 1}</td>
             <td className="px-3 py-2">
                 <div className="max-w-[230px]">
-                    <p className="text-xs font-bold text-foreground leading-tight">{project.name}</p>
+                    <p className="text-xs font-bold text-foreground leading-tight inline-flex items-center gap-1.5 flex-wrap">
+                        <span>{project.name}</span>
+                        {project.urgency === 'urgent' && (
+                            <span className="inline-flex items-center gap-0.5 px-1 py-0.2 rounded text-[8px] font-extrabold uppercase tracking-widest bg-red-500/20 text-red-400 border border-red-500/30 shrink-0">
+                                ⚡ Urgent
+                            </span>
+                        )}
+                    </p>
                     <p className="mt-1 text-[9px] font-bold uppercase tracking-widest text-muted-foreground">ID: {project.id.slice(0, 10)}</p>
                 </div>
             </td>

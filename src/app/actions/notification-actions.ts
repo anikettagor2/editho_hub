@@ -62,7 +62,7 @@ export async function handleRevisionUploaded(projectId: string) {
         const lastChargedVersion = projectData?.lastChargedRevisionVersion || 0;
 
         if (isUrgent && versionNumber > 1 && versionNumber > lastChargedVersion) {
-            const projectBasePrice = Number(projectData?.pricingTierPrice || (Number(projectData?.budget || 0) - 500));
+            const projectBasePrice = Number(projectData?.pricingTierPrice || Math.round(Number(projectData?.budget || 0) / 1.25));
             const revisionCharge = Math.round(projectBasePrice * 0.25);
             
             const currentTotalCost = Number(projectData?.totalCost || projectData?.budget || 0);

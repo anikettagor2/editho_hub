@@ -98,7 +98,7 @@ export async function POST(request: Request) {
                     clientId: projectData.clientId,
                     clientName: clientData?.displayName || projectData.clientName || "Client",
                     clientEmail: clientData?.email || "Unknown",
-                    clientAddress: "",
+                    clientAddress: clientData?.address || "",
                     items: [{
                         description,
                         quantity: 1,

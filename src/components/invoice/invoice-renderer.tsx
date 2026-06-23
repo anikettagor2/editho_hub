@@ -157,6 +157,11 @@ export function InvoiceRenderer({ invoice, settings }: InvoiceRendererProps) {
             {/* Client Info Banner */}
             <div className="mb-5">
                 <h3 className="font-bold text-sm text-zinc-900">{invoice.clientName}</h3>
+                {invoice.clientAddress && (
+                    <p className="text-[11px] text-zinc-600 whitespace-pre-line mt-1">
+                        {invoice.clientAddress}
+                    </p>
+                )}
             </div>
 
             {/* GST Items Table Grid */}

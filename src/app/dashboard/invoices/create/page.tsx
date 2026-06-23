@@ -60,11 +60,12 @@ export default function CreateInvoicePage() {
             setClientId(selectedId);
             setClientName(selectedClient.displayName || "");
             setClientEmail(selectedClient.email || "");
-            // Address might not be in User schema, so leave blank or use custom logic
+            setClientAddress(selectedClient.address || "");
         } else {
              setClientId("");
              setClientName("");
              setClientEmail("");
+             setClientAddress("");
         }
     };
 

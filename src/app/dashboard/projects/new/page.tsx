@@ -113,7 +113,7 @@ const ASPECT_RATIOS = [
     { key: "16:9", label: "16:9", desc: "YouTube Standard" }
 ];
 
-const DEFAULT_URGENT_PRICE = 500;
+// Dynamic pricing: urgent charge is 25% of base price
 const BASE_PROJECT_PRICE = 1000;
 const MAX_CONCURRENT_UPLOADS = 3; // Upload up to 3 files simultaneously
 const DESCRIPTION_WORD_LIMIT = 500;
@@ -171,7 +171,7 @@ export default function NewProjectPage() {
     
     // Project accounting is GST-exclusive; GST is only applied during billing/invoice.
     const gstRate = 0.18;
-    const urgentExtraCost = urgency === 'urgent' ? DEFAULT_URGENT_PRICE : 0;
+    const urgentExtraCost = urgency === 'urgent' ? Math.round(basePrice * 0.25) : 0;
     const projectTotalWithoutGst = basePrice + urgentExtraCost;
     const gstAmount = projectTotalWithoutGst * gstRate;
     const finalTotalWithGst = projectTotalWithoutGst + gstAmount;
@@ -1824,7 +1824,7 @@ export default function NewProjectPage() {
                                         </span>
                                         <div className="flex items-center font-bold text-amber-500">
                                             + <IndianRupee className="w-4 h-4 mx-1" />
-                                            {DEFAULT_URGENT_PRICE.toLocaleString()}
+                                            {urgentExtraCost.toLocaleString()}
                                         </div>
                                     </div>
                                 )}
