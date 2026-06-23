@@ -3,7 +3,7 @@
 import { useAuth } from "@/lib/context/auth-context";
 import { Button } from "@/components/ui/button";
 import { Loader2, Trash2, User, Mail, Shield } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { db } from "@/lib/firebase/config";
@@ -14,6 +14,7 @@ import { Upload, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { MAX_FILE_SIZE_BYTES, MAX_FILE_SIZE_GB } from "@/lib/constants";
 import { uploadFileToS3Object } from "@/lib/s3-upload-utils";
 
@@ -30,8 +31,22 @@ export default function SettingsPage() {
         companyName: user?.companyName || "",
         phoneNumber: user?.phoneNumber || "",
         websiteUrl: user?.websiteUrl || "",
-        clientCategory: user?.clientCategory || "Retainer"
+        clientCategory: user?.clientCategory || "Retainer",
+        address: user?.address || ""
     });
+
+    useEffect(() => {
+        if (user) {
+            setClientProfile({
+                displayName: user.displayName || "",
+                companyName: user.companyName || "",
+                phoneNumber: user.phoneNumber || "",
+                websiteUrl: user.websiteUrl || "",
+                clientCategory: user.clientCategory || "Retainer",
+                address: user.address || ""
+            });
+        }
+    }, [user]);
 
     const compressImage = (file: File): Promise<Blob> => {
         return new Promise((resolve, reject) => {
@@ -172,6 +187,7 @@ export default function SettingsPage() {
                 phoneNumber: clientProfile.phoneNumber,
                 websiteUrl: clientProfile.websiteUrl,
                 clientCategory: clientProfile.clientCategory,
+                address: clientProfile.address || "",
                 updatedAt: Date.now()
             }, { merge: true });
             toast.success("Profile details updated successfully", { id: toastId });
@@ -317,6 +333,15 @@ export default function SettingsPage() {
                                             <option value="One-time">One-time</option>
                                             <option value="Premium">Premium</option>
                                         </select>
+                                    </div>
+                                    <div className="space-y-2 md:col-span-2">
+                                        <Label className="text-xs uppercase tracking-widest text-muted-foreground font-bold">Billing Address</Label>
+                                        <Textarea 
+                                            value={clientProfile.address}
+                                            onChange={(e) => setClientProfile({...clientProfile, address: e.target.value})}
+                                            className="bg-card text-foreground min-h-[100px]"
+                                            placeholder="Enter your billing address here..."
+                                        />
                                     </div>
                                 </div>
                                 <Button 
