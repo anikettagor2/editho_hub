@@ -1,5 +1,8 @@
 import { Invoice } from "@/types/schema";
 import { format } from "date-fns";
+import { useState, useEffect } from "react";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "@/lib/firebase/config";
 
 interface InvoiceSettings {
     companyName?: string;
@@ -72,6 +75,30 @@ function toIndianRupeeWords(amount: number): string {
 }
 
 export function InvoiceRenderer({ invoice, settings }: InvoiceRendererProps) {
+    const [fallbackAddress, setFallbackAddress] = useState<string>("");
+
+    useEffect(() => {
+        if (!invoice.clientAddress && invoice.clientId) {
+            async function fetchClientAddress() {
+                try {
+                    const clientRef = doc(db, "users", invoice.clientId);
+                    const clientSnap = await getDoc(clientRef);
+                    if (clientSnap.exists()) {
+                        const data = clientSnap.data();
+                        if (data.address) {
+                            setFallbackAddress(data.address);
+                        }
+                    }
+                } catch (error) {
+                    console.error("Error fetching client address fallback:", error);
+                }
+            }
+            fetchClientAddress();
+        }
+    }, [invoice.clientAddress, invoice.clientId]);
+
+    const displayAddress = invoice.clientAddress || fallbackAddress;
+
     const companyName = settings?.companyName || 'EditoHub';
     const companyAddress = settings?.companyAddress || 'Maharashtra\nIndia';
     const companyEmail = settings?.companyEmail || 'support@editohub.com';
@@ -148,6 +175,12 @@ export function InvoiceRenderer({ invoice, settings }: InvoiceRendererProps) {
                         <span className="w-32 text-zinc-500">Place Of Supply</span>
                         <span className="font-bold">: Maharashtra (27)</span>
                     </div>
+                    {displayAddress && (
+                        <div className="flex flex-col pt-1.5 border-t border-zinc-200/50 mt-1">
+                            <span className="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">Billing Address</span>
+                            <span className="font-semibold text-[11px] text-zinc-800 whitespace-pre-line leading-relaxed mt-0.5">{displayAddress}</span>
+                        </div>
+                    )}
                 </div>
             </div>
 
@@ -157,11 +190,6 @@ export function InvoiceRenderer({ invoice, settings }: InvoiceRendererProps) {
             {/* Client Info Banner */}
             <div className="mb-5">
                 <h3 className="font-bold text-sm text-zinc-900">{invoice.clientName}</h3>
-                {invoice.clientAddress && (
-                    <p className="text-[11px] text-zinc-600 whitespace-pre-line mt-1">
-                        {invoice.clientAddress}
-                    </p>
-                )}
             </div>
 
             {/* GST Items Table Grid */}
