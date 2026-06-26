@@ -2707,6 +2707,9 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                         "group hover:bg-muted/50 transition-colors",
                         (u as any).status === "inactive" &&
                           "opacity-40 grayscale",
+                        u.role === "client" &&
+                          (u as any).createdBy === "self" &&
+                          "border-l-2 border-l-sky-400 bg-sky-950/10 hover:bg-sky-950/20 text-sky-200",
                       )}
                     >
                       <td
@@ -2727,8 +2730,13 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                             </AvatarFallback>
                           </Avatar>
                           <div>
-                            <div className="text-sm font-bold text-foreground tracking-tight leading-tight group-hover/profile:text-primary transition-colors flex items-center gap-2">
+                            <div className="text-sm font-bold text-foreground tracking-tight leading-tight group-hover/profile:text-primary transition-colors flex items-center gap-2 flex-wrap">
                               {u.displayName}
+                              {u.role === "client" && (u as any).createdBy === "self" && (
+                                <span className="flex items-center gap-1 text-[8px] bg-sky-500/20 text-sky-400 border border-sky-500/30 px-1.5 py-0.5 rounded font-black uppercase">
+                                  Self Signup
+                                </span>
+                              )}
                               {u.role === "client" &&
                                 u.payLater &&
                                 (() => {
@@ -2982,7 +2990,10 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                           key={client.uid}
                           initial={{ opacity: 0, y: 10 }}
                           animate={{ opacity: 1, y: 0 }}
-                          className="bg-muted/50 border border-border rounded-2xl p-6 space-y-4 hover:border-primary/30 transition-colors"
+                          className={cn(
+                            "bg-muted/50 border border-border rounded-2xl p-6 space-y-4 hover:border-primary/30 transition-colors",
+                            (client as any).createdBy === "self" && "border-l-4 border-l-sky-400 bg-sky-950/10 hover:bg-sky-950/20"
+                          )}
                         >
                           <div className="flex items-start justify-between">
                             <div className="flex items-center gap-3">
@@ -2995,8 +3006,13 @@ export function AdminDashboard({ preselectedProjectId }: { preselectedProjectId?
                                 </AvatarFallback>
                               </Avatar>
                               <div>
-                                <p className="text-sm font-bold text-foreground">
+                                <p className="text-sm font-bold text-foreground flex items-center gap-2">
                                   {client.displayName}
+                                  {(client as any).createdBy === "self" && (
+                                    <span className="flex items-center gap-1 text-[8px] bg-sky-500/20 text-sky-400 border border-sky-500/30 px-1.5 py-0.5 rounded font-black uppercase">
+                                      Self Signup
+                                    </span>
+                                  )}
                                 </p>
                                 <p className="text-xs text-muted-foreground">
                                   {client.email}

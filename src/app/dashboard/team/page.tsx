@@ -139,6 +139,7 @@ export default function TeamManagementPage() {
       clientId: string;
       clientName: string;
       clientEmail: string;
+      createdBy?: string;
       salesExecName?: string;
       assignedEditorPriority: { editorId: string; priority: number; targetPrice?: number; editorFee?: number; format?: string; tierLabel?: string }[];
       defaultEditorRate?: number;
@@ -161,6 +162,7 @@ export default function TeamManagementPage() {
         clientId: c.uid,
         clientName: c.displayName || "Unknown Client",
         clientEmail: c.email || "N/A",
+        createdBy: (c as any).createdBy || null,
         salesExecName,
         salesExecEmail,
         assignedEditorPriority: c.assignedEditorPriority || [],
@@ -294,9 +296,22 @@ export default function TeamManagementPage() {
                 </tr>
               ) : (
                 filteredTeamData.map((item) => (
-                  <tr key={item.clientId} className="hover:bg-muted/20 transition-colors align-top">
+                  <tr
+                    key={item.clientId}
+                    className={cn(
+                      "hover:bg-muted/20 transition-colors align-top",
+                      item.createdBy === "self" && "border-l-2 border-l-sky-400 bg-sky-950/10 hover:bg-sky-950/20"
+                    )}
+                  >
                     <td className="px-4 py-4 w-[380px] min-w-[380px]">
-                      <div className="font-semibold text-foreground">{item.clientName}</div>
+                      <div className="font-semibold text-foreground flex items-center gap-2">
+                        {item.clientName}
+                        {item.createdBy === "self" && (
+                          <span className="flex items-center gap-1 text-[8px] bg-sky-500/20 text-sky-400 border border-sky-500/30 px-1.5 py-0.5 rounded font-black uppercase">
+                            Self Signup
+                          </span>
+                        )}
+                      </div>
                       <div className="text-xs text-muted-foreground mb-1">{item.clientEmail}</div>
                       {item.salesExecName && (
                         <div className="flex items-center gap-2 mb-3">

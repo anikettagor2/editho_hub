@@ -133,6 +133,7 @@ export default function SignupPage() {
             phoneNumber: `+91${phone}`,
             whatsappNumber: selectedRole === 'editor' ? `+91${whatsapp}` : `+91${phone}`,
             createdAt: Date.now(),
+            createdBy: "self",
             onboardingStatus: selectedRole === 'editor' ? 'pending' : 'approved',
             status: selectedRole === 'editor' ? 'inactive' : 'active',
             initialPassword: password, // temporarily stored for reference/access key display
