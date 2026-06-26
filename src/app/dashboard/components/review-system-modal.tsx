@@ -343,6 +343,112 @@ export function ReviewSystemModal({ isOpen, onClose, project, allowUploadDraft, 
     const audioChunksRef = useRef<Blob[]>([]);
     const recordingIntervalRef = useRef<any>(null);
 
+    // Sync state for auto-save on page leave or modal close
+    const stateRef = useRef({
+        newComment,
+        selectedRevisionId,
+        project,
+        user,
+        activeTab,
+        currentTime,
+        guestName,
+        clientAccess,
+        savingComment
+    });
+
+    useEffect(() => {
+        stateRef.current = {
+            newComment,
+            selectedRevisionId,
+            project,
+            user,
+            activeTab,
+            currentTime,
+            guestName,
+            clientAccess,
+            savingComment
+        };
+    });
+
+    const autoSaveUnsavedComment = () => {
+        const state = stateRef.current;
+        const content = state.newComment.trim();
+        if (!content || !state.project?.id || !state.selectedRevisionId || state.savingComment) {
+            return;
+        }
+
+        // Mutate immediately to prevent duplicate runs
+        setNewComment("");
+        state.newComment = "";
+
+        const commentUserId = state.user?.uid || (state.clientAccess ? (state.project.clientId || "client") : "guest");
+        const commentUserName = state.user?.displayName || (state.clientAccess ? (state.project.clientName || state.guestName || "Client") : (state.guestName || "User"));
+        const commentUserRole = (state.user as any)?.role || (state.clientAccess ? "client" : "guest");
+
+        const payload = {
+            projectId: state.project.id,
+            revisionId: state.selectedRevisionId,
+            userId: commentUserId,
+            userName: commentUserName,
+            userRole: commentUserRole,
+            content: content,
+            timestamp: state.activeTab === 'timeline' ? state.currentTime : 0,
+        };
+
+        const url = "/api/comments/auto-save";
+        const body = JSON.stringify(payload);
+
+        if (typeof navigator !== 'undefined' && navigator.sendBeacon) {
+            const blob = new Blob([body], { type: 'application/json' });
+            navigator.sendBeacon(url, blob);
+        } else {
+            void fetch(url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body,
+                keepalive: true
+            }).catch(err => {
+                console.error("auto-save fetch failed:", err);
+            });
+        }
+    };
+
+    // Auto-save when user leaves the page or modal is closed/unmounted
+    useEffect(() => {
+        const handleVisibilityChange = () => {
+            if (document.visibilityState === "hidden") {
+                autoSaveUnsavedComment();
+            }
+        };
+
+        const handlePageHide = () => {
+            autoSaveUnsavedComment();
+        };
+
+        const handleBeforeUnload = () => {
+            autoSaveUnsavedComment();
+        };
+
+        window.addEventListener("visibilitychange", handleVisibilityChange);
+        window.addEventListener("pagehide", handlePageHide);
+        window.addEventListener("beforeunload", handleBeforeUnload);
+
+        return () => {
+            window.removeEventListener("visibilitychange", handleVisibilityChange);
+            window.removeEventListener("pagehide", handlePageHide);
+            window.removeEventListener("beforeunload", handleBeforeUnload);
+            // Trigger auto-save on unmount
+            autoSaveUnsavedComment();
+        };
+    }, []);
+
+    // Also trigger auto-save if isOpen changes to false
+    useEffect(() => {
+        if (!isOpen) {
+            autoSaveUnsavedComment();
+        }
+    }, [isOpen]);
+
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
